@@ -2,6 +2,7 @@
 //! overview, drives the tray and notifications, and pushes updates to the
 //! webview; commands read its cache or perform actions.
 
+mod app_menu;
 mod settings_store;
 mod tray;
 mod watcher;
@@ -344,6 +345,7 @@ pub fn run() {
                 live.set_listener(Arc::new(move |_event| poke.poke()));
             }
 
+            app.set_menu(app_menu::build(&handle)?)?;
             tray::create(&handle)?;
             app.on_menu_event(on_menu_event);
             apply_autostart(&handle, settings.launch_at_login);

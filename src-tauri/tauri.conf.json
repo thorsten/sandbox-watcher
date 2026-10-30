@@ -33,6 +33,13 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "publisher": "Thorsten Rinne",
+    "copyright": "\u00a9 2026 Thorsten Rinne",
+    "license": "MIT",
+    "homepage": "https://thorsten.github.io/sandbox-watcher/",
+    "category": "DeveloperTool",
+    "shortDescription": "Overview of your running MaibornWolff Sandbox containers",
+    "longDescription": "Shows which sandbox containers are running, which agents work inside them, what they reach on the network, what they consume, and lets you stop them or open the project."
   }
 }
