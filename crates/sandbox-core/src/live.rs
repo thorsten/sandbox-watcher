@@ -181,15 +181,19 @@ mod tests {
         }));
         let mock = MockAdapter::demo();
         live.with_adapter(Arc::new(mock.clone()));
-        // Give the task a moment to subscribe before emitting.
-        tokio::time::sleep(Duration::from_millis(50)).await;
-        mock.emit(event(RuntimeEventKind::Other("resize".into())));
-        mock.emit(event(RuntimeEventKind::Started));
-
-        let received = tokio::time::timeout(Duration::from_secs(2), rx.recv())
-            .await
-            .unwrap()
-            .unwrap();
+        // The forwarding task subscribes asynchronously; keep emitting until it listens.
+        let received = tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                mock.emit(event(RuntimeEventKind::Other("resize".into())));
+                mock.emit(event(RuntimeEventKind::Started));
+                tokio::select! {
+                    received = rx.recv() => return received.unwrap(),
+                    () = tokio::time::sleep(Duration::from_millis(20)) => {}
+                }
+            }
+        })
+        .await
+        .expect("listener received an event");
         assert_eq!(
             received.kind,
             RuntimeEventKind::Started,

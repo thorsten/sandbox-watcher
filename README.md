@@ -5,7 +5,7 @@ A cross-platform desktop app that shows what is happening in your running
 which projects have a sandbox up, which agents run inside, what they reach
 on the network, and what they consume.
 
-Status: milestone M1 (Docker adapter, live container list). See [`docs/MILESTONES.md`](docs/MILESTONES.md)
+Status: milestone M2 (sessions and live updates). See [`docs/MILESTONES.md`](docs/MILESTONES.md)
 for the plan and [`docs/adr/`](docs/adr/) for decisions.
 
 ## Layout
