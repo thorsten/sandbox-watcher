@@ -1,0 +1,5 @@
+# This folder is used from macOS directly and from a Linux arm64 sandbox, so
+# native binaries (Tauri CLI, oxlint, oxfmt, rolldown) are installed for all.
+supportedArchitectures:
+  os: [darwin, linux, win32]
+  cpu: [arm64, x64]
