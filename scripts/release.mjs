@@ -49,17 +49,26 @@ edit("Cargo.lock", (s) =>
 );
 
 run("node", ["scripts/changelog.mjs", "--write", "--next", tag]);
+// The pre-commit hook checks formatting; format the generated file first.
+run("pnpm", ["exec", "oxfmt", "CHANGELOG.md"]);
 console.log("updated CHANGELOG.md");
 
-run("git", [
-  "add",
+const files = [
   "Cargo.toml",
   "Cargo.lock",
   "package.json",
   "src-tauri/tauri.conf.json",
   "CHANGELOG.md",
-]);
-run("git", ["commit", "-q", "-m", `chore(release): ${tag}`]);
+];
+run("git", ["add", ...files]);
+try {
+  run("git", ["commit", "-q", "-m", `chore(release): ${tag}`]);
+} catch (error) {
+  // Leave the tree as it was so the release can simply be rerun.
+  run("git", ["restore", "--staged", "--worktree", "--", ...files]);
+  console.error(`\ncommit failed, version bump rolled back: ${error.message}`);
+  process.exit(1);
+}
 console.log(`committed chore(release): ${tag}`);
 
 if (!flags.includes("--no-tag")) {
