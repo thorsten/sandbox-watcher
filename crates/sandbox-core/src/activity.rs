@@ -179,21 +179,6 @@ pub struct AgentActivity {
     pub in_flight: Option<ActivityEvent>,
 }
 
-/// Lists the newest transcript per agent we know, as `agent|mtime|path`.
-pub fn transcript_list_command() -> Vec<String> {
-    let home = CONTAINER_HOME;
-    let script = format!(
-        r#"for f in $(ls -t {home}/.claude/projects/*/*.jsonl 2>/dev/null | head -1); do printf 'claude|%s|%s\n' "$(stat -c %Y "$f" 2>/dev/null || echo 0)" "$f"; done"#
-    );
-    vec!["sh".into(), "-c".into(), script, TRANSCRIPT_SENTINEL.into()]
-}
-
-pub fn transcript_tail_command(path: &str) -> Vec<String> {
-    let quoted = format!("'{}'", path.replace('\'', "'\\''"));
-    let script = format!("tail -c {TRANSCRIPT_TAIL_BYTES} {quoted} 2>/dev/null");
-    vec!["sh".into(), "-c".into(), script, TRANSCRIPT_SENTINEL.into()]
-}
-
 fn truncate(text: &str, max: usize) -> String {
     let one_line: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if one_line.chars().count() <= max {
@@ -407,6 +392,543 @@ pub fn in_flight(events: &[ActivityEvent]) -> Option<ActivityEvent> {
 }
 
 // ---------------------------------------------------------------------------
+// Transcript discovery per agent
+// ---------------------------------------------------------------------------
+
+fn agent_from_key(key: &str) -> Option<AgentKind> {
+    match key {
+        "claude" => Some(AgentKind::ClaudeCode),
+        "codex" => Some(AgentKind::Codex),
+        "opencode" => Some(AgentKind::OpenCode),
+        "pi" => Some(AgentKind::Pi),
+        _ => None,
+    }
+}
+
+/// Lists the newest transcript per agent as `agent|mtime|path`. For OpenCode
+/// the path is the session's message directory. Locations:
+/// Claude Code `~/.claude/projects/<cwd>/<session>.jsonl`,
+/// Codex `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`,
+/// Pi `~/.pi/agent/sessions/<cwd>/<session>.jsonl`,
+/// OpenCode `~/.local/share/opencode/storage/message/<session>/<message>.json`.
+pub fn transcript_list_command() -> Vec<String> {
+    let home = CONTAINER_HOME;
+    let script = format!(
+        r#"newest() {{ ls -t "$@" 2>/dev/null | head -1; }}
+f=$(newest {home}/.claude/projects/*/*.jsonl); [ -n "$f" ] && printf 'claude|%s|%s\n' "$(stat -c %Y "$f" 2>/dev/null || echo 0)" "$f"
+f=$(newest {home}/.codex/sessions/*/*/*/*.jsonl {home}/.codex/sessions/*.jsonl); [ -n "$f" ] && printf 'codex|%s|%s\n' "$(stat -c %Y "$f" 2>/dev/null || echo 0)" "$f"
+f=$(newest {home}/.pi/agent/sessions/*/*.jsonl); [ -n "$f" ] && printf 'pi|%s|%s\n' "$(stat -c %Y "$f" 2>/dev/null || echo 0)" "$f"
+d=$(ls -td {home}/.local/share/opencode/storage/message/*/ 2>/dev/null | head -1); [ -n "$d" ] && printf 'opencode|%s|%s\n' "$(stat -c %Y "$d" 2>/dev/null || echo 0)" "${{d%/}}"
+exit 0"#
+    );
+    vec!["sh".into(), "-c".into(), script, TRANSCRIPT_SENTINEL.into()]
+}
+
+fn sq(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+/// Reads the tail of a JSONL transcript, or dumps the last OpenCode messages
+/// with their parts as `M:<json>` and `P:<json>` lines (newline-stripped).
+pub fn transcript_tail_command(agent: AgentKind, source: &str) -> Vec<String> {
+    let script = match agent {
+        AgentKind::OpenCode => format!(
+            r#"d={dir}; root=$(dirname "$(dirname "$d")"); for m in $(ls "$d" 2>/dev/null | tail -n 30); do printf 'M:%s\n' "$(tr -d '\n' < "$d/$m")"; id=${{m%.json}}; for p in "$root"/part/"$id"/*.json; do [ -f "$p" ] && printf 'P:%s\n' "$(tr -d '\n' < "$p")"; done; done; exit 0"#,
+            dir = sq(source)
+        ),
+        _ => format!("tail -c {TRANSCRIPT_TAIL_BYTES} {} 2>/dev/null", sq(source)),
+    };
+    vec!["sh".into(), "-c".into(), script, TRANSCRIPT_SENTINEL.into()]
+}
+
+/// Dispatch to the agent's parser.
+pub fn parse_transcript(agent: AgentKind, text: &str) -> Vec<ActivityEvent> {
+    match agent {
+        AgentKind::ClaudeCode => parse_claude_transcript(text),
+        AgentKind::Codex => parse_codex_transcript(text),
+        AgentKind::Pi => parse_pi_transcript(text),
+        AgentKind::OpenCode => parse_opencode_dump(text),
+        AgentKind::Shell | AgentKind::Other => vec![],
+    }
+}
+
+fn push_text(
+    events: &mut Vec<ActivityEvent>,
+    at: Option<DateTime<Utc>>,
+    kind: ActivityEventKind,
+    label: &str,
+    text: &str,
+) {
+    if text.trim().is_empty() {
+        return;
+    }
+    events.push(ActivityEvent {
+        at,
+        kind,
+        label: label.into(),
+        detail: truncate(text, 200),
+        tool_use_id: None,
+    });
+}
+
+fn push_result(
+    events: &mut Vec<ActivityEvent>,
+    at: Option<DateTime<Utc>>,
+    id: Option<&str>,
+    body: &str,
+    is_error: bool,
+) {
+    events.push(ActivityEvent {
+        at,
+        kind: if is_error {
+            ActivityEventKind::ToolError
+        } else {
+            ActivityEventKind::ToolResult
+        },
+        label: if is_error {
+            "error".into()
+        } else {
+            "result".into()
+        },
+        detail: truncate(body, 160),
+        tool_use_id: id.map(String::from),
+    });
+}
+
+fn trim_events(events: &mut Vec<ActivityEvent>) {
+    if events.len() > MAX_EVENTS {
+        events.drain(..events.len() - MAX_EVENTS);
+    }
+}
+
+/// Injected context (AGENTS.md, environment blocks) is not something the user typed.
+fn is_injected_user_text(text: &str) -> bool {
+    let t = text.trim_start();
+    t.starts_with('<') || t.starts_with("# AGENTS.md") || t.starts_with("<environment_context>")
+}
+
+// ---------------------------------------------------------------------------
+// Codex transcript (rollout-*.jsonl)
+// ---------------------------------------------------------------------------
+
+fn command_text(value: &Value) -> String {
+    match value {
+        Value::Array(parts) => {
+            let words: Vec<String> = parts
+                .iter()
+                .filter_map(Value::as_str)
+                .map(String::from)
+                .collect();
+            // `bash -lc <cmd>` is Codex's usual wrapper: show the command itself.
+            if words.len() >= 3
+                && (words[0].ends_with("bash") || words[0].ends_with("sh"))
+                && words[1] == "-lc"
+            {
+                words[2..].join(" ")
+            } else {
+                words.join(" ")
+            }
+        }
+        Value::String(s) => s.clone(),
+        _ => String::new(),
+    }
+}
+
+fn apply_patch_summary(input: &str) -> String {
+    let files: Vec<&str> = input
+        .lines()
+        .filter_map(|l| {
+            l.strip_prefix("*** Update File: ")
+                .or_else(|| l.strip_prefix("*** Add File: "))
+                .or_else(|| l.strip_prefix("*** Delete File: "))
+        })
+        .collect();
+    if files.is_empty() {
+        "apply patch".to_string()
+    } else {
+        files.join(", ")
+    }
+}
+
+/// Parse Codex CLI rollout lines. Handles the envelope form
+/// (`{"timestamp","type":"response_item","payload":{...}}`) and the older
+/// bare item form.
+pub fn parse_codex_transcript(text: &str) -> Vec<ActivityEvent> {
+    let mut events = Vec::new();
+    for line in text.lines() {
+        let Ok(value) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        let at = timestamp_of(&value);
+        let item = match value.get("type").and_then(Value::as_str) {
+            Some("response_item") => value.get("payload").cloned().unwrap_or(Value::Null),
+            Some("event_msg") | Some("session_meta") | Some("turn_context") | Some("compacted") => {
+                continue;
+            }
+            _ => value.clone(),
+        };
+        match item.get("type").and_then(Value::as_str) {
+            Some("message") => {
+                let role = item.get("role").and_then(Value::as_str).unwrap_or("");
+                let text: String = item
+                    .get("content")
+                    .and_then(Value::as_array)
+                    .map(|parts| {
+                        parts
+                            .iter()
+                            .filter(|p| {
+                                matches!(
+                                    p.get("type").and_then(Value::as_str),
+                                    Some("input_text" | "output_text" | "text")
+                                )
+                            })
+                            .filter_map(|p| p.get("text").and_then(Value::as_str))
+                            .collect::<Vec<_>>()
+                            .join(" ")
+                    })
+                    .unwrap_or_default();
+                match role {
+                    "assistant" => push_text(
+                        &mut events,
+                        at,
+                        ActivityEventKind::AssistantText,
+                        "Codex",
+                        &text,
+                    ),
+                    "user" if !is_injected_user_text(&text) => push_text(
+                        &mut events,
+                        at,
+                        ActivityEventKind::UserMessage,
+                        "You",
+                        &text,
+                    ),
+                    _ => {}
+                }
+            }
+            Some("function_call") => {
+                let name = item.get("name").and_then(Value::as_str).unwrap_or("tool");
+                let args: Value = item
+                    .get("arguments")
+                    .and_then(Value::as_str)
+                    .and_then(|s| serde_json::from_str(s).ok())
+                    .unwrap_or(Value::Null);
+                let detail = match name {
+                    "shell" | "shell_command" | "exec_command" | "container.exec" => {
+                        command_text(args.get("command").unwrap_or(&Value::Null))
+                    }
+                    "apply_patch" => {
+                        apply_patch_summary(args.get("input").and_then(Value::as_str).unwrap_or(""))
+                    }
+                    _ => args.to_string(),
+                };
+                events.push(ActivityEvent {
+                    at,
+                    kind: ActivityEventKind::ToolUse,
+                    label: name.to_string(),
+                    detail: truncate(&detail, 160),
+                    tool_use_id: item
+                        .get("call_id")
+                        .and_then(Value::as_str)
+                        .map(String::from),
+                });
+            }
+            Some("custom_tool_call") => {
+                let name = item.get("name").and_then(Value::as_str).unwrap_or("tool");
+                let input = item.get("input").and_then(Value::as_str).unwrap_or("");
+                let detail = if name == "apply_patch" {
+                    apply_patch_summary(input)
+                } else {
+                    input.to_string()
+                };
+                events.push(ActivityEvent {
+                    at,
+                    kind: ActivityEventKind::ToolUse,
+                    label: name.to_string(),
+                    detail: truncate(&detail, 160),
+                    tool_use_id: item
+                        .get("call_id")
+                        .and_then(Value::as_str)
+                        .map(String::from),
+                });
+            }
+            Some("local_shell_call") => {
+                let detail = command_text(item.pointer("/action/command").unwrap_or(&Value::Null));
+                events.push(ActivityEvent {
+                    at,
+                    kind: ActivityEventKind::ToolUse,
+                    label: "shell".into(),
+                    detail: truncate(&detail, 160),
+                    tool_use_id: item
+                        .get("call_id")
+                        .and_then(Value::as_str)
+                        .map(String::from),
+                });
+            }
+            Some("function_call_output")
+            | Some("custom_tool_call_output")
+            | Some("local_shell_call_output") => {
+                let raw = item.get("output").and_then(Value::as_str).unwrap_or("");
+                // Output is often a JSON string with the real output and an exit code.
+                let (body, is_error) = match serde_json::from_str::<Value>(raw) {
+                    Ok(v) if v.is_object() => {
+                        let body = v
+                            .get("output")
+                            .and_then(Value::as_str)
+                            .unwrap_or(raw)
+                            .to_string();
+                        let code = v
+                            .pointer("/metadata/exit_code")
+                            .and_then(Value::as_i64)
+                            .unwrap_or(0);
+                        (body, code != 0)
+                    }
+                    _ => (raw.to_string(), false),
+                };
+                push_result(
+                    &mut events,
+                    at,
+                    item.get("call_id").and_then(Value::as_str),
+                    &body,
+                    is_error,
+                );
+            }
+            _ => {}
+        }
+    }
+    trim_events(&mut events);
+    events
+}
+
+// ---------------------------------------------------------------------------
+// Pi transcript (session .jsonl)
+// ---------------------------------------------------------------------------
+
+fn pi_tool_detail(name: &str, args: &Value) -> String {
+    let get = |k: &str| args.get(k).and_then(Value::as_str).unwrap_or("");
+    match name {
+        "bash" => get("command").to_string(),
+        "read" | "edit" | "write" => get("path").to_string(),
+        "grep" | "find" => {
+            let p = get("pattern");
+            let path = get("path");
+            if path.is_empty() {
+                p.to_string()
+            } else {
+                format!("{p} in {path}")
+            }
+        }
+        "ls" => get("path").to_string(),
+        _ => args.to_string(),
+    }
+}
+
+/// Parse Pi session lines: `{"type":"message","message":{"role":..,"content":[..]}}`
+/// with `toolCall` parts and `toolResult` role messages.
+pub fn parse_pi_transcript(text: &str) -> Vec<ActivityEvent> {
+    let mut events = Vec::new();
+    for line in text.lines() {
+        let Ok(value) = serde_json::from_str::<Value>(line) else {
+            continue;
+        };
+        if value.get("type").and_then(Value::as_str) != Some("message") {
+            continue;
+        }
+        let at = timestamp_of(&value);
+        let Some(message) = value.get("message") else {
+            continue;
+        };
+        let role = message.get("role").and_then(Value::as_str).unwrap_or("");
+        let content = message.get("content");
+        let texts = |c: Option<&Value>| -> String {
+            match c {
+                Some(Value::String(s)) => s.clone(),
+                Some(Value::Array(parts)) => parts
+                    .iter()
+                    .filter(|p| p.get("type").and_then(Value::as_str) == Some("text"))
+                    .filter_map(|p| p.get("text").and_then(Value::as_str))
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                _ => String::new(),
+            }
+        };
+        match role {
+            "user" => push_text(
+                &mut events,
+                at,
+                ActivityEventKind::UserMessage,
+                "You",
+                &texts(content),
+            ),
+            "assistant" => {
+                push_text(
+                    &mut events,
+                    at,
+                    ActivityEventKind::AssistantText,
+                    "Pi",
+                    &texts(content),
+                );
+                if let Some(parts) = content.and_then(Value::as_array) {
+                    for p in parts
+                        .iter()
+                        .filter(|p| p.get("type").and_then(Value::as_str) == Some("toolCall"))
+                    {
+                        let name = p.get("name").and_then(Value::as_str).unwrap_or("tool");
+                        events.push(ActivityEvent {
+                            at,
+                            kind: ActivityEventKind::ToolUse,
+                            label: name.to_string(),
+                            detail: truncate(
+                                &pi_tool_detail(name, p.get("arguments").unwrap_or(&Value::Null)),
+                                160,
+                            ),
+                            tool_use_id: p.get("id").and_then(Value::as_str).map(String::from),
+                        });
+                    }
+                }
+            }
+            "toolResult" => {
+                let is_error = message
+                    .get("isError")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false);
+                push_result(
+                    &mut events,
+                    at,
+                    message.get("toolCallId").and_then(Value::as_str),
+                    &texts(content),
+                    is_error,
+                );
+            }
+            _ => {}
+        }
+    }
+    trim_events(&mut events);
+    events
+}
+
+// ---------------------------------------------------------------------------
+// OpenCode storage dump (M:/P: lines)
+// ---------------------------------------------------------------------------
+
+fn ms_to_time(value: Option<&Value>) -> Option<DateTime<Utc>> {
+    value
+        .and_then(Value::as_i64)
+        .and_then(|ms| Utc.timestamp_millis_opt(ms).single())
+}
+
+fn opencode_tool_detail(tool: &str, input: &Value) -> String {
+    let get = |k: &str| input.get(k).and_then(Value::as_str).unwrap_or("");
+    match tool {
+        "bash" => get("command").to_string(),
+        "read" | "edit" | "write" | "patch" => get("filePath").to_string(),
+        "glob" | "grep" => {
+            let p = get("pattern");
+            let path = get("path");
+            if path.is_empty() {
+                p.to_string()
+            } else {
+                format!("{p} in {path}")
+            }
+        }
+        "webfetch" => get("url").to_string(),
+        "task" => get("description").to_string(),
+        "todowrite" | "todoread" => "updating the task list".to_string(),
+        _ => input.to_string(),
+    }
+}
+
+/// Parse the `M:`/`P:` dump produced by [`transcript_tail_command`] for OpenCode.
+pub fn parse_opencode_dump(text: &str) -> Vec<ActivityEvent> {
+    let mut events = Vec::new();
+    let mut roles: HashMap<String, (String, Option<DateTime<Utc>>)> = HashMap::new();
+    for line in text.lines() {
+        if let Some(json) = line.strip_prefix("M:") {
+            let Ok(m) = serde_json::from_str::<Value>(json) else {
+                continue;
+            };
+            if let Some(id) = m.get("id").and_then(Value::as_str) {
+                let role = m
+                    .get("role")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                roles.insert(
+                    id.to_string(),
+                    (role, ms_to_time(m.pointer("/time/created"))),
+                );
+            }
+        } else if let Some(json) = line.strip_prefix("P:") {
+            let Ok(p) = serde_json::from_str::<Value>(json) else {
+                continue;
+            };
+            let message_id = p.get("messageID").and_then(Value::as_str).unwrap_or("");
+            let (role, at) = roles.get(message_id).cloned().unwrap_or_default();
+            match p.get("type").and_then(Value::as_str) {
+                Some("text") => {
+                    let text = p.get("text").and_then(Value::as_str).unwrap_or("");
+                    if role == "user" {
+                        push_text(&mut events, at, ActivityEventKind::UserMessage, "You", text);
+                    } else {
+                        push_text(
+                            &mut events,
+                            at,
+                            ActivityEventKind::AssistantText,
+                            "OpenCode",
+                            text,
+                        );
+                    }
+                }
+                Some("tool") => {
+                    let tool = p.get("tool").and_then(Value::as_str).unwrap_or("tool");
+                    let state = p.get("state").cloned().unwrap_or(Value::Null);
+                    let call_id = p.get("callID").and_then(Value::as_str).map(String::from);
+                    let started = ms_to_time(state.pointer("/time/start")).or(at);
+                    events.push(ActivityEvent {
+                        at: started,
+                        kind: ActivityEventKind::ToolUse,
+                        label: tool.to_string(),
+                        detail: truncate(
+                            &opencode_tool_detail(tool, state.get("input").unwrap_or(&Value::Null)),
+                            160,
+                        ),
+                        tool_use_id: call_id.clone(),
+                    });
+                    match state.get("status").and_then(Value::as_str) {
+                        Some("completed") => {
+                            let out = state.get("output").and_then(Value::as_str).unwrap_or("");
+                            push_result(
+                                &mut events,
+                                ms_to_time(state.pointer("/time/end")).or(started),
+                                call_id.as_deref(),
+                                out,
+                                false,
+                            );
+                        }
+                        Some("error") => {
+                            let err = state
+                                .get("error")
+                                .and_then(Value::as_str)
+                                .unwrap_or("error");
+                            push_result(
+                                &mut events,
+                                ms_to_time(state.pointer("/time/end")).or(started),
+                                call_id.as_deref(),
+                                err,
+                                true,
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    trim_events(&mut events);
+    events
+}
+
+// ---------------------------------------------------------------------------
 // Git working tree
 // ---------------------------------------------------------------------------
 
@@ -561,37 +1083,49 @@ pub async fn collect(
         })
         .collect();
 
+    // Transcripts only for agents that actually have a session here, so a
+    // stale file from last week never looks like current activity.
+    let active_agents: HashSet<AgentKind> = sessions.iter().map(|s| s.agent).collect();
     let mut agents = Vec::new();
     if let Ok((0, listing)) = list_result {
-        let mut tails = BTreeMap::new();
+        let mut found: BTreeMap<&str, (AgentKind, Option<DateTime<Utc>>, String)> = BTreeMap::new();
         for line in listing.lines() {
             let mut parts = line.splitn(3, '|');
-            if let (Some("claude"), Some(mtime), Some(path)) =
-                (parts.next(), parts.next(), parts.next())
-            {
-                let updated_at = mtime
-                    .trim()
-                    .parse::<i64>()
-                    .ok()
-                    .and_then(|t| Utc.timestamp_opt(t, 0).single());
-                tails.insert(path.trim().to_string(), updated_at);
+            let (Some(key), Some(mtime), Some(path)) = (parts.next(), parts.next(), parts.next())
+            else {
+                continue;
+            };
+            let Some(agent) = agent_from_key(key) else {
+                continue;
+            };
+            if !active_agents.contains(&agent) {
+                continue;
             }
+            let updated_at = mtime
+                .trim()
+                .parse::<i64>()
+                .ok()
+                .and_then(|t| Utc.timestamp_opt(t, 0).single());
+            found.insert(key, (agent, updated_at, path.trim().to_string()));
         }
-        for (path, updated_at) in tails {
-            match run(adapter, container_id, transcript_tail_command(&path)).await {
+        for (_, (agent, updated_at, path)) in found {
+            match run(adapter, container_id, transcript_tail_command(agent, &path)).await {
                 Ok((0, text)) => {
-                    let events = parse_claude_transcript(&text);
+                    let events = parse_transcript(agent, &text);
                     let in_flight = in_flight(&events);
                     agents.push(AgentActivity {
-                        agent: AgentKind::ClaudeCode,
+                        agent,
                         source: path,
                         updated_at,
                         events,
                         in_flight,
                     });
                 }
-                Ok((code, _)) => errors.push(format!("transcript read exited with {code}")),
-                Err(e) => errors.push(format!("transcript read failed: {e}")),
+                Ok((code, _)) => errors.push(format!(
+                    "{} transcript read exited with {code}",
+                    agent.label()
+                )),
+                Err(e) => errors.push(format!("{} transcript read failed: {e}", agent.label())),
             }
         }
     }
@@ -716,6 +1250,123 @@ P|9|2|0|0|[kworker/0:1\n";
         assert_eq!(tree.changes[1].status, "??");
         assert!(tree.shortstat.unwrap().contains("2 files changed"));
         assert!(!parse_git_status(4, "").is_repo, "not a repository");
+    }
+
+    const CODEX: &str = r#"{"timestamp":"2026-10-30T10:00:00Z","type":"session_meta","payload":{"id":"x"}}
+{"timestamp":"2026-10-30T10:00:01Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>cwd=/x</environment_context>"}]}}
+{"timestamp":"2026-10-30T10:00:02Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"add a changelog entry"}]}}
+{"timestamp":"2026-10-30T10:00:05Z","type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"{\"command\":[\"bash\",\"-lc\",\"git log --oneline -5\"]}","call_id":"call_1"}}
+{"timestamp":"2026-10-30T10:00:06Z","type":"response_item","payload":{"type":"function_call_output","call_id":"call_1","output":"{\"output\":\"abc fix\\n\",\"metadata\":{\"exit_code\":0}}"}}
+{"timestamp":"2026-10-30T10:00:09Z","type":"response_item","payload":{"type":"custom_tool_call","name":"apply_patch","input":"*** Begin Patch\n*** Update File: CHANGELOG.md\n@@\n+entry\n*** End Patch","call_id":"call_2"}}
+{"timestamp":"2026-10-30T10:00:10Z","type":"event_msg","payload":{"type":"agent_message","message":"Done"}}
+"#;
+
+    #[test]
+    fn parses_codex_rollout() {
+        let events = parse_codex_transcript(CODEX);
+        let kinds: Vec<_> = events.iter().map(|e| e.kind).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                ActivityEventKind::UserMessage,
+                ActivityEventKind::ToolUse,
+                ActivityEventKind::ToolResult,
+                ActivityEventKind::ToolUse
+            ],
+            "{events:?}"
+        );
+        assert_eq!(
+            events[0].detail, "add a changelog entry",
+            "injected context is skipped"
+        );
+        assert_eq!(
+            events[1].detail, "git log --oneline -5",
+            "bash -lc wrapper stripped"
+        );
+        assert_eq!(events[3].label, "apply_patch");
+        assert_eq!(events[3].detail, "CHANGELOG.md");
+        assert_eq!(
+            in_flight(&events).unwrap().tool_use_id.as_deref(),
+            Some("call_2")
+        );
+    }
+
+    const PI: &str = r#"{"type":"session","version":3,"id":"s1","timestamp":"2026-10-30T10:00:00Z","cwd":"/x"}
+{"type":"message","id":"m1","timestamp":"2026-10-30T10:00:01Z","message":{"role":"user","content":[{"type":"text","text":"run the linter"}]}}
+{"type":"message","id":"m2","timestamp":"2026-10-30T10:00:03Z","message":{"role":"assistant","content":[{"type":"thinking","thinking":"..."},{"type":"text","text":"Running it now."},{"type":"toolCall","id":"tc1","name":"bash","arguments":{"command":"pnpm lint"}}]}}
+{"type":"message","id":"m3","timestamp":"2026-10-30T10:00:04Z","message":{"role":"toolResult","toolCallId":"tc1","toolName":"bash","content":[{"type":"text","text":"2 errors"}],"isError":true}}
+{"type":"message","id":"m4","timestamp":"2026-10-30T10:00:08Z","message":{"role":"assistant","content":[{"type":"toolCall","id":"tc2","name":"edit","arguments":{"path":"src/a.ts","oldText":"x","newText":"y"}}]}}
+"#;
+
+    #[test]
+    fn parses_pi_session() {
+        let events = parse_pi_transcript(PI);
+        let kinds: Vec<_> = events.iter().map(|e| e.kind).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                ActivityEventKind::UserMessage,
+                ActivityEventKind::AssistantText,
+                ActivityEventKind::ToolUse,
+                ActivityEventKind::ToolError,
+                ActivityEventKind::ToolUse
+            ]
+        );
+        assert_eq!(events[2].detail, "pnpm lint");
+        let current = in_flight(&events).unwrap();
+        assert_eq!(
+            (current.label.as_str(), current.detail.as_str()),
+            ("edit", "src/a.ts")
+        );
+    }
+
+    const OPENCODE: &str = r#"M:{"id":"msg_1","sessionID":"ses_1","role":"user","time":{"created":1761818400000}}
+P:{"id":"prt_1","messageID":"msg_1","sessionID":"ses_1","type":"text","text":"fix the build"}
+M:{"id":"msg_2","sessionID":"ses_1","role":"assistant","time":{"created":1761818405000}}
+P:{"id":"prt_2","messageID":"msg_2","type":"step-start"}
+P:{"id":"prt_3","messageID":"msg_2","type":"text","text":"Checking the build output."}
+P:{"id":"prt_4","messageID":"msg_2","type":"tool","callID":"call_a","tool":"bash","state":{"status":"completed","input":{"command":"pnpm build"},"output":"error TS2345","time":{"start":1761818406000,"end":1761818409000}}}
+P:{"id":"prt_5","messageID":"msg_2","type":"tool","callID":"call_b","tool":"edit","state":{"status":"running","input":{"filePath":"/x/src/main.ts"},"time":{"start":1761818410000}}}
+"#;
+
+    #[test]
+    fn parses_opencode_storage_dump() {
+        let events = parse_opencode_dump(OPENCODE);
+        let kinds: Vec<_> = events.iter().map(|e| e.kind).collect();
+        assert_eq!(
+            kinds,
+            vec![
+                ActivityEventKind::UserMessage,
+                ActivityEventKind::AssistantText,
+                ActivityEventKind::ToolUse,
+                ActivityEventKind::ToolResult,
+                ActivityEventKind::ToolUse
+            ]
+        );
+        assert_eq!(events[2].detail, "pnpm build");
+        assert!(events[2].at.is_some());
+        let current = in_flight(&events).unwrap();
+        assert_eq!(current.label, "edit");
+        assert_eq!(current.detail, "/x/src/main.ts");
+    }
+
+    #[test]
+    fn transcript_commands_carry_sentinel_and_quote_paths() {
+        let list = transcript_list_command();
+        assert_eq!(list.last().unwrap(), TRANSCRIPT_SENTINEL);
+        assert!(
+            list[2].contains(".codex/sessions")
+                && list[2].contains(".pi/agent/sessions")
+                && list[2].contains("opencode/storage")
+        );
+        let tail =
+            transcript_tail_command(AgentKind::Codex, "/home/sandbox/.codex/sessions/it's.jsonl");
+        assert!(tail[2].contains("'/home/sandbox/.codex/sessions/it'\\''s.jsonl'"));
+        let dump = transcript_tail_command(
+            AgentKind::OpenCode,
+            "/home/sandbox/.local/share/opencode/storage/message/ses_1",
+        );
+        assert!(dump[2].contains("part/"));
     }
 
     #[tokio::test]

@@ -3,7 +3,13 @@ import { getActivity } from "../api";
 import { AGENT_LABELS } from "../format";
 import { formatRelative } from "../network";
 import { formatBytes } from "../sparkline";
-import type { ActivityEvent, ContainerActivity, ProcessInfo, SessionProcesses } from "../types";
+import type {
+  ActivityEvent,
+  AgentKind,
+  ContainerActivity,
+  ProcessInfo,
+  SessionProcesses,
+} from "../types";
 
 const POLL_MS = 3_000;
 
@@ -26,6 +32,14 @@ const STATUS_LABELS: Record<string, string> = {
   "D ": "deleted",
   R: "renamed",
 };
+
+/** Agents with a running session but no transcript we could read. */
+function missingTranscripts(activity: ContainerActivity): AgentKind[] {
+  const known: AgentKind[] = ["claude-code", "codex", "open-code", "pi"];
+  const have = new Set(activity.agents.map((a) => a.agent));
+  const running = new Set(activity.sessions.map((s) => s.session.agent));
+  return known.filter((a) => running.has(a) && !have.has(a));
+}
 
 export function ActivityPanel({ containerId, now }: { containerId: string; now: Date }) {
   const [activity, setActivity] = useState<ContainerActivity | null>(null);
@@ -85,6 +99,13 @@ export function ActivityPanel({ containerId, now }: { containerId: string; now: 
             ))}
           </ol>
         </section>
+      ))}
+
+      {missingTranscripts(activity).map((agent) => (
+        <p key={agent} className="muted small">
+          No {AGENT_LABELS[agent]} transcript found in this container yet. Showing its processes
+          only.
+        </p>
       ))}
 
       {activity.sessions.map((s) => (

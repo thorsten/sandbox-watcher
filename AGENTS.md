@@ -79,11 +79,21 @@ set, because the project folder is used from macOS and a Linux sandbox.
 
 ## Activity view coupling
 
-`crates/sandbox-core/src/activity.rs` reads Claude Code's session transcript
-(`~/.claude/projects/*/*.jsonl` inside the container) and parses the
-`assistant` / `user` / `tool_use` / `tool_result` line shapes. That format is
-Claude Code's, not ours; other agents only get the process tree until a
-parser for their transcripts exists.
+`crates/sandbox-core/src/activity.rs` reads each agent's own session store
+inside the container and parses its shapes. None of these formats are ours,
+and they were written from the agents' known layouts, not from captured
+files; when a timeline stays empty for a real session, capture a sample and
+fix the parser:
+
+| Agent       | Location in the container                                                               | Shape                                                                                                 |
+| ----------- | --------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Claude Code | `~/.claude/projects/<cwd>/<session>.jsonl`                                              | `assistant`/`user` lines with `tool_use`/`tool_result` content                                        |
+| Codex       | `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`                                          | `response_item` envelopes with `message`, `function_call`, `function_call_output`, `custom_tool_call` |
+| Pi          | `~/.pi/agent/sessions/<cwd>/<session>.jsonl`                                            | `message` lines with `toolCall` parts and `toolResult` role                                           |
+| OpenCode    | `~/.local/share/opencode/storage/message/<session>/*.json` plus `part/<message>/*.json` | message and part JSON files; tool parts carry `state.status`                                          |
+
+A transcript is only shown when a session of that agent is running in the
+container, so an old file never reads as current activity.
 
 ## Known gaps
 
