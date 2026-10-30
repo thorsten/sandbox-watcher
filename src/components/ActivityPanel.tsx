@@ -3,6 +3,7 @@ import { getActivity } from "../api";
 import { AGENT_LABELS } from "../format";
 import { formatRelative } from "../network";
 import { formatBytes } from "../sparkline";
+import { formatCost, formatTokens, totalTokens } from "../usageFormat";
 import type {
   ActivityEvent,
   AgentKind,
@@ -82,6 +83,35 @@ export function ActivityPanel({ containerId, now }: { containerId: string; now: 
               </span>
             )}
           </h3>
+          {agent.usage && (
+            <div className="usage-line muted">
+              <span title="Input, output, cache read, cache write tokens">
+                {formatTokens(totalTokens(agent.usage))} tokens
+                <span className="small">
+                  {" "}
+                  (in {formatTokens(agent.usage.input_tokens)} · out{" "}
+                  {formatTokens(agent.usage.output_tokens)}
+                  {agent.usage.cache_read_tokens > 0 && (
+                    <> · cache {formatTokens(agent.usage.cache_read_tokens)}</>
+                  )}
+                  )
+                </span>
+              </span>
+              <span
+                title={
+                  agent.usage.cost_source === "estimated"
+                    ? "Estimated from the price table in Settings"
+                    : agent.usage.cost_source === "reported"
+                      ? "Reported by the agent"
+                      : "No price for this model; edit the price table in Settings"
+                }
+              >
+                {formatCost(agent.usage.cost_usd, agent.usage.cost_source)}
+              </span>
+              {agent.usage.models.length > 0 && <code>{agent.usage.models.join(", ")}</code>}
+              <span className="small">{agent.usage.turns} turns</span>
+            </div>
+          )}
           {agent.in_flight ? (
             <div className="in-flight">
               <span className="pulse" aria-hidden="true" />

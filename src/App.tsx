@@ -14,6 +14,7 @@ import {
 } from "./api";
 import logoUrl from "./assets/logo.svg";
 import { DetailPane } from "./components/DetailPane";
+import { HistoryView } from "./components/HistoryView";
 import { RuntimeBanner } from "./components/RuntimeBanner";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { Sidebar } from "./components/Sidebar";
@@ -35,6 +36,7 @@ export function App() {
   const [network, setNetwork] = useState<NetworkReport[] | undefined>(undefined);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [version, setVersion] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -74,6 +76,7 @@ export function App() {
         if (cancelled) return;
         setSelectedId(id);
         setShowSettings(false);
+        setShowHistory(false);
       }),
     ];
     return () => {
@@ -146,7 +149,21 @@ export function App() {
           </button>
           <button
             type="button"
-            onClick={() => setShowSettings((v) => !v)}
+            onClick={() => {
+              setShowHistory((v) => !v);
+              setShowSettings(false);
+            }}
+            aria-pressed={showHistory}
+            title="Session history"
+          >
+            History
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowSettings((v) => !v);
+              setShowHistory(false);
+            }}
             aria-pressed={showSettings}
             title="Settings"
           >
@@ -176,7 +193,9 @@ export function App() {
             now={state.refreshedAt}
           />
           <main className="main">
-            {showSettings && settings ? (
+            {showHistory ? (
+              <HistoryView onClose={() => setShowHistory(false)} />
+            ) : showSettings && settings ? (
               <SettingsPanel
                 key={JSON.stringify(settings)}
                 settings={settings}

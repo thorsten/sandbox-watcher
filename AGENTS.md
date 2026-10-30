@@ -34,6 +34,10 @@ decisions are in `docs/adr/`. Read both before changing architecture.
 - **Paths and destructive actions are decided on the Rust side.** The webview
   never passes a path to open; commands derive it from the container's own
   mounts. Stopping asks for confirmation in the UI.
+- **The only sandbox config edit is the allow list,** and only through the
+  Allow dialog: `allowlist.rs` replicates `sandbox network allow`'s file
+  rewrite, writes to the two paths sandbox itself would use, and shows the
+  exact lines first. Nothing else touches `config.toml`.
 - **Our own execs must not trigger refreshes.** The session probe carries
   `PROBE_SENTINEL`, diagnostics carry `DIAGNOSTIC_COMMAND_PREFIX`; see
   `is_relevant` in `live.rs` before adding another exec.
@@ -101,3 +105,5 @@ container, so an old file never reads as current activity.
 - Fixtures under `fixtures/docker` and `fixtures/sandbox-logs` are
   hand-written from documented formats, not recordings.
 - Persisted data size per project (M4 optional) is not implemented.
+- Price table defaults cover the models known at the time of writing; newer
+  model ids show tokens only until added in Settings.

@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { filterEntries, formatRelative } from "../network";
-import type { NetworkReport } from "../types";
+import type { NetworkEntry, NetworkReport } from "../types";
+import { AllowDialog } from "./AllowDialog";
 
 const SOURCE_LABELS = {
   firewall: "firewall log",
@@ -8,9 +9,44 @@ const SOURCE_LABELS = {
   "proxy-access": "proxy log",
 } as const;
 
-export function NetworkPanel({ report, now }: { report: NetworkReport | undefined; now: Date }) {
+interface Props {
+  containerId: string;
+  report: NetworkReport | undefined;
+  now: Date;
+  onChanged?: () => void;
+}
+
+/** Group blocked entries by host so one selection covers all its ports. */
+function selectionsFor(entries: NetworkEntry[], hosts: Set<string>) {
+  const byHost = new Map<string, Set<number>>();
+  for (const e of entries) {
+    if (e.status !== "blocked" || !hosts.has(e.destination)) continue;
+    const ports = byHost.get(e.destination) ?? new Set<number>();
+    if (e.port > 0) ports.add(e.port);
+    byHost.set(e.destination, ports);
+  }
+  return [...byHost].map(([host, ports]) => ({
+    host,
+    ports: [...ports].toSorted((a, b) => a - b),
+  }));
+}
+
+export function NetworkPanel({ containerId, report, now, onChanged }: Props) {
   const [status, setStatus] = useState<"all" | "blocked">("all");
   const [search, setSearch] = useState("");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [allowOpen, setAllowOpen] = useState(false);
+  const selections = useMemo(
+    () => selectionsFor(report?.entries ?? [], selected),
+    [report, selected],
+  );
+  const toggle = (host: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(host)) next.delete(host);
+      else next.add(host);
+      return next;
+    });
 
   if (!report) {
     return <div className="network muted">Reading network logs…</div>;
@@ -45,6 +81,11 @@ export function NetworkPanel({ report, now }: { report: NetworkReport | undefine
           onChange={(e) => setSearch(e.target.value)}
           aria-label="Filter destinations"
         />
+        {selected.size > 0 && (
+          <button type="button" className="primary" onClick={() => setAllowOpen(true)}>
+            Allow {selected.size} selected…
+          </button>
+        )}
       </div>
 
       {report.failed_sources.length > 0 && (
@@ -67,6 +108,7 @@ export function NetworkPanel({ report, now }: { report: NetworkReport | undefine
         <table className="network-table">
           <thead>
             <tr>
+              <th aria-label="Select" />
               <th>Destination</th>
               <th>Port</th>
               <th>Status</th>
@@ -77,6 +119,16 @@ export function NetworkPanel({ report, now }: { report: NetworkReport | undefine
           <tbody>
             {entries.map((e) => (
               <tr key={`${e.destination}:${e.port}:${e.status}`}>
+                <td>
+                  {e.status === "blocked" && !isIp(e.destination) && (
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${e.destination}`}
+                      checked={selected.has(e.destination)}
+                      onChange={() => toggle(e.destination)}
+                    />
+                  )}
+                </td>
                 <td>
                   <span title={e.dst_ip ?? undefined}>{e.destination}</span>
                   {e.dst_ip && e.dst_ip !== e.destination && (
@@ -97,9 +149,27 @@ export function NetworkPanel({ report, now }: { report: NetworkReport | undefine
         </table>
       )}
 
+      {allowOpen && (
+        <AllowDialog
+          containerId={containerId}
+          selections={selections}
+          onClose={(changed) => {
+            setAllowOpen(false);
+            if (changed) {
+              setSelected(new Set());
+              onChanged?.();
+            }
+          }}
+        />
+      )}
+
       <details className="network-caveats">
         <summary className="muted">About these numbers</summary>
         <ul className="muted">
+          <li>
+            Tick blocked hosts and choose "Allow selected" to add them to sandbox's allow list. Raw
+            IP addresses cannot be allowed by name.
+          </li>
           <li>Repeated blocked connections can be collapsed by the firewall logger.</li>
           <li>IPv6 connections are not recorded.</li>
           <li>
@@ -111,4 +181,8 @@ export function NetworkPanel({ report, now }: { report: NetworkReport | undefine
       </details>
     </div>
   );
+}
+
+function isIp(host: string): boolean {
+  return /^\d{1,3}(\.\d{1,3}){3}$/.test(host) || host.includes(":");
 }

@@ -16,7 +16,10 @@ use sandbox_core::actions::{
 };
 use sandbox_core::activity::ContainerActivity;
 use sandbox_core::adapter::LogOptions;
+use sandbox_core::allowlist::{AllowResult, ConfigTarget};
 use sandbox_core::detect::{DetectedRuntime, Environment, detect};
+use sandbox_core::history::{HistoryQuery, HistoryView};
+use sandbox_core::model::AgentKind;
 use sandbox_core::model::{ContainerDetails, ResourceSample};
 use sandbox_core::network::NetworkReport;
 use sandbox_core::overview::Overview;
@@ -105,7 +108,11 @@ async fn get_activity(
         })
         .map(|c| c.sessions)
         .unwrap_or_default();
-    Ok(sandbox_core::activity::collect(&adapter, &container_id, &sessions, Utc::now()).await)
+    let prices = state.settings().prices;
+    Ok(
+        sandbox_core::activity::collect(&adapter, &container_id, &sessions, Utc::now(), &prices)
+            .await,
+    )
 }
 
 /// Mounts, ports, env names and user of one container, mounts classified
@@ -322,6 +329,139 @@ async fn open_terminal(state: State<'_, App>, container_id: String) -> Result<St
     ))
 }
 
+/// Session history for a time range, optionally narrowed to a project or agent.
+#[tauri::command]
+fn get_history(
+    state: State<'_, App>,
+    since_hours: Option<u64>,
+    project: Option<String>,
+    agent: Option<AgentKind>,
+) -> HistoryView {
+    let since = match since_hours {
+        Some(h) => Utc::now() - chrono::Duration::hours(h as i64),
+        None => chrono::DateTime::<Utc>::MIN_UTC,
+    };
+    state.history_view(&HistoryQuery {
+        since,
+        project,
+        agent,
+    })
+}
+
+#[tauri::command]
+fn clear_history(state: State<'_, App>) {
+    state.clear_history();
+}
+
+/// A blocked destination the user wants to allow.
+#[derive(serde::Deserialize)]
+struct AllowSelection {
+    host: String,
+    ports: Vec<u16>,
+}
+
+#[derive(serde::Serialize)]
+struct AllowPreview {
+    entries: Vec<String>,
+    global_path: Option<String>,
+    project_path: Option<String>,
+    already_in_global: Vec<String>,
+    already_in_project: Vec<String>,
+}
+
+fn global_config_path() -> Option<std::path::PathBuf> {
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(std::path::PathBuf::from);
+    sandbox_core::allowlist::global_config_path(
+        std::env::consts::OS,
+        std::env::var("SANDBOX_CONFIG_DIR").ok().as_deref(),
+        std::env::var("XDG_CONFIG_HOME").ok().as_deref(),
+        std::env::var("APPDATA").ok().as_deref(),
+        home.as_deref(),
+    )
+}
+
+async fn project_root_of(
+    state: &State<'_, App>,
+    container_id: &str,
+) -> Result<Option<std::path::PathBuf>, String> {
+    let adapter = state.adapter_for(container_id)?;
+    Ok(
+        sandbox_core::actions::project_path(&adapter, container_id, cfg!(windows))
+            .await
+            .map_err(|e| e.to_string())?
+            .map(std::path::PathBuf::from),
+    )
+}
+
+/// What allowing the selected destinations would write, and where.
+#[tauri::command]
+async fn preview_allow(
+    state: State<'_, App>,
+    container_id: String,
+    selections: Vec<AllowSelection>,
+) -> Result<AllowPreview, String> {
+    use sandbox_core::allowlist::{
+        entries_for, existing_entries, project_config_available, project_config_path,
+    };
+    let mut entries: Vec<String> = Vec::new();
+    for sel in &selections {
+        for e in entries_for(&sel.host, &sel.ports.iter().copied().collect()) {
+            if !entries.contains(&e) {
+                entries.push(e);
+            }
+        }
+    }
+    let global = global_config_path();
+    let project_root = project_root_of(&state, &container_id).await?;
+    let project = project_root
+        .filter(|r| project_config_available(r))
+        .map(|r| project_config_path(&r));
+    let present = |path: &Option<std::path::PathBuf>| -> Vec<String> {
+        let Some(path) = path else { return vec![] };
+        let existing = std::fs::read_to_string(path)
+            .map(|c| existing_entries(&c))
+            .unwrap_or_default();
+        entries
+            .iter()
+            .filter(|e| existing.contains(e))
+            .cloned()
+            .collect()
+    };
+    Ok(AllowPreview {
+        already_in_global: present(&global),
+        already_in_project: present(&project),
+        entries,
+        global_path: global.map(|p| p.display().to_string()),
+        project_path: project.map(|p| p.display().to_string()),
+    })
+}
+
+/// Append the entries to the chosen sandbox config. Only the two paths
+/// sandbox itself would write are accepted.
+#[tauri::command]
+async fn apply_allow(
+    state: State<'_, App>,
+    container_id: String,
+    target: ConfigTarget,
+    entries: Vec<String>,
+) -> Result<AllowResult, String> {
+    let path = match target {
+        ConfigTarget::Global => global_config_path().ok_or("no global config path")?,
+        ConfigTarget::Project => {
+            let root = project_root_of(&state, &container_id)
+                .await?
+                .ok_or("no project directory")?;
+            if !sandbox_core::allowlist::project_config_available(&root) {
+                return Err("this project has no .sandbox directory".into());
+            }
+            sandbox_core::allowlist::project_config_path(&root)
+        }
+    };
+    sandbox_core::allowlist::apply(&path, &entries).map_err(|e| format!("{}: {e}", path.display()))
+}
+
 #[tauri::command]
 fn detect_runtimes() -> Vec<DetectedRuntime> {
     detect(&Environment::current())
@@ -358,7 +498,12 @@ pub fn run() {
         .setup(|app| {
             let handle = app.handle().clone();
             let settings = settings_store::load(&handle);
-            let watcher = Watcher::new(handle.clone(), settings.clone());
+            let history_path = handle
+                .path()
+                .app_data_dir()
+                .ok()
+                .map(|d| d.join("history.json"));
+            let watcher = Watcher::new(handle.clone(), settings.clone(), history_path);
             app.manage(watcher.clone());
 
             // Runtime events ask the watcher for a refresh.
@@ -398,6 +543,10 @@ pub fn run() {
             get_settings,
             save_settings,
             get_activity,
+            get_history,
+            clear_history,
+            preview_allow,
+            apply_allow,
             get_container_details,
             get_logs,
             reveal_mount,

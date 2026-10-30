@@ -15,6 +15,8 @@ export function SettingsPanel({ settings, onSaved, onClose }: Props) {
   const [draft, setDraft] = useState<Settings>(settings);
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
+  const [pricesText, setPricesText] = useState(() => JSON.stringify(settings.prices, null, 2));
+  const [pricesError, setPricesError] = useState<string | null>(null);
 
   const update = (patch: Partial<Settings>) => setDraft((d) => ({ ...d, ...patch }));
   const updateNotify = (patch: Partial<Settings["notifications"]>) =>
@@ -176,6 +178,52 @@ export function SettingsPanel({ settings, onSaved, onClose }: Props) {
       </fieldset>
 
       <fieldset>
+        <legend>History and cost</legend>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={draft.history_enabled}
+            onChange={(e) => update({ history_enabled: e.target.checked })}
+          />
+          Record sessions and containers locally
+        </label>
+        <label>
+          Keep history for
+          <input
+            type="number"
+            min={1}
+            max={3650}
+            value={draft.history_retention_days}
+            onChange={(e) => update({ history_retention_days: Number(e.target.value) })}
+          />
+          <span className="muted">days</span>
+        </label>
+        <label className="stacked">
+          Model prices, USD per million tokens, matched by model id prefix
+          <textarea
+            rows={8}
+            value={pricesText}
+            onChange={(e) => setPricesText(e.target.value)}
+            onBlur={() => {
+              try {
+                const parsed = JSON.parse(pricesText) as Settings["prices"];
+                update({ prices: parsed });
+                setPricesError(null);
+              } catch (err) {
+                setPricesError(err instanceof Error ? err.message : String(err));
+              }
+            }}
+            spellCheck={false}
+          />
+          {pricesError && <span className="notice notice-err">{pricesError}</span>}
+          <span className="muted small">
+            Pi and OpenCode report cost themselves; Claude Code and Codex are estimated from this
+            table. Unknown models show tokens only.
+          </span>
+        </label>
+      </fieldset>
+
+      <fieldset>
         <legend>Window</legend>
         <label className="check">
           <input
@@ -221,7 +269,7 @@ export function SettingsPanel({ settings, onSaved, onClose }: Props) {
           type="button"
           className="primary"
           onClick={() => void save()}
-          disabled={status === "saving"}
+          disabled={status === "saving" || pricesError !== null}
         >
           {status === "saving" ? "Saving…" : "Save"}
         </button>

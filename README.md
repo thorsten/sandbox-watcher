@@ -25,6 +25,15 @@ agent sessions. The right side shows the selected container:
 - **Resources:** CPU and memory sparklines, network and disk I/O.
 - **Logs:** the container log with follow and filter.
 - **Mounts:** project, persisted, runtime and extra mounts, ports and env names.
+- **History:** every session and container the watcher has seen, with
+  duration, tokens and cost, by agent and by project. Stored locally, pruned
+  after a configurable number of days.
+- **Allow-list triage:** tick blocked hosts in the Network tab and add them to
+  sandbox's `allow_network` list in the global or project config, the same
+  edit `sandbox network allow` makes, after a preview of the exact lines.
+- **Tokens and cost:** per agent session from its own transcript. Pi and
+  OpenCode report cost; Claude Code and Codex are estimated from an editable
+  price table in Settings.
 
 ## Install
 

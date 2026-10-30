@@ -1,7 +1,12 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
+  AgentKind,
+  AllowPreview,
+  AllowResult,
+  ConfigTarget,
   ContainerActivity,
+  HistoryView,
   ContainerDetails,
   Settings,
   StopResult,
@@ -93,6 +98,33 @@ export function openProject(containerId: string): Promise<void> {
 /** Resolves with the terminal program that was started. */
 export function openTerminal(containerId: string): Promise<string> {
   return invoke<string>("open_terminal", { containerId });
+}
+
+export function getHistory(
+  sinceHours: number | null,
+  project: string | null,
+  agent: AgentKind | null,
+): Promise<HistoryView> {
+  return invoke<HistoryView>("get_history", { sinceHours, project, agent });
+}
+
+export function clearHistory(): Promise<void> {
+  return invoke<void>("clear_history");
+}
+
+export function previewAllow(
+  containerId: string,
+  selections: { host: string; ports: number[] }[],
+): Promise<AllowPreview> {
+  return invoke<AllowPreview>("preview_allow", { containerId, selections });
+}
+
+export function applyAllow(
+  containerId: string,
+  target: ConfigTarget,
+  entries: string[],
+): Promise<AllowResult> {
+  return invoke<AllowResult>("apply_allow", { containerId, target, entries });
 }
 
 export function detectRuntimes(): Promise<DetectedRuntime[]> {

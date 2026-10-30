@@ -3,12 +3,15 @@
 //! Runs regardless of whether the window is visible.
 
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, RwLock};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use sandbox_core::RuntimeAdapter;
+use sandbox_core::activity::collect_usage;
 use sandbox_core::adapter::ContainerFilter;
+use sandbox_core::history::{History, HistoryQuery, HistoryView};
 use sandbox_core::live::LiveRuntime;
 use sandbox_core::mock::MockAdapter;
 use sandbox_core::network::{NetworkReport, collect_all};
@@ -47,11 +50,20 @@ pub struct Watcher {
     trigger_rx: Mutex<Option<mpsc::Receiver<()>>>,
     /// Signalled after every completed refresh.
     refreshed: Notify,
+    history: Mutex<History>,
+    history_path: Option<PathBuf>,
+    history_saved_at: Mutex<Option<Instant>>,
     app: AppHandle,
 }
 
 impl Watcher {
-    pub fn new(app: AppHandle, settings: Settings) -> Arc<Self> {
+    pub fn new(app: AppHandle, settings: Settings, history_path: Option<PathBuf>) -> Arc<Self> {
+        let mut history = history_path
+            .as_deref()
+            .map(History::load)
+            .unwrap_or_default();
+        history.close_stale();
+        history.prune(settings.history_retention_days, Utc::now());
         let mock = std::env::var("SANDBOX_WATCHER_MOCK").is_ok_and(|v| v == "1" || v == "true");
         let mode = if mock {
             Mode::Mock(Arc::new(MockAdapter::demo()))
@@ -71,6 +83,9 @@ impl Watcher {
             trigger,
             trigger_rx: Mutex::new(Some(rx)),
             refreshed: Notify::new(),
+            history: Mutex::new(history),
+            history_path,
+            history_saved_at: Mutex::new(None),
             app,
         })
     }
@@ -110,6 +125,40 @@ impl Watcher {
             Mode::Live(live) => live.adapter_for(container_id),
         }
         .ok_or_else(|| format!("no runtime known for container {container_id}"))
+    }
+
+    pub fn history_view(&self, query: &HistoryQuery) -> HistoryView {
+        self.history
+            .lock()
+            .expect("history poisoned")
+            .query(query, Utc::now())
+    }
+
+    pub fn clear_history(&self) {
+        let mut history = self.history.lock().expect("history poisoned");
+        *history = History::default();
+        drop(history);
+        self.save_history(true);
+    }
+
+    /// Persist history when something changed, or at most once a minute for
+    /// sighting timestamps.
+    fn save_history(&self, force: bool) {
+        let Some(path) = &self.history_path else {
+            return;
+        };
+        let mut saved_at = self
+            .history_saved_at
+            .lock()
+            .expect("history saved_at poisoned");
+        let due = force || saved_at.is_none_or(|t| t.elapsed() >= Duration::from_secs(60));
+        if !due {
+            return;
+        }
+        let history = self.history.lock().expect("history poisoned");
+        if history.save(path).is_ok() {
+            *saved_at = Some(Instant::now());
+        }
     }
 
     /// Ask for a refresh soon. Cheap; bursts collapse into one.
@@ -183,6 +232,32 @@ impl Watcher {
         *self.overview.write().expect("overview poisoned") = Some(overview.clone());
         let _ = self.app.emit(OVERVIEW_UPDATED, &overview);
         tray::update(&self.app, &overview);
+
+        // History: fold the snapshot in, then attach usage for agent sessions.
+        if settings.history_enabled {
+            let now = Utc::now();
+            let mut changed = {
+                let mut history = self.history.lock().expect("history poisoned");
+                let changed = history.observe(&overview, now);
+                history.prune(settings.history_retention_days, now) || changed
+            };
+            for c in overview
+                .containers
+                .iter()
+                .filter(|c| c.container.state.is_running() && !c.sessions.is_empty())
+            {
+                let Ok(adapter) = self.adapter_for(&c.container.id) else {
+                    continue;
+                };
+                for usage in
+                    collect_usage(&adapter, &c.container.id, &c.sessions, &settings.prices).await
+                {
+                    let mut history = self.history.lock().expect("history poisoned");
+                    changed = history.record_usage(&c.container.id, &usage) || changed;
+                }
+            }
+            self.save_history(changed);
+        }
 
         // Network logs: one more round trip, published separately.
         let mut reports = Vec::new();

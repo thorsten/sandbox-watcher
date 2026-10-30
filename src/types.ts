@@ -198,6 +198,9 @@ export interface Settings {
   theme: Theme;
   blocked_burst_threshold: number;
   blocked_burst_window_secs: number;
+  history_retention_days: number;
+  history_enabled: boolean;
+  prices: Record<string, ModelPrice>;
 }
 
 export interface ProcessInfo {
@@ -230,6 +233,7 @@ export interface AgentActivity {
   updated_at: string | null;
   events: ActivityEvent[];
   in_flight: ActivityEvent | null;
+  usage: Usage | null;
 }
 
 export interface WorkingTreeChange {
@@ -259,4 +263,74 @@ export interface ContainerActivity {
   working_tree: WorkingTree | null;
   project_dir: string | null;
   errors: string[];
+}
+
+export type CostSource = "reported" | "estimated" | "unknown";
+
+export interface Usage {
+  agent: AgentKind;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  reasoning_tokens: number;
+  turns: number;
+  cost_usd: number | null;
+  cost_source: CostSource;
+  models: string[];
+}
+
+export interface SessionRecord {
+  id: string;
+  container_id: string;
+  container_name: string;
+  project_slug: string;
+  runtime: RuntimeKind;
+  agent: AgentKind;
+  command: string;
+  pid: number;
+  started_at: string;
+  ended_at: string | null;
+  last_seen_at: string;
+  usage: Usage | null;
+}
+
+export interface Aggregate {
+  key: string;
+  sessions: number;
+  seconds: number;
+  tokens: number;
+  cost_usd: number | null;
+  cost_incomplete: boolean;
+}
+
+export interface HistoryView {
+  sessions: SessionRecord[];
+  by_agent: Aggregate[];
+  by_project: Aggregate[];
+  total: Aggregate;
+  projects: string[];
+}
+
+export type ConfigTarget = "global" | "project";
+
+export interface AllowPreview {
+  entries: string[];
+  global_path: string | null;
+  project_path: string | null;
+  already_in_global: string[];
+  already_in_project: string[];
+}
+
+export interface AllowResult {
+  path: string;
+  added: string[];
+  already_present: string[];
+}
+
+export interface ModelPrice {
+  input: number;
+  output: number;
+  cache_read: number;
+  cache_write: number;
 }

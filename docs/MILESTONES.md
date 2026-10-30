@@ -234,12 +234,11 @@ with no configuration.
 
 ## 4. Backlog after 1.0
 
-- Timeline and history: persist sessions and events locally, show when
-  which agent ran where and for how long.
-- Blocked-request triage: suggest allow-list entries and hand them to
-  `sandbox network allow` with the user's confirmation.
-- Agent-level insight: parse agent logs or hook into agent telemetry where
-  available (tokens, turns, files touched).
+- ~~Timeline and history~~: shipped in 0.2.0 as the History view.
+- ~~Blocked-request triage~~: shipped in 0.2.0. `sandbox network allow` is
+  interactive only, so the watcher performs the same config edit itself.
+- ~~Tokens and cost~~: shipped in 0.2.0 for all four agents. Files touched
+  per session and turn-level detail remain open.
 - Remote hosts over SSH or TCP Docker contexts.
 - CLI or TUI mode sharing the same core (`sandbox-watcher --tui`).
 - Upstream contribution: propose `sandbox status --json --all` so the watcher
