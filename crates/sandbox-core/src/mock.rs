@@ -289,7 +289,7 @@ P|4300|1|420000|1500|zsh -l\n");
                 TRANSCRIPT_SENTINEL if script.starts_with("tail") => {
                     return ok(DEMO_TRANSCRIPT);
                 }
-                TRANSCRIPT_SENTINEL if script.starts_with("grep -o '\"model\"") => {
+                TRANSCRIPT_SENTINEL if script.starts_with("grep -F '\"type\":\"assistant\"'") => {
                     return ok(DEMO_USAGE);
                 }
                 TRANSCRIPT_SENTINEL => {
@@ -404,7 +404,7 @@ fn tokio_stream_from_broadcast(
 }
 
 /// Usage fragments as the Claude usage grep returns them, for demo mode.
-const DEMO_USAGE: &str = "\"model\":\"claude-sonnet-4-5-20250929\"\n\"usage\":{\"input_tokens\":1200,\"cache_creation_input_tokens\":8000,\"cache_read_input_tokens\":64000,\"output_tokens\":900}\n\"model\":\"claude-sonnet-4-5-20250929\"\n\"usage\":{\"input_tokens\":300,\"cache_read_input_tokens\":72000,\"output_tokens\":1400}\n";
+const DEMO_USAGE: &str = "1:\"model\":\"claude-sonnet-4-5-20250929\"\n1:\"id\":\"msg_01\"\n1:\"usage\":{\"input_tokens\":1200,\"cache_creation_input_tokens\":8000,\"cache_read_input_tokens\":64000,\"output_tokens\":900}\n2:\"model\":\"claude-sonnet-4-5-20250929\"\n2:\"id\":\"msg_02\"\n2:\"usage\":{\"input_tokens\":300,\"cache_read_input_tokens\":72000,\"output_tokens\":1400}\n";
 
 /// A few lines of a Claude Code transcript for demo mode.
 const DEMO_TRANSCRIPT: &str = r#"{"type":"user","message":{"role":"user","content":"Fix the cart total rounding bug and add a test"},"timestamp":"2026-10-30T09:58:00Z"}

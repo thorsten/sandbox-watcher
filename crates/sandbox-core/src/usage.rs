@@ -5,7 +5,7 @@
 //! tokens and a model; cost is estimated from a price table the user can
 //! edit. Unknown models show tokens only.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -87,7 +87,7 @@ pub struct Usage {
 }
 
 impl Usage {
-    fn new(agent: AgentKind) -> Self {
+    pub(crate) fn new(agent: AgentKind) -> Self {
         Self {
             agent,
             input_tokens: 0,
@@ -182,45 +182,50 @@ fn sort_models(per_model: &BTreeMap<String, Usage>) -> Vec<String> {
 
 // ---------------------------------------------------------------------------
 // Claude Code: every assistant line carries message.usage and message.model.
+// One API message is written as several lines (thinking, text, each
+// tool_use) that repeat the same message id and usage, so calls are counted
+// once per id.
 // ---------------------------------------------------------------------------
 
-/// Extract only the usage and model fragments of a Claude transcript; the
-/// file can be megabytes, the fragments are a few bytes per turn.
-pub fn claude_usage_command(path: &str) -> Vec<String> {
-    let quoted = format!("'{}'", path.replace('\'', "'\\''"));
-    // Each assistant line yields: model|usage-json
-    let script = format!(r#"grep -o '"model":"[^"]*"\|"usage":{{[^}}]*}}' {quoted} 2>/dev/null"#);
-    vec!["sh".into(), "-c".into(), script, TRANSCRIPT_SENTINEL.into()]
+/// Tokens of one Claude API call. Lines without a message id (old
+/// transcripts) count as calls of their own.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ClaudeCall {
+    pub id: Option<String>,
+    pub model: String,
+    pub input: u64,
+    pub output: u64,
+    pub cache_read: u64,
+    pub cache_write: u64,
 }
 
-/// Parse the grep output: alternating `"model":"x"` and `"usage":{...}` fragments.
-pub fn parse_claude_usage(output: &str, table: &PriceTable) -> Usage {
+/// Sum calls per model, a repeated id replacing the earlier line.
+pub(crate) fn claude_usage_from_calls(calls: Vec<ClaudeCall>, table: &PriceTable) -> Usage {
+    let mut unique: Vec<ClaudeCall> = Vec::new();
+    let mut by_id: HashMap<String, usize> = HashMap::new();
+    // Claude Code writes placeholder messages (errors, interrupts) as `<synthetic>`.
+    for call in calls.into_iter().filter(|c| c.model != "<synthetic>") {
+        match call.id.as_ref().and_then(|id| by_id.get(id)) {
+            Some(&i) => unique[i] = call,
+            None => {
+                if let Some(id) = &call.id {
+                    by_id.insert(id.clone(), unique.len());
+                }
+                unique.push(call);
+            }
+        }
+    }
     let mut usage = Usage::new(AgentKind::ClaudeCode);
     let mut per_model: BTreeMap<String, Usage> = BTreeMap::new();
-    let mut current_model = String::from("unknown");
-    for line in output.lines() {
-        if let Some(rest) = line.strip_prefix("\"model\":\"") {
-            current_model = rest.trim_end_matches('"').to_string();
-        } else if let Some(json) = line.strip_prefix("\"usage\":") {
-            let Ok(v) = serde_json::from_str::<Value>(json) else {
-                continue;
-            };
-            let entry = per_model
-                .entry(current_model.clone())
-                .or_insert_with(|| Usage::new(AgentKind::ClaudeCode));
-            let input = u64_of(v.get("input_tokens"));
-            let output = u64_of(v.get("output_tokens"));
-            let cr = u64_of(v.get("cache_read_input_tokens"));
-            let cw = u64_of(v.get("cache_creation_input_tokens"));
-            // Claude Code writes several assistant lines per turn (text, tool_use)
-            // repeating the same usage; count a turn only when output tokens differ
-            // from the previous fragment.
-            entry.input_tokens += input;
-            entry.output_tokens += output;
-            entry.cache_read_tokens += cr;
-            entry.cache_write_tokens += cw;
-            entry.turns += 1;
-        }
+    for call in &unique {
+        let entry = per_model
+            .entry(call.model.clone())
+            .or_insert_with(|| Usage::new(AgentKind::ClaudeCode));
+        entry.input_tokens += call.input;
+        entry.output_tokens += call.output;
+        entry.cache_read_tokens += call.cache_read;
+        entry.cache_write_tokens += call.cache_write;
+        entry.turns += 1;
     }
     for u in per_model.values() {
         usage.input_tokens += u.input_tokens;
@@ -234,48 +239,151 @@ pub fn parse_claude_usage(output: &str, table: &PriceTable) -> Usage {
     usage
 }
 
+/// Extract only the model, message id and usage of each assistant line; the
+/// file can be megabytes, the fragments are a few hundred bytes per line.
+/// `usage` holds nested objects, so its fragment runs to the end of the line
+/// (cut short) and the counters are read from its top level.
+pub fn claude_usage_command(path: &str) -> Vec<String> {
+    let quoted = format!("'{}'", path.replace('\'', "'\\''"));
+    let script = format!(
+        r#"grep -F '"type":"assistant"' {quoted} 2>/dev/null | grep -noE '"model":"[^"]*"|"id":"msg_[^"]*"|"usage":\{{.*' | cut -c1-600"#
+    );
+    vec!["sh".into(), "-c".into(), script, TRANSCRIPT_SENTINEL.into()]
+}
+
+/// First `"key":<number>` in a fragment. Top-level usage counters come before
+/// any nested object, so the first match is the right one.
+fn number_after(fragment: &str, key: &str) -> u64 {
+    let needle = format!("\"{key}\":");
+    fragment
+        .find(&needle)
+        .map(|i| &fragment[i + needle.len()..])
+        .map(|rest| {
+            rest.chars()
+                .take_while(char::is_ascii_digit)
+                .collect::<String>()
+        })
+        .and_then(|digits| digits.parse().ok())
+        .unwrap_or(0)
+}
+
+/// Parse the grep output: `<line>:"model":"x"`, `<line>:"id":"msg_…"` and
+/// `<line>:"usage":{…` fragments, the first of each kind per line counting.
+pub fn parse_claude_usage(output: &str, table: &PriceTable) -> Usage {
+    let mut calls = Vec::new();
+    let mut line_no = "";
+    let mut model = String::from("unknown");
+    let mut model_on_line = false;
+    let mut id: Option<String> = None;
+    for line in output.lines() {
+        let Some((no, fragment)) = line.split_once(':') else {
+            continue;
+        };
+        if no != line_no {
+            line_no = no;
+            model_on_line = false;
+            id = None;
+        }
+        if let Some(rest) = fragment.strip_prefix("\"model\":\"") {
+            if !model_on_line {
+                model = rest.trim_end_matches('"').to_string();
+                model_on_line = true;
+            }
+        } else if let Some(rest) = fragment.strip_prefix("\"id\":\"") {
+            if id.is_none() {
+                id = Some(rest.trim_end_matches('"').to_string());
+            }
+        } else if fragment.starts_with("\"usage\":{") {
+            calls.push(ClaudeCall {
+                id: id.clone(),
+                model: model.clone(),
+                input: number_after(fragment, "input_tokens"),
+                output: number_after(fragment, "output_tokens"),
+                cache_read: number_after(fragment, "cache_read_input_tokens"),
+                cache_write: number_after(fragment, "cache_creation_input_tokens"),
+            });
+        }
+    }
+    claude_usage_from_calls(calls, table)
+}
+
 // ---------------------------------------------------------------------------
 // Codex: token_count events carry cumulative totals in newer versions.
 // ---------------------------------------------------------------------------
 
 pub fn codex_usage_command(path: &str) -> Vec<String> {
     let quoted = format!("'{}'", path.replace('\'', "'\\''"));
+    // token_count events without figures (rate limits only) are skipped.
     let script = format!(
-        r#"grep -o '"model":"[^"]*"' {quoted} 2>/dev/null | head -1; grep '"token_count"' {quoted} 2>/dev/null | tail -1"#
+        r#"grep -o '"model":"[^"]*"' {quoted} 2>/dev/null | head -1; grep '"token_count"' {quoted} 2>/dev/null | grep '"input_tokens"' | tail -1"#
     );
     vec!["sh".into(), "-c".into(), script, TRANSCRIPT_SENTINEL.into()]
 }
 
-pub fn parse_codex_usage(output: &str, table: &PriceTable) -> Usage {
+/// Cumulative totals of one Codex `token_count` line, input still including
+/// cached tokens. `None` for other lines and for counts without figures.
+pub(crate) fn codex_totals(line: &Value) -> Option<Usage> {
+    let payload = line.get("payload").unwrap_or(line);
+    if payload.get("type").and_then(Value::as_str) != Some("token_count") {
+        return None;
+    }
+    // Newer: payload.info.total_token_usage; older: payload fields directly.
+    let totals = payload
+        .pointer("/info/total_token_usage")
+        .or_else(|| payload.get("total_token_usage"))
+        .unwrap_or(payload);
+    totals.get("input_tokens")?;
     let mut usage = Usage::new(AgentKind::Codex);
+    usage.input_tokens = u64_of(totals.get("input_tokens"));
+    usage.output_tokens = u64_of(totals.get("output_tokens"));
+    usage.cache_read_tokens = u64_of(totals.get("cached_input_tokens"));
+    usage.reasoning_tokens = u64_of(totals.get("reasoning_output_tokens"));
+    usage.turns = 1;
+    Some(usage)
+}
+
+/// Usage between two cumulative Codex totals (`since` = `None` for the start
+/// of the session), priced for `model`.
+pub(crate) fn codex_usage_between(
+    since: Option<&Usage>,
+    last: &Usage,
+    model: &str,
+    table: &PriceTable,
+) -> Usage {
+    let mut usage = last.clone();
+    if let Some(since) = since {
+        usage.input_tokens = last.input_tokens.saturating_sub(since.input_tokens);
+        usage.output_tokens = last.output_tokens.saturating_sub(since.output_tokens);
+        usage.cache_read_tokens = last
+            .cache_read_tokens
+            .saturating_sub(since.cache_read_tokens);
+        usage.reasoning_tokens = last.reasoning_tokens.saturating_sub(since.reasoning_tokens);
+    }
+    // Codex reports cached tokens as part of input; price them separately.
+    usage.input_tokens = usage.input_tokens.saturating_sub(usage.cache_read_tokens);
+    let mut per_model = BTreeMap::new();
+    per_model.insert(model.to_string(), usage.clone());
+    usage.models = vec![model.to_string()];
+    estimate(&mut usage, &per_model, table);
+    usage
+}
+
+pub fn parse_codex_usage(output: &str, table: &PriceTable) -> Usage {
     let mut model = String::from("unknown");
+    let mut last = None;
     for line in output.lines() {
         if let Some(rest) = line.strip_prefix("\"model\":\"") {
             model = rest.trim_end_matches('"').to_string();
             continue;
         }
-        let Ok(v) = serde_json::from_str::<Value>(line) else {
-            continue;
-        };
-        let payload = v.get("payload").unwrap_or(&v);
-        // Newer: payload.info.total_token_usage; older: payload fields directly.
-        let totals = payload
-            .pointer("/info/total_token_usage")
-            .or_else(|| payload.get("total_token_usage"))
-            .unwrap_or(payload);
-        usage.input_tokens = u64_of(totals.get("input_tokens"));
-        usage.output_tokens = u64_of(totals.get("output_tokens"));
-        usage.cache_read_tokens = u64_of(totals.get("cached_input_tokens"));
-        usage.reasoning_tokens = u64_of(totals.get("reasoning_output_tokens"));
-        usage.turns = 1;
+        if let Ok(v) = serde_json::from_str::<Value>(line)
+            && let Some(totals) = codex_totals(&v)
+        {
+            last = Some(totals);
+        }
     }
-    // Codex reports cached tokens as part of input; price them separately.
-    usage.input_tokens = usage.input_tokens.saturating_sub(usage.cache_read_tokens);
-    let mut per_model = BTreeMap::new();
-    per_model.insert(model.clone(), usage.clone());
-    usage.models = vec![model];
-    estimate(&mut usage, &per_model, table);
-    usage
+    let last = last.unwrap_or_else(|| Usage::new(AgentKind::Codex));
+    codex_usage_between(None, &last, &model, table)
 }
 
 // ---------------------------------------------------------------------------
@@ -440,7 +548,7 @@ mod tests {
 
     #[test]
     fn claude_usage_sums_per_model_and_estimates_cost() {
-        let out = "\"model\":\"claude-sonnet-4-5-20250929\"\n\"usage\":{\"input_tokens\":1000,\"cache_creation_input_tokens\":2000,\"cache_read_input_tokens\":10000,\"output_tokens\":500}\n\"model\":\"claude-sonnet-4-5-20250929\"\n\"usage\":{\"input_tokens\":100,\"output_tokens\":50}\n";
+        let out = "1:\"model\":\"claude-sonnet-4-5-20250929\"\n1:\"id\":\"msg_a\"\n1:\"usage\":{\"input_tokens\":1000,\"cache_creation_input_tokens\":2000,\"cache_read_input_tokens\":10000,\"output_tokens\":500}\n2:\"model\":\"claude-sonnet-4-5-20250929\"\n2:\"id\":\"msg_b\"\n2:\"usage\":{\"input_tokens\":100,\"output_tokens\":50}\n";
         let u = parse_claude_usage(out, &default_prices());
         assert_eq!(
             (
@@ -459,11 +567,67 @@ mod tests {
         assert!((u.cost_usd.unwrap() - expected).abs() < 1e-9);
 
         let unknown = parse_claude_usage(
-            "\"model\":\"claude-future-9\"\n\"usage\":{\"input_tokens\":10,\"output_tokens\":1}\n",
+            "1:\"model\":\"claude-future-9\"\n1:\"usage\":{\"input_tokens\":10,\"output_tokens\":1}\n",
             &default_prices(),
         );
         assert_eq!(unknown.cost_source, CostSource::Unknown);
         assert!(unknown.cost_usd.is_none());
+    }
+
+    /// Current Claude Code: nested objects inside `usage`, one API message
+    /// split over several lines with the same id, and a tool input that
+    /// carries its own `model` key.
+    #[test]
+    fn claude_usage_reads_nested_usage_once_per_message() {
+        let lines = [
+            r#"{"type":"assistant","message":{"model":"claude-opus-4-1","id":"msg_1","content":[{"type":"thinking","thinking":""}],"usage":{"input_tokens":2,"cache_creation_input_tokens":100,"cache_read_input_tokens":5000,"output_tokens":40,"output_tokens_details":{"thinking_tokens":30},"cache_creation":{"ephemeral_1h_input_tokens":100}}},"timestamp":"2026-10-30T10:00:00Z"}"#,
+            r#"{"type":"assistant","message":{"model":"claude-opus-4-1","id":"msg_1","content":[{"type":"tool_use","id":"toolu_1","name":"Agent","input":{"model":"haiku","prompt":"x"}}],"usage":{"input_tokens":2,"cache_creation_input_tokens":100,"cache_read_input_tokens":5000,"output_tokens":40,"output_tokens_details":{"thinking_tokens":30},"cache_creation":{"ephemeral_1h_input_tokens":100}}},"timestamp":"2026-10-30T10:00:01Z"}"#,
+            r#"{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_1","content":"ok"}]},"toolUseResult":{"usage":{"input_tokens":999}}}"#,
+            r#"{"type":"assistant","message":{"model":"<synthetic>","id":"msg_x","content":[{"type":"text","text":"API Error"}],"usage":{"input_tokens":0,"output_tokens":0}}}"#,
+            r#"{"type":"assistant","message":{"model":"claude-opus-4-1","id":"msg_2","content":[{"type":"text","text":"done"}],"usage":{"input_tokens":3,"cache_read_input_tokens":5100,"output_tokens":7,"iterations":[{"input_tokens":1,"output_tokens":1}]}}}"#,
+        ];
+        // What `claude_usage_command` prints for these lines.
+        let grep = sim_claude_grep(&lines);
+        let u = parse_claude_usage(&grep, &default_prices());
+        assert_eq!(
+            (
+                u.input_tokens,
+                u.output_tokens,
+                u.cache_read_tokens,
+                u.cache_write_tokens,
+                u.turns
+            ),
+            (5, 47, 10100, 100, 2)
+        );
+        assert_eq!(u.models, vec!["claude-opus-4-1"]);
+    }
+
+    /// Mimic `grep -F '"type":"assistant"' | grep -noE '…' | cut -c1-600`.
+    fn sim_claude_grep(lines: &[&str]) -> String {
+        let mut out = String::new();
+        let assistant = lines.iter().filter(|l| l.contains(r#""type":"assistant""#));
+        for (i, line) in assistant.enumerate() {
+            let mut rest = *line;
+            while !rest.is_empty() {
+                let next = ["\"model\":\"", "\"id\":\"msg_", "\"usage\":{"]
+                    .iter()
+                    .filter_map(|p| rest.find(p).map(|at| (at, *p)))
+                    .min();
+                let Some((at, prefix)) = next else { break };
+                let tail = &rest[at..];
+                let fragment = if prefix == "\"usage\":{" {
+                    tail
+                } else {
+                    let close = tail[prefix.len()..].find('"').unwrap() + prefix.len() + 1;
+                    &tail[..close]
+                };
+                let numbered = format!("{}:{fragment}", i + 1);
+                out.push_str(&numbered.chars().take(600).collect::<String>());
+                out.push('\n');
+                rest = &tail[fragment.len()..];
+            }
+        }
+        out
     }
 
     #[test]
