@@ -50,7 +50,11 @@ edit("Cargo.lock", (s) =>
 
 run("node", ["scripts/changelog.mjs", "--write", "--next", tag]);
 // The pre-commit hook checks formatting; format the generated file first.
-run("pnpm", ["exec", "oxfmt", "CHANGELOG.md"]);
+// Call the binary directly: `pnpm exec` may run a dependency check that
+// reinstalls node_modules when the store differs.
+run(process.platform === "win32" ? "node_modules\\.bin\\oxfmt.cmd" : "node_modules/.bin/oxfmt", [
+  "CHANGELOG.md",
+]);
 console.log("updated CHANGELOG.md");
 
 const files = [
