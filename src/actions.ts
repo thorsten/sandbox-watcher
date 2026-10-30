@@ -1,21 +1,14 @@
 import type { SandboxContainer } from "./types";
 
-const CONFIRM_KEY = "sandbox-watcher.confirm-stop";
+let confirmStop = true;
 
-export function confirmStopEnabled(): boolean {
-  try {
-    return window.localStorage.getItem(CONFIRM_KEY) !== "false";
-  } catch {
-    return true;
-  }
+/** Called whenever settings load or change; keeps the stop confirmation in sync. */
+export function applyConfirmStop(enabled: boolean): void {
+  confirmStop = enabled;
 }
 
-export function setConfirmStop(enabled: boolean): void {
-  try {
-    window.localStorage.setItem(CONFIRM_KEY, enabled ? "true" : "false");
-  } catch {
-    // Private mode or storage disabled: the default (ask) applies.
-  }
+export function confirmStopEnabled(): boolean {
+  return confirmStop;
 }
 
 /** Human description of what a stop interrupts, for the confirmation dialog. */

@@ -1,121 +1,95 @@
-//! Tauri shell around `sandbox-core`. Commands are thin: resolve the adapter,
-//! call core, return serialisable state. Runtime events are forwarded to the
-//! webview as the `runtime-event` Tauri event.
+//! Tauri shell around `sandbox-core`. A background watcher refreshes the
+//! overview, drives the tray and notifications, and pushes updates to the
+//! webview; commands read its cache or perform actions.
+
+mod settings_store;
+mod tray;
+mod watcher;
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
-use chrono::Utc;
-use sandbox_core::RuntimeAdapter;
-use sandbox_core::actions::{MacTerminal, STOP_TIMEOUT, StopResult, terminal_launches};
-use sandbox_core::adapter::{ContainerFilter, LogOptions};
+use sandbox_core::actions::{
+    MacTerminal, STOP_TIMEOUT, StopResult, custom_terminal_launch, terminal_launches,
+};
+use sandbox_core::adapter::LogOptions;
 use sandbox_core::detect::{DetectedRuntime, Environment, detect};
-use sandbox_core::live::LiveRuntime;
-use sandbox_core::mock::MockAdapter;
 use sandbox_core::model::{ContainerDetails, ResourceSample};
 use sandbox_core::network::NetworkReport;
-use sandbox_core::overview::{DataSource, Overview};
-use sandbox_core::stats_hub::StatsHub;
-use tauri::{AppHandle, Emitter, Manager, State};
+use sandbox_core::overview::Overview;
+use sandbox_core::settings::{Settings, TerminalChoice};
+use tauri::menu::MenuEvent;
+use tauri::{AppHandle, Manager, State, WindowEvent};
+use tauri_plugin_autostart::{MacosLauncher, ManagerExt as AutostartExt};
 use tauri_plugin_opener::OpenerExt;
+use watcher::{Mode, Watcher};
 
-/// Name of the Tauri event the UI listens to for refresh triggers.
-pub const RUNTIME_EVENT: &str = "runtime-event";
+type App = Arc<Watcher>;
 
-enum Mode {
-    /// `SANDBOX_WATCHER_MOCK=1`: demo data, no runtime access.
-    Mock(Arc<dyn RuntimeAdapter>),
-    /// Detect runtimes and keep one adapter per runtime between refreshes.
-    Live(Arc<LiveRuntime>),
+#[tauri::command]
+async fn get_overview(state: State<'_, App>) -> Result<Overview, String> {
+    if let Some(overview) = state.overview() {
+        return Ok(overview);
+    }
+    state.refresh_and_wait().await;
+    state
+        .overview()
+        .ok_or_else(|| "overview not available yet".to_string())
 }
 
-/// Shared application state.
-pub struct AppState {
-    mode: Mode,
-    stats: StatsHub,
-}
-
-impl AppState {
-    pub fn from_env() -> Self {
-        let mock = std::env::var("SANDBOX_WATCHER_MOCK").is_ok_and(|v| v == "1" || v == "true");
-        let mode = if mock {
-            Mode::Mock(Arc::new(MockAdapter::demo()))
-        } else {
-            Mode::Live(Arc::new(LiveRuntime::new()))
-        };
-        Self {
-            mode,
-            stats: StatsHub::new(),
-        }
-    }
-
-    fn adapters(&self) -> Vec<Arc<dyn RuntimeAdapter>> {
-        match &self.mode {
-            Mode::Mock(adapter) => vec![adapter.clone()],
-            Mode::Live(live) => live.adapters(),
-        }
-    }
-
-    fn adapter_for(&self, container_id: &str) -> Result<Arc<dyn RuntimeAdapter>, String> {
-        match &self.mode {
-            Mode::Mock(adapter) => Some(adapter.clone()),
-            Mode::Live(live) => live.adapter_for(container_id),
-        }
-        .ok_or_else(|| format!("no runtime known for container {container_id}"))
-    }
+/// Force a refresh and return the result.
+#[tauri::command]
+async fn refresh_now(state: State<'_, App>) -> Result<Overview, String> {
+    state.refresh_and_wait().await;
+    state
+        .overview()
+        .ok_or_else(|| "overview not available yet".to_string())
 }
 
 #[tauri::command]
-async fn get_overview(state: State<'_, AppState>) -> Result<Overview, String> {
-    let overview = match &state.mode {
-        Mode::Mock(adapter) => {
-            sandbox_core::overview::load(adapter.clone(), DataSource::Mock, vec![]).await
-        }
-        Mode::Live(live) => live.overview().await,
-    };
-    let sets: Vec<(Arc<dyn RuntimeAdapter>, Vec<String>)> = state
-        .adapters()
-        .into_iter()
-        .map(|adapter| {
-            let kind = adapter.kind();
-            let ids = overview
-                .containers
-                .iter()
-                .filter(|c| c.runtime == kind && c.container.state.is_running())
-                .map(|c| c.container.id.clone())
-                .collect();
-            (adapter, ids)
-        })
-        .collect();
-    state.stats.sync(&sets);
-    Ok(overview)
-}
-
-/// Network activity of every running sandbox container across runtimes.
-/// Separate from the overview so a slow log read never delays the list.
-#[tauri::command]
-async fn get_network_overview(state: State<'_, AppState>) -> Result<Vec<NetworkReport>, String> {
-    let mut reports = Vec::new();
-    for adapter in state.adapters() {
-        let Ok(containers) = adapter.list_containers(&ContainerFilter::running()).await else {
-            continue;
-        };
-        reports.extend(sandbox_core::network::collect_all(&adapter, &containers, Utc::now()).await);
-    }
-    Ok(reports)
+fn get_network_overview(state: State<'_, App>) -> Vec<NetworkReport> {
+    state.network()
 }
 
 /// Resource history per running container, oldest sample first.
 #[tauri::command]
-fn get_stats(state: State<'_, AppState>) -> HashMap<String, Vec<ResourceSample>> {
+fn get_stats(state: State<'_, App>) -> HashMap<String, Vec<ResourceSample>> {
     state.stats.snapshot()
+}
+
+#[tauri::command]
+fn get_settings(state: State<'_, App>) -> Settings {
+    state.settings()
+}
+
+#[tauri::command]
+fn save_settings(
+    app: AppHandle,
+    state: State<'_, App>,
+    settings: Settings,
+) -> Result<Settings, String> {
+    let settings = settings.normalised();
+    settings_store::save(&app, &settings)?;
+    apply_autostart(&app, settings.launch_at_login);
+    state.apply_settings(settings.clone());
+    Ok(settings)
+}
+
+fn apply_autostart(app: &AppHandle, enabled: bool) {
+    let manager = app.autolaunch();
+    let current = manager.is_enabled().unwrap_or(false);
+    if enabled && !current {
+        let _ = manager.enable();
+    } else if !enabled && current {
+        let _ = manager.disable();
+    }
 }
 
 /// Mounts, ports, env names and user of one container, mounts classified
 /// and host paths spelled the way this OS shows them.
 #[tauri::command]
 async fn get_container_details(
-    state: State<'_, AppState>,
+    state: State<'_, App>,
     container_id: String,
 ) -> Result<Option<ContainerDetails>, String> {
     let adapter = state.adapter_for(&container_id)?;
@@ -133,7 +107,7 @@ async fn get_container_details(
 /// Last `tail` lines of the container's own log.
 #[tauri::command]
 async fn get_logs(
-    state: State<'_, AppState>,
+    state: State<'_, App>,
     container_id: String,
     tail: Option<usize>,
 ) -> Result<String, String> {
@@ -156,7 +130,7 @@ async fn get_logs(
 #[tauri::command]
 async fn reveal_mount(
     app: AppHandle,
-    state: State<'_, AppState>,
+    state: State<'_, App>,
     container_id: String,
     path: String,
 ) -> Result<(), String> {
@@ -181,24 +155,28 @@ async fn reveal_mount(
 
 /// Stop one container. The UI asks for confirmation first.
 #[tauri::command]
-async fn stop_container(state: State<'_, AppState>, container_id: String) -> Result<(), String> {
+async fn stop_container(state: State<'_, App>, container_id: String) -> Result<(), String> {
     let adapter = state.adapter_for(&container_id)?;
     adapter
         .stop(&container_id, Some(STOP_TIMEOUT))
         .await
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    state.poke();
+    Ok(())
 }
 
 /// Stop every running sandbox container across runtimes.
 #[tauri::command]
-async fn stop_all(state: State<'_, AppState>) -> Result<Vec<StopResult>, String> {
-    Ok(sandbox_core::actions::stop_all(&state.adapters(), STOP_TIMEOUT).await)
+async fn stop_all(state: State<'_, App>) -> Result<Vec<StopResult>, String> {
+    let results = sandbox_core::actions::stop_all(&state.adapters(), STOP_TIMEOUT).await;
+    state.poke();
+    Ok(results)
 }
 
 /// Host path of the container's project directory, if it has a bind-mounted one.
 #[tauri::command]
 async fn get_project_path(
-    state: State<'_, AppState>,
+    state: State<'_, App>,
     container_id: String,
 ) -> Result<Option<String>, String> {
     let adapter = state.adapter_for(&container_id)?;
@@ -211,7 +189,7 @@ async fn get_project_path(
 #[tauri::command]
 async fn open_project(
     app: AppHandle,
-    state: State<'_, AppState>,
+    state: State<'_, App>,
     container_id: String,
 ) -> Result<(), String> {
     let adapter = state.adapter_for(&container_id)?;
@@ -224,15 +202,12 @@ async fn open_project(
         .map_err(|e| e.to_string())
 }
 
-/// Terminal apps installed on this Mac, user preference first.
-/// `SANDBOX_WATCHER_TERMINAL=iterm|terminal` pins one.
-fn mac_terminals() -> Vec<MacTerminal> {
-    let mut list = Vec::new();
-    if let Some(choice) = std::env::var("SANDBOX_WATCHER_TERMINAL")
-        .ok()
-        .and_then(|v| MacTerminal::from_name(&v))
-    {
-        list.push(choice);
+/// Terminal apps to try on macOS, from settings, then what is installed.
+fn mac_terminals(choice: &TerminalChoice) -> Vec<MacTerminal> {
+    match choice {
+        TerminalChoice::Iterm => return vec![MacTerminal::ITerm],
+        TerminalChoice::TerminalApp => return vec![MacTerminal::TerminalApp],
+        TerminalChoice::Auto | TerminalChoice::Custom(_) => {}
     }
     let home = std::env::var("HOME").unwrap_or_default();
     let iterm_installed = [
@@ -241,28 +216,36 @@ fn mac_terminals() -> Vec<MacTerminal> {
     ]
     .iter()
     .any(|p| std::path::Path::new(p).exists());
-    if iterm_installed && !list.contains(&MacTerminal::ITerm) {
-        list.push(MacTerminal::ITerm);
+    if iterm_installed {
+        vec![MacTerminal::ITerm]
+    } else {
+        vec![]
     }
-    list
 }
 
-/// Open a terminal in the project directory. Tries the platform's usual
-/// terminals in order until one succeeds.
+/// Open a terminal in the project directory. Tries the configured or the
+/// platform's usual terminals in order until one succeeds.
 #[tauri::command]
-async fn open_terminal(state: State<'_, AppState>, container_id: String) -> Result<String, String> {
+async fn open_terminal(state: State<'_, App>, container_id: String) -> Result<String, String> {
     let adapter = state.adapter_for(&container_id)?;
     let dir = sandbox_core::actions::project_path(&adapter, &container_id, cfg!(windows))
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "this container has no bind-mounted project directory".to_string())?;
+    let settings = state.settings();
+    let os = std::env::consts::OS;
+    let mut launches = Vec::new();
+    if let TerminalChoice::Custom(template) = &settings.terminal {
+        launches.push(custom_terminal_launch(os, template, &dir));
+    }
     let terminal_env = std::env::var("TERMINAL").ok();
-    let launches = terminal_launches(
-        std::env::consts::OS,
+    launches.extend(terminal_launches(
+        os,
         &dir,
         terminal_env.as_deref(),
-        &mac_terminals(),
-    );
+        &mac_terminals(&settings.terminal),
+    ));
+
     let mut errors = Vec::new();
     for launch in &launches {
         let mut command = tokio::process::Command::new(&launch.program);
@@ -326,24 +309,70 @@ fn app_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
 
+fn on_menu_event(app: &AppHandle, event: MenuEvent) {
+    let id = event.id().as_ref();
+    if tray::handle_menu_event(app, id) {
+        return;
+    }
+    if id == tray::MENU_STOP_ALL {
+        let watcher = app.state::<App>().inner().clone();
+        tauri::async_runtime::spawn(async move {
+            let _ = sandbox_core::actions::stop_all(&watcher.adapters(), STOP_TIMEOUT).await;
+            watcher.poke();
+        });
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .manage(AppState::from_env())
+        .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_autostart::init(
+            MacosLauncher::LaunchAgent,
+            None,
+        ))
         .setup(|app| {
-            if let Mode::Live(live) = &app.state::<AppState>().inner().mode {
-                let handle = app.handle().clone();
-                live.set_listener(Arc::new(move |event| {
-                    let _ = handle.emit(RUNTIME_EVENT, &event);
-                }));
+            let handle = app.handle().clone();
+            let settings = settings_store::load(&handle);
+            let watcher = Watcher::new(handle.clone(), settings.clone());
+            app.manage(watcher.clone());
+
+            // Runtime events ask the watcher for a refresh.
+            if let Mode::Live(live) = &watcher.mode {
+                let poke = watcher.clone();
+                live.set_listener(Arc::new(move |_event| poke.poke()));
             }
+
+            tray::create(&handle)?;
+            app.on_menu_event(on_menu_event);
+            apply_autostart(&handle, settings.launch_at_login);
+
+            if settings.start_minimized
+                && let Some(window) = app.get_webview_window("main")
+            {
+                let _ = window.hide();
+            }
+
+            watcher.start();
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            if let WindowEvent::CloseRequested { api, .. } = event {
+                let watcher = window.app_handle().state::<App>();
+                if watcher.settings().close_to_tray {
+                    api.prevent_close();
+                    let _ = window.hide();
+                }
+            }
         })
         .invoke_handler(tauri::generate_handler![
             get_overview,
+            refresh_now,
             get_network_overview,
             get_stats,
+            get_settings,
+            save_settings,
             get_container_details,
             get_logs,
             reveal_mount,

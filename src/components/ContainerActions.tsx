@@ -1,12 +1,7 @@
 import { useState } from "react";
 import { getProjectPath, openProject, openTerminal, stopContainer } from "../api";
-import {
-  confirmStopEnabled,
-  copyText,
-  describeInterruption,
-  networkLogsCommand,
-  setConfirmStop,
-} from "../actions";
+import { confirmStopEnabled, copyText, describeInterruption, networkLogsCommand } from "../actions";
+import { disableConfirmStop } from "../settingsActions";
 import type { SandboxContainer } from "../types";
 import { ConfirmDialog } from "./ConfirmDialog";
 
@@ -118,7 +113,7 @@ export function ContainerActions({ container, onChanged }: Props) {
           busy={busy === "stop"}
           onCancel={() => setConfirming(false)}
           onConfirm={(dontAsk) => {
-            if (dontAsk) setConfirmStop(false);
+            if (dontAsk) void disableConfirmStop();
             setConfirming(false);
             void doStop();
           }}

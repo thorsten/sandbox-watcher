@@ -166,3 +166,36 @@ export interface StopResult {
   ok: boolean;
   error: string | null;
 }
+
+export type Theme = "system" | "light" | "dark";
+
+export type TerminalChoice =
+  | { kind: "auto" }
+  | { kind: "iterm" }
+  | { kind: "terminal-app" }
+  | { kind: "custom"; command: string };
+
+export interface NotificationSettings {
+  enabled: boolean;
+  session_started: boolean;
+  session_ended: boolean;
+  container_started: boolean;
+  container_stopped: boolean;
+  container_died: boolean;
+  blocked_burst: boolean;
+  stale_container: boolean;
+}
+
+export interface Settings {
+  poll_interval_secs: number;
+  runtime_override: RuntimeKind | null;
+  terminal: TerminalChoice;
+  confirm_stop: boolean;
+  notifications: NotificationSettings;
+  launch_at_login: boolean;
+  close_to_tray: boolean;
+  start_minimized: boolean;
+  theme: Theme;
+  blocked_burst_threshold: number;
+  blocked_burst_window_secs: number;
+}

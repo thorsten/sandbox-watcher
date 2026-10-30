@@ -1,72 +1,87 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { appVersion, getNetworkOverview, getOverview, onRuntimeEvent } from "./api";
+import { useCallback, useEffect, useState } from "react";
+import { applyConfirmStop } from "./actions";
+import {
+  appVersion,
+  getNetworkOverview,
+  getOverview,
+  getSettings,
+  onNetworkUpdated,
+  onOpenSettings,
+  onOverviewUpdated,
+  onSettingsUpdated,
+  refreshNow,
+} from "./api";
+import logoUrl from "./assets/logo.svg";
 import { ContainerList } from "./components/ContainerList";
 import { RuntimeBanner } from "./components/RuntimeBanner";
-import logoUrl from "./assets/logo.svg";
-import type { NetworkReport, Overview } from "./types";
-
-/** Fallback poll. Lifecycle events from the runtime trigger refreshes sooner. */
-const POLL_MS = 10_000;
-/** Collapse bursts of events (start, exec_create, ...) into one refresh. */
-const EVENT_DEBOUNCE_MS = 250;
+import { SettingsPanel } from "./components/SettingsPanel";
+import { applyTheme } from "./theme";
+import type { NetworkReport, Overview, Settings } from "./types";
 
 type LoadState =
   | { phase: "loading" }
-  | { phase: "ready"; overview: Overview; version: string; refreshedAt: Date }
+  | { phase: "ready"; overview: Overview; refreshedAt: Date }
   | { phase: "error"; message: string };
 
 export function App() {
   const [state, setState] = useState<LoadState>({ phase: "loading" });
   const [network, setNetwork] = useState<NetworkReport[] | undefined>(undefined);
-  const inFlight = useRef(false);
-  const networkInFlight = useRef(false);
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
+  const [version, setVersion] = useState("");
+  const [refreshing, setRefreshing] = useState(false);
 
-  // Network logs are read in a second round trip so a slow log never delays the list.
-  const refreshNetwork = useCallback(async () => {
-    if (networkInFlight.current) return;
-    networkInFlight.current = true;
-    try {
-      setNetwork(await getNetworkOverview());
-    } catch {
-      // Keep the last good reports; the panel shows per-source failures itself.
-    } finally {
-      networkInFlight.current = false;
-    }
+  const acceptSettings = useCallback((s: Settings) => {
+    setSettings(s);
+    applyConfirmStop(s.confirm_stop);
+    applyTheme(s.theme);
   }, []);
 
-  const refresh = useCallback(async () => {
-    if (inFlight.current) return;
-    inFlight.current = true;
-    try {
-      const [overview, version] = await Promise.all([getOverview(), appVersion().catch(() => "")]);
-      setState({ phase: "ready", overview, version, refreshedAt: new Date() });
-      if (overview.runtime.status === "connected") void refreshNetwork();
-    } catch (error) {
-      setState({ phase: "error", message: error instanceof Error ? error.message : String(error) });
-    } finally {
-      inFlight.current = false;
-    }
-  }, [refreshNetwork]);
+  const acceptOverview = useCallback((overview: Overview) => {
+    setState({ phase: "ready", overview, refreshedAt: new Date() });
+  }, []);
 
+  // The Rust watcher refreshes on its own; the UI only asks for the current
+  // state once and then listens for pushes.
   useEffect(() => {
-    // refresh() awaits the Tauri command before it sets state, so there is no synchronous
-    // setState here; the rule cannot see through the async boundary.
-    // oxlint-disable-next-line react/set-state-in-effect
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), POLL_MS);
-
-    let debounce: number | undefined;
-    const unlisten = onRuntimeEvent(() => {
-      window.clearTimeout(debounce);
-      debounce = window.setTimeout(() => void refresh(), EVENT_DEBOUNCE_MS);
-    });
-
-    return () => {
-      window.clearInterval(timer);
-      window.clearTimeout(debounce);
-      unlisten.then((fn) => fn()).catch(() => undefined);
+    let cancelled = false;
+    const fail = (e: unknown) => {
+      if (!cancelled)
+        setState({ phase: "error", message: e instanceof Error ? e.message : String(e) });
     };
-  }, [refresh]);
+    getSettings().then((s) => !cancelled && acceptSettings(s), fail);
+    appVersion().then(
+      (v) => !cancelled && setVersion(v),
+      () => undefined,
+    );
+    getOverview().then((o) => !cancelled && acceptOverview(o), fail);
+    getNetworkOverview().then(
+      (n) => !cancelled && setNetwork(n),
+      () => undefined,
+    );
+
+    const subscriptions = [
+      onOverviewUpdated((o) => !cancelled && acceptOverview(o)),
+      onNetworkUpdated((n) => !cancelled && setNetwork(n)),
+      onSettingsUpdated((s) => !cancelled && acceptSettings(s)),
+      onOpenSettings(() => !cancelled && setShowSettings(true)),
+    ];
+    return () => {
+      cancelled = true;
+      for (const sub of subscriptions) sub.then((unlisten) => unlisten()).catch(() => undefined);
+    };
+  }, [acceptSettings, acceptOverview]);
+
+  const refresh = async () => {
+    setRefreshing(true);
+    try {
+      acceptOverview(await refreshNow());
+    } catch (e) {
+      setState({ phase: "error", message: e instanceof Error ? e.message : String(e) });
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   return (
     <main className="app">
@@ -81,14 +96,29 @@ export function App() {
               mock data
             </span>
           )}
-          {state.phase === "ready" && state.version && (
-            <span className="muted">v{state.version}</span>
-          )}
-          <button type="button" onClick={() => void refresh()}>
-            Refresh
+          {version && <span className="muted">v{version}</span>}
+          <button type="button" onClick={() => void refresh()} disabled={refreshing}>
+            {refreshing ? "Refreshing…" : "Refresh"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowSettings((v) => !v)}
+            aria-pressed={showSettings}
+            title="Settings"
+          >
+            Settings
           </button>
         </div>
       </header>
+
+      {showSettings && settings && (
+        <SettingsPanel
+          key={JSON.stringify(settings)}
+          settings={settings}
+          onSaved={acceptSettings}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
 
       {state.phase === "loading" && <p className="muted">Looking for container runtimes…</p>}
 

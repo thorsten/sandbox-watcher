@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { stopAll } from "../api";
-import { confirmStopEnabled, describeInterruption, setConfirmStop } from "../actions";
+import { confirmStopEnabled, describeInterruption } from "../actions";
+import { disableConfirmStop } from "../settingsActions";
 import type { SandboxContainer } from "../types";
 import { ConfirmDialog } from "./ConfirmDialog";
 
@@ -56,7 +57,7 @@ export function StopAllButton({
           busy={busy}
           onCancel={() => setConfirming(false)}
           onConfirm={(dontAsk) => {
-            if (dontAsk) setConfirmStop(false);
+            if (dontAsk) void disableConfirmStop();
             void doStop();
           }}
         />

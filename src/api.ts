@@ -2,16 +2,46 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   ContainerDetails,
+  Settings,
   StopResult,
   DetectedRuntime,
   NetworkReport,
   Overview,
   ResourceSample,
-  RuntimeEvent,
 } from "./types";
 
 export function getOverview(): Promise<Overview> {
   return invoke<Overview>("get_overview");
+}
+
+export function refreshNow(): Promise<Overview> {
+  return invoke<Overview>("refresh_now");
+}
+
+export function getSettings(): Promise<Settings> {
+  return invoke<Settings>("get_settings");
+}
+
+export function saveSettings(settings: Settings): Promise<Settings> {
+  return invoke<Settings>("save_settings", { settings });
+}
+
+/** The Rust watcher pushes a fresh overview after every refresh. */
+export function onOverviewUpdated(handler: (overview: Overview) => void): Promise<UnlistenFn> {
+  return listen<Overview>("overview-updated", (e) => handler(e.payload));
+}
+
+export function onNetworkUpdated(handler: (reports: NetworkReport[]) => void): Promise<UnlistenFn> {
+  return listen<NetworkReport[]>("network-updated", (e) => handler(e.payload));
+}
+
+export function onSettingsUpdated(handler: (settings: Settings) => void): Promise<UnlistenFn> {
+  return listen<Settings>("settings-updated", (e) => handler(e.payload));
+}
+
+/** Tray menu asked for the settings panel. */
+export function onOpenSettings(handler: () => void): Promise<UnlistenFn> {
+  return listen<null>("open-settings", () => handler());
 }
 
 export function getNetworkOverview(): Promise<NetworkReport[]> {
@@ -61,9 +91,4 @@ export function detectRuntimes(): Promise<DetectedRuntime[]> {
 
 export function appVersion(): Promise<string> {
   return invoke<string>("app_version");
-}
-
-/** Subscribe to runtime lifecycle events forwarded by the Rust side. */
-export function onRuntimeEvent(handler: (event: RuntimeEvent) => void): Promise<UnlistenFn> {
-  return listen<RuntimeEvent>("runtime-event", (e) => handler(e.payload));
 }
