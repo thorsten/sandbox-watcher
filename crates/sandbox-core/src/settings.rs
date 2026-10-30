@@ -3,6 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::editor::EditorChoice;
 use crate::model::RuntimeKind;
 use crate::usage::{PriceTable, default_prices};
 
@@ -83,6 +84,8 @@ pub struct Settings {
     pub prices: PriceTable,
     /// Look for a new release on start and every few hours.
     pub check_for_updates: bool,
+    /// Where Open in editor sends files and folders.
+    pub editor: EditorChoice,
 }
 
 impl Default for Settings {
@@ -103,6 +106,7 @@ impl Default for Settings {
             history_enabled: true,
             prices: default_prices(),
             check_for_updates: true,
+            editor: EditorChoice::System,
         }
     }
 }
@@ -114,6 +118,11 @@ impl Settings {
         self.blocked_burst_threshold = self.blocked_burst_threshold.clamp(1, 10_000);
         self.blocked_burst_window_secs = self.blocked_burst_window_secs.clamp(10, 3_600);
         self.history_retention_days = self.history_retention_days.clamp(1, 3_650);
+        if let EditorChoice::Custom(cmd) = &self.editor
+            && cmd.trim().is_empty()
+        {
+            self.editor = EditorChoice::System;
+        }
         if self.prices.is_empty() {
             self.prices = default_prices();
         }

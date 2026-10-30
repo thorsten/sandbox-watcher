@@ -8,6 +8,7 @@ use std::path::Path;
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::files::FileTouch;
 use crate::model::{AgentKind, RuntimeKind};
 use crate::overview::Overview;
 use crate::usage::Usage;
@@ -29,6 +30,9 @@ pub struct SessionRecord {
     pub last_seen_at: DateTime<Utc>,
     /// Last usage snapshot for this session's agent transcript.
     pub usage: Option<Usage>,
+    /// Files read and changed, from the agent's transcript.
+    #[serde(default)]
+    pub files: Vec<FileTouch>,
 }
 
 impl SessionRecord {
@@ -157,6 +161,7 @@ impl History {
                             ended_at: None,
                             last_seen_at: now,
                             usage: None,
+                            files: vec![],
                         });
                         changed = true;
                     }
@@ -196,6 +201,28 @@ impl History {
             return false;
         }
         record.usage = Some(usage.clone());
+        true
+    }
+
+    /// Attach the touched files to the newest open session of this agent.
+    pub fn record_files(
+        &mut self,
+        container_id: &str,
+        agent: crate::model::AgentKind,
+        files: &[FileTouch],
+    ) -> bool {
+        let Some(record) = self
+            .sessions
+            .iter_mut()
+            .filter(|s| s.container_id == container_id && s.agent == agent && s.ended_at.is_none())
+            .max_by_key(|s| s.started_at)
+        else {
+            return false;
+        };
+        if record.files == files {
+            return false;
+        }
+        record.files = files.to_vec();
         true
     }
 

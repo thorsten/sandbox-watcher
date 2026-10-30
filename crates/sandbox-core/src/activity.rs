@@ -15,6 +15,7 @@ use serde_json::Value;
 
 use crate::Result;
 use crate::adapter::{ExecRequest, RuntimeAdapter};
+use crate::files::{FileTouch, aggregate, files_command, parse_events};
 use crate::model::{AgentKind, MountRole, Session};
 use crate::mounts::classify;
 use crate::sandbox::CONTAINER_HOME;
@@ -180,6 +181,9 @@ pub struct AgentActivity {
     pub in_flight: Option<ActivityEvent>,
     /// Tokens and cost for the whole transcript, when the agent reports them.
     pub usage: Option<Usage>,
+    /// Files read and changed over the whole transcript, changed first.
+    #[serde(default)]
+    pub files: Vec<FileTouch>,
 }
 
 fn truncate(text: &str, max: usize) -> String {
@@ -1045,6 +1049,74 @@ pub async fn read_usage(
     }
 }
 
+/// Files an agent touched over its whole transcript.
+pub async fn read_files(
+    adapter: &Arc<dyn RuntimeAdapter>,
+    container_id: &str,
+    agent: AgentKind,
+    source: &str,
+    project_dir: Option<&str>,
+) -> Vec<FileTouch> {
+    let Some(command) = files_command(agent, source) else {
+        return vec![];
+    };
+    match run(adapter, container_id, command).await {
+        Ok((0, out)) => aggregate(&parse_events(agent, &out), project_dir),
+        _ => vec![],
+    }
+}
+
+/// Usage and files for one agent with a running session.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct AgentInsight {
+    pub agent: AgentKind,
+    pub usage: Option<Usage>,
+    pub files: Vec<FileTouch>,
+}
+
+/// Usage and touched files for every agent with a running session. Used by
+/// the watcher on every refresh to keep the history current.
+pub async fn collect_insights(
+    adapter: &Arc<dyn RuntimeAdapter>,
+    container_id: &str,
+    sessions: &[Session],
+    prices: &PriceTable,
+) -> Vec<AgentInsight> {
+    let active: HashSet<AgentKind> = sessions.iter().map(|s| s.agent).collect();
+    if active.is_empty() {
+        return vec![];
+    }
+    let Ok((0, listing)) = run(adapter, container_id, transcript_list_command()).await else {
+        return vec![];
+    };
+    let project_dir = project_container_dir(adapter, container_id)
+        .await
+        .ok()
+        .flatten();
+    let mut out = Vec::new();
+    for line in listing.lines() {
+        let mut parts = line.splitn(3, '|');
+        let (Some(key), Some(_), Some(path)) = (parts.next(), parts.next(), parts.next()) else {
+            continue;
+        };
+        let Some(agent) = agent_from_key(key) else {
+            continue;
+        };
+        if !active.contains(&agent) {
+            continue;
+        }
+        let path = path.trim();
+        let usage = read_usage(adapter, container_id, agent, path, prices).await;
+        let files = read_files(adapter, container_id, agent, path, project_dir.as_deref()).await;
+        out.push(AgentInsight {
+            agent,
+            usage,
+            files,
+        });
+    }
+    out
+}
+
 /// Usage for every agent with a running session. Cheap enough to run on each
 /// refresh: a grep per transcript.
 pub async fn collect_usage(
@@ -1138,6 +1210,7 @@ pub async fn collect(
 
     // Transcripts only for agents that actually have a session here, so a
     // stale file from last week never looks like current activity.
+    let project_dir_ref: Option<&str> = project_dir.as_ref().ok().and_then(|d| d.as_deref());
     let active_agents: HashSet<AgentKind> = sessions.iter().map(|s| s.agent).collect();
     let mut agents = Vec::new();
     if let Ok((0, listing)) = list_result {
@@ -1167,6 +1240,8 @@ pub async fn collect(
                     let events = parse_transcript(agent, &text);
                     let in_flight = in_flight(&events);
                     let usage = read_usage(adapter, container_id, agent, &path, prices).await;
+                    let files =
+                        read_files(adapter, container_id, agent, &path, project_dir_ref).await;
                     agents.push(AgentActivity {
                         agent,
                         source: path,
@@ -1174,6 +1249,7 @@ pub async fn collect(
                         events,
                         in_flight,
                         usage,
+                        files,
                     });
                 }
                 Ok((code, _)) => errors.push(format!(
@@ -1448,6 +1524,15 @@ P:{"id":"prt_5","messageID":"msg_2","type":"tool","callID":"call_b","tool":"edit
             .as_ref()
             .expect("usage from mock transcript");
         assert!(usage.input_tokens > 0 && usage.cost_usd.is_some());
+        let files = &activity.agents[0].files;
+        assert!(
+            files
+                .iter()
+                .any(|f| f.path == "/Users/dev/projects/web-shop/src/cart.ts"
+                    && f.edits == 1
+                    && f.reads == 1),
+            "{files:?}"
+        );
         let tree = activity.working_tree.unwrap();
         assert!(tree.is_repo);
         assert_eq!(tree.changes.len(), 2);

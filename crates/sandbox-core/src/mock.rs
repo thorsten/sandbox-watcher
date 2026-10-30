@@ -14,6 +14,7 @@ use crate::activity::{GIT_SENTINEL, PS_SENTINEL, TRANSCRIPT_SENTINEL};
 use crate::adapter::{
     Capabilities, ContainerFilter, ExecOutput, ExecRequest, LogOptions, RuntimeAdapter,
 };
+use crate::files::FILES_SENTINEL;
 use crate::model::{
     ContainerDetails, ContainerState, Mount, Readiness, ResourceSample, RuntimeEvent,
     RuntimeEventKind, RuntimeInfo, RuntimeKind, SandboxContainer,
@@ -295,6 +296,9 @@ P|4300|1|420000|1500|zsh -l\n");
                     return ok(
                         "claude|1761818400|/home/sandbox/.claude/projects/-Users-dev-projects-web-shop/abc.jsonl\n",
                     );
+                }
+                FILES_SENTINEL => {
+                    return ok(DEMO_TRANSCRIPT);
                 }
                 GIT_SENTINEL => {
                     return ok(
