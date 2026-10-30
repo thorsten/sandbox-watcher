@@ -9,6 +9,12 @@ describe("api command names and arguments", () => {
     ["overview", () => api.getOverview(), "get_overview", undefined],
     ["refresh", () => api.refreshNow(), "refresh_now", undefined],
     ["activity", () => api.getActivity("c1"), "get_activity", { containerId: "c1" }],
+    [
+      "turns",
+      () => api.getTurns("c1", "codex"),
+      "get_turns",
+      { containerId: "c1", agent: "codex" },
+    ],
     ["logs default tail", () => api.getLogs("c1"), "get_logs", { containerId: "c1", tail: 200 }],
     ["logs tail", () => api.getLogs("c1", 50), "get_logs", { containerId: "c1", tail: 50 }],
     ["stop", () => api.stopContainer("c1"), "stop_container", { containerId: "c1" }],

@@ -6,6 +6,8 @@ import type {
   SandboxContainer,
   Session,
   Settings,
+  Turn,
+  TurnReport,
   Usage,
 } from "../types";
 
@@ -139,6 +141,30 @@ export function file(partial: Partial<FileTouch> = {}): FileTouch {
     created: false,
     deleted: false,
     last_at: "2026-10-30T11:58:00Z",
+    ...partial,
+  };
+}
+
+export function turn(partial: Partial<Turn> = {}): Turn {
+  return {
+    index: 1,
+    prompt: "Fix the cart total rounding bug",
+    started_at: "2026-10-30T11:50:00Z",
+    ended_at: "2026-10-30T11:53:20Z",
+    usage: usage(),
+    tool_calls: 3,
+    tool_errors: 0,
+    files: [file({ edits: 1 })],
+    ...partial,
+  };
+}
+
+export function turnReport(partial: Partial<TurnReport> = {}): TurnReport {
+  return {
+    agent: "claude-code",
+    source: "/home/sandbox/.claude/projects/-p/s.jsonl",
+    turns: [turn()],
+    truncated: false,
     ...partial,
   };
 }

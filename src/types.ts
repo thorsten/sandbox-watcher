@@ -239,6 +239,28 @@ export interface AgentActivity {
   files: FileTouch[];
 }
 
+/** One prompt and everything the agent did until the next one. */
+export interface Turn {
+  /** 1 for the first prompt; 0 is activity before the first prompt that was read. */
+  index: number;
+  prompt: string;
+  started_at: string | null;
+  ended_at: string | null;
+  usage: Usage | null;
+  tool_calls: number;
+  tool_errors: number;
+  files: FileTouch[];
+}
+
+export interface TurnReport {
+  agent: AgentKind;
+  source: string;
+  /** Oldest first. */
+  turns: Turn[];
+  /** Older turns were left out. */
+  truncated: boolean;
+}
+
 export interface WorkingTreeChange {
   status: string;
   path: string;

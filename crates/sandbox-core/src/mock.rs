@@ -21,6 +21,7 @@ use crate::model::{
 };
 use crate::network::NetworkSource;
 use crate::sandbox::{CONTAINER_TOOLS_PATH, HASH_LABEL, PROJECT_LABEL};
+use crate::turns::TURNS_SENTINEL;
 use crate::{Error, Result};
 
 #[derive(Debug, Clone)]
@@ -300,6 +301,9 @@ P|4300|1|420000|1500|zsh -l\n");
                 FILES_SENTINEL => {
                     return ok(DEMO_TRANSCRIPT);
                 }
+                TURNS_SENTINEL => {
+                    return ok(&format!("{DEMO_EARLIER_TURN}{DEMO_TRANSCRIPT}"));
+                }
                 GIT_SENTINEL => {
                     return ok(
                         "B|feature/cart-totals\nS| M src/cart.ts\nS|?? src/cart.test.ts\nD| 1 file changed, 14 insertions(+), 3 deletions(-)\n",
@@ -406,11 +410,18 @@ fn tokio_stream_from_broadcast(
 /// Usage fragments as the Claude usage grep returns them, for demo mode.
 const DEMO_USAGE: &str = "1:\"model\":\"claude-sonnet-4-5-20250929\"\n1:\"id\":\"msg_01\"\n1:\"usage\":{\"input_tokens\":1200,\"cache_creation_input_tokens\":8000,\"cache_read_input_tokens\":64000,\"output_tokens\":900}\n2:\"model\":\"claude-sonnet-4-5-20250929\"\n2:\"id\":\"msg_02\"\n2:\"usage\":{\"input_tokens\":300,\"cache_read_input_tokens\":72000,\"output_tokens\":1400}\n";
 
+/// An earlier turn in front of [`DEMO_TRANSCRIPT`], for the turns view.
+const DEMO_EARLIER_TURN: &str = r#"{"type":"user","message":{"role":"user","content":"Why does the cart show 9.99 for three items at 3.33?"},"timestamp":"2026-10-30T09:40:00Z"}
+{"type":"assistant","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_00","role":"assistant","content":[{"type":"tool_use","id":"toolu_00","name":"Grep","input":{"pattern":"total","path":"src"}}],"usage":{"input_tokens":900,"cache_creation_input_tokens":6000,"cache_read_input_tokens":12000,"output_tokens":300}},"timestamp":"2026-10-30T09:40:06Z"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_00","content":"src/cart.ts:12: return Math.floor(sum * 100) / 100"}]},"timestamp":"2026-10-30T09:40:07Z"}
+{"type":"assistant","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_000","role":"assistant","content":[{"type":"text","text":"total() floors instead of rounding."}],"usage":{"input_tokens":200,"cache_read_input_tokens":18000,"output_tokens":120}},"timestamp":"2026-10-30T09:41:30Z"}
+"#;
+
 /// A few lines of a Claude Code transcript for demo mode.
 const DEMO_TRANSCRIPT: &str = r#"{"type":"user","message":{"role":"user","content":"Fix the cart total rounding bug and add a test"},"timestamp":"2026-10-30T09:58:00Z"}
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I'll reproduce it with a failing test first."},{"type":"tool_use","id":"toolu_01","name":"Read","input":{"file_path":"/Users/dev/projects/web-shop/src/cart.ts"}}]},"timestamp":"2026-10-30T09:58:04Z"}
+{"type":"assistant","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_01","role":"assistant","usage":{"input_tokens":1200,"cache_creation_input_tokens":8000,"cache_read_input_tokens":64000,"output_tokens":900},"content":[{"type":"text","text":"I'll reproduce it with a failing test first."},{"type":"tool_use","id":"toolu_01","name":"Read","input":{"file_path":"/Users/dev/projects/web-shop/src/cart.ts"}}]},"timestamp":"2026-10-30T09:58:04Z"}
 {"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01","content":"export function total(items) { ... }"}]},"timestamp":"2026-10-30T09:58:05Z"}
-{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_02","name":"Edit","input":{"file_path":"/Users/dev/projects/web-shop/src/cart.ts","old_string":"Math.floor","new_string":"Math.round"}}]},"timestamp":"2026-10-30T09:59:10Z"}
+{"type":"assistant","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_02","role":"assistant","usage":{"input_tokens":300,"cache_read_input_tokens":72000,"output_tokens":1400},"content":[{"type":"tool_use","id":"toolu_02","name":"Edit","input":{"file_path":"/Users/dev/projects/web-shop/src/cart.ts","old_string":"Math.floor","new_string":"Math.round"}}]},"timestamp":"2026-10-30T09:59:10Z"}
 {"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_02","content":"The file has been updated."}]},"timestamp":"2026-10-30T09:59:11Z"}
 {"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Now running the suite."},{"type":"tool_use","id":"toolu_03","name":"Bash","input":{"command":"npm test -- --run","description":"Run tests"}}]},"timestamp":"2026-10-30T10:00:00Z"}
 "#;

@@ -237,8 +237,11 @@ with no configuration.
 - ~~Timeline and history~~: shipped in 0.2.0 as the History view.
 - ~~Blocked-request triage~~: shipped in 0.2.0. `sandbox network allow` is
   interactive only, so the watcher performs the same config edit itself.
-- ~~Tokens and cost~~: shipped in 0.2.0 for all four agents. Files touched
-  per session and turn-level detail remain open.
+- ~~Tokens and cost~~: shipped in 0.2.0 for all four agents.
+- ~~Files touched per session~~: shipped in 0.4.0, with opening them in the
+  editor.
+- ~~Turn-level detail~~: per prompt, the tokens, cost, tool calls and files
+  of each turn, read from the whole transcript on request.
 - Remote hosts over SSH or TCP Docker contexts.
 - CLI or TUI mode sharing the same core (`sandbox-watcher --tui`).
 - Upstream contribution: propose `sandbox status --json --all` so the watcher

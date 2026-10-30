@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { getActivity } from "../api";
 import { AGENT_LABELS } from "../format";
 import { FilesList } from "./FilesList";
+import { TurnsSection } from "./TurnsSection";
 import { formatRelative } from "../network";
 import { formatBytes } from "../sparkline";
 import { formatCost, formatTokens, totalTokens } from "../usageFormat";
@@ -133,6 +134,12 @@ export function ActivityPanel({ containerId, now }: { containerId: string; now: 
           <FilesList
             files={agent.files}
             containerId={containerId}
+            projectDir={activity.project_dir}
+            now={now}
+          />
+          <TurnsSection
+            containerId={containerId}
+            agent={agent.agent}
             projectDir={activity.project_dir}
             now={now}
           />

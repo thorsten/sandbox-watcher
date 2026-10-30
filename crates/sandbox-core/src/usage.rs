@@ -307,6 +307,28 @@ pub fn parse_claude_usage(output: &str, table: &PriceTable) -> Usage {
     claude_usage_from_calls(calls, table)
 }
 
+/// The call recorded on one full transcript line, if it is an assistant line
+/// with usage.
+pub(crate) fn claude_call(line: &Value) -> Option<ClaudeCall> {
+    if line.get("type").and_then(Value::as_str) != Some("assistant") {
+        return None;
+    }
+    let message = line.get("message")?;
+    let u = message.get("usage")?;
+    Some(ClaudeCall {
+        id: message.get("id").and_then(Value::as_str).map(String::from),
+        model: message
+            .get("model")
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+            .to_string(),
+        input: u64_of(u.get("input_tokens")),
+        output: u64_of(u.get("output_tokens")),
+        cache_read: u64_of(u.get("cache_read_input_tokens")),
+        cache_write: u64_of(u.get("cache_creation_input_tokens")),
+    })
+}
+
 // ---------------------------------------------------------------------------
 // Codex: token_count events carry cumulative totals in newer versions.
 // ---------------------------------------------------------------------------
@@ -600,6 +622,13 @@ mod tests {
             (5, 47, 10100, 100, 2)
         );
         assert_eq!(u.models, vec!["claude-opus-4-1"]);
+
+        let calls: Vec<ClaudeCall> = lines
+            .iter()
+            .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+            .filter_map(|v| claude_call(&v))
+            .collect();
+        assert_eq!(claude_usage_from_calls(calls, &default_prices()), u);
     }
 
     /// Mimic `grep -F '"type":"assistant"' | grep -noE '…' | cut -c1-600`.

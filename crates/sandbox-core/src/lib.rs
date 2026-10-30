@@ -31,6 +31,7 @@ pub mod sandbox;
 pub mod sessions;
 pub mod settings;
 pub mod stats_hub;
+pub mod turns;
 pub mod usage;
 
 pub use adapter::RuntimeAdapter;

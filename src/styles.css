@@ -1226,3 +1226,30 @@ body,
   font-weight: 400;
   font-size: 0.85rem;
 }
+.turn-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 360px;
+  overflow-y: auto;
+}
+.turn summary {
+  display: grid;
+  grid-template-columns: 3.5rem minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: baseline;
+  padding: 0.2rem 0;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+.turn-prompt {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.turn-body {
+  padding: 0 0 0.5rem 4rem;
+}
+.turn-facts {
+  margin: 0.2rem 0 0.3rem;
+}

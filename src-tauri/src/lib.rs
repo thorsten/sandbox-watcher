@@ -26,6 +26,7 @@ use sandbox_core::model::{ContainerDetails, ResourceSample};
 use sandbox_core::network::NetworkReport;
 use sandbox_core::overview::Overview;
 use sandbox_core::settings::{Settings, TerminalChoice};
+use sandbox_core::turns::TurnReport;
 use tauri::menu::MenuEvent;
 use tauri::{AppHandle, Manager, State, WindowEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt as AutostartExt};
@@ -115,6 +116,22 @@ async fn get_activity(
         sandbox_core::activity::collect(&adapter, &container_id, &sessions, Utc::now(), &prices)
             .await,
     )
+}
+
+/// Turn-by-turn detail of one agent's transcript. Reads the whole
+/// transcript, so the UI asks for it on demand only. The transcript path is
+/// found inside the container, never taken from the webview.
+#[tauri::command]
+async fn get_turns(
+    state: State<'_, App>,
+    container_id: String,
+    agent: AgentKind,
+) -> Result<Option<TurnReport>, String> {
+    let adapter = state.adapter_for(&container_id)?;
+    let prices = state.settings().prices;
+    sandbox_core::activity::read_turns(&adapter, &container_id, agent, &prices)
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Mounts, ports, env names and user of one container, mounts classified
@@ -601,6 +618,7 @@ pub fn run() {
             get_settings,
             save_settings,
             get_activity,
+            get_turns,
             get_history,
             clear_history,
             preview_allow,

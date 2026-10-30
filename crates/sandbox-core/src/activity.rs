@@ -13,13 +13,14 @@ use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::Result;
 use crate::adapter::{ExecRequest, RuntimeAdapter};
 use crate::files::{FileTouch, aggregate, files_command, parse_events};
 use crate::model::{AgentKind, MountRole, Session};
 use crate::mounts::classify;
 use crate::sandbox::CONTAINER_HOME;
+use crate::turns::{TurnReport, parse_turns, turns_command};
 use crate::usage::{PriceTable, Usage, parse_usage, usage_command};
+use crate::{Error, Result};
 
 pub const PS_SENTINEL: &str = "sandbox-watcher-ps";
 pub const TRANSCRIPT_SENTINEL: &str = "sandbox-watcher-transcript";
@@ -186,7 +187,7 @@ pub struct AgentActivity {
     pub files: Vec<FileTouch>,
 }
 
-fn truncate(text: &str, max: usize) -> String {
+pub(crate) fn truncate(text: &str, max: usize) -> String {
     let one_line: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if one_line.chars().count() <= max {
         one_line
@@ -241,7 +242,7 @@ fn tool_detail(name: &str, input: &Value) -> String {
     truncate(&detail, 160)
 }
 
-fn timestamp_of(value: &Value) -> Option<DateTime<Utc>> {
+pub(crate) fn timestamp_of(value: &Value) -> Option<DateTime<Utc>> {
     value
         .get("timestamp")
         .and_then(Value::as_str)
@@ -252,6 +253,12 @@ fn timestamp_of(value: &Value) -> Option<DateTime<Utc>> {
 /// Parse the tail of a Claude Code session transcript (JSON lines). The
 /// first line may be cut; it is skipped if it does not parse.
 pub fn parse_claude_transcript(text: &str) -> Vec<ActivityEvent> {
+    let mut events = claude_events(text);
+    trim_events(&mut events);
+    events
+}
+
+fn claude_events(text: &str) -> Vec<ActivityEvent> {
     let mut events = Vec::new();
     for line in text.lines() {
         let Ok(value) = serde_json::from_str::<Value>(line) else {
@@ -368,9 +375,6 @@ pub fn parse_claude_transcript(text: &str) -> Vec<ActivityEvent> {
             _ => {}
         }
     }
-    if events.len() > MAX_EVENTS {
-        events.drain(..events.len() - MAX_EVENTS);
-    }
     events
 }
 
@@ -402,7 +406,7 @@ pub fn in_flight(events: &[ActivityEvent]) -> Option<ActivityEvent> {
 // Transcript discovery per agent
 // ---------------------------------------------------------------------------
 
-fn agent_from_key(key: &str) -> Option<AgentKind> {
+pub(crate) fn agent_from_key(key: &str) -> Option<AgentKind> {
     match key {
         "claude" => Some(AgentKind::ClaudeCode),
         "codex" => Some(AgentKind::Codex),
@@ -448,13 +452,20 @@ pub fn transcript_tail_command(agent: AgentKind, source: &str) -> Vec<String> {
     vec!["sh".into(), "-c".into(), script, TRANSCRIPT_SENTINEL.into()]
 }
 
-/// Dispatch to the agent's parser.
+/// Dispatch to the agent's parser, keeping the newest events.
 pub fn parse_transcript(agent: AgentKind, text: &str) -> Vec<ActivityEvent> {
+    let mut events = transcript_events(agent, text);
+    trim_events(&mut events);
+    events
+}
+
+/// Every event in `text`, for counting over a whole turn.
+pub(crate) fn transcript_events(agent: AgentKind, text: &str) -> Vec<ActivityEvent> {
     match agent {
-        AgentKind::ClaudeCode => parse_claude_transcript(text),
-        AgentKind::Codex => parse_codex_transcript(text),
-        AgentKind::Pi => parse_pi_transcript(text),
-        AgentKind::OpenCode => parse_opencode_dump(text),
+        AgentKind::ClaudeCode => claude_events(text),
+        AgentKind::Codex => codex_events(text),
+        AgentKind::Pi => pi_events(text),
+        AgentKind::OpenCode => opencode_events(text),
         AgentKind::Shell | AgentKind::Other => vec![],
     }
 }
@@ -509,7 +520,7 @@ fn trim_events(events: &mut Vec<ActivityEvent>) {
 }
 
 /// Injected context (AGENTS.md, environment blocks) is not something the user typed.
-fn is_injected_user_text(text: &str) -> bool {
+pub(crate) fn is_injected_user_text(text: &str) -> bool {
     let t = text.trim_start();
     t.starts_with('<') || t.starts_with("# AGENTS.md") || t.starts_with("<environment_context>")
 }
@@ -561,6 +572,12 @@ fn apply_patch_summary(input: &str) -> String {
 /// (`{"timestamp","type":"response_item","payload":{...}}`) and the older
 /// bare item form.
 pub fn parse_codex_transcript(text: &str) -> Vec<ActivityEvent> {
+    let mut events = codex_events(text);
+    trim_events(&mut events);
+    events
+}
+
+fn codex_events(text: &str) -> Vec<ActivityEvent> {
     let mut events = Vec::new();
     for line in text.lines() {
         let Ok(value) = serde_json::from_str::<Value>(line) else {
@@ -702,7 +719,6 @@ pub fn parse_codex_transcript(text: &str) -> Vec<ActivityEvent> {
             _ => {}
         }
     }
-    trim_events(&mut events);
     events
 }
 
@@ -732,6 +748,12 @@ fn pi_tool_detail(name: &str, args: &Value) -> String {
 /// Parse Pi session lines: `{"type":"message","message":{"role":..,"content":[..]}}`
 /// with `toolCall` parts and `toolResult` role messages.
 pub fn parse_pi_transcript(text: &str) -> Vec<ActivityEvent> {
+    let mut events = pi_events(text);
+    trim_events(&mut events);
+    events
+}
+
+fn pi_events(text: &str) -> Vec<ActivityEvent> {
     let mut events = Vec::new();
     for line in text.lines() {
         let Ok(value) = serde_json::from_str::<Value>(line) else {
@@ -809,7 +831,6 @@ pub fn parse_pi_transcript(text: &str) -> Vec<ActivityEvent> {
             _ => {}
         }
     }
-    trim_events(&mut events);
     events
 }
 
@@ -817,7 +838,7 @@ pub fn parse_pi_transcript(text: &str) -> Vec<ActivityEvent> {
 // OpenCode storage dump (M:/P: lines)
 // ---------------------------------------------------------------------------
 
-fn ms_to_time(value: Option<&Value>) -> Option<DateTime<Utc>> {
+pub(crate) fn ms_to_time(value: Option<&Value>) -> Option<DateTime<Utc>> {
     value
         .and_then(Value::as_i64)
         .and_then(|ms| Utc.timestamp_millis_opt(ms).single())
@@ -846,6 +867,12 @@ fn opencode_tool_detail(tool: &str, input: &Value) -> String {
 
 /// Parse the `M:`/`P:` dump produced by [`transcript_tail_command`] for OpenCode.
 pub fn parse_opencode_dump(text: &str) -> Vec<ActivityEvent> {
+    let mut events = opencode_events(text);
+    trim_events(&mut events);
+    events
+}
+
+fn opencode_events(text: &str) -> Vec<ActivityEvent> {
     let mut events = Vec::new();
     let mut roles: HashMap<String, (String, Option<DateTime<Utc>>)> = HashMap::new();
     for line in text.lines() {
@@ -931,7 +958,6 @@ pub fn parse_opencode_dump(text: &str) -> Vec<ActivityEvent> {
             }
         }
     }
-    trim_events(&mut events);
     events
 }
 
@@ -1064,6 +1090,49 @@ pub async fn read_files(
         Ok((0, out)) => aggregate(&parse_events(agent, &out), project_dir),
         _ => vec![],
     }
+}
+
+/// Turn-by-turn detail of the agent's newest transcript. Reads the whole
+/// transcript, so it runs when the user asks for it, not on each refresh.
+pub async fn read_turns(
+    adapter: &Arc<dyn RuntimeAdapter>,
+    container_id: &str,
+    agent: AgentKind,
+    prices: &PriceTable,
+) -> Result<Option<TurnReport>> {
+    let (code, listing) = run(adapter, container_id, transcript_list_command()).await?;
+    if code != 0 {
+        return Ok(None);
+    }
+    let source = listing.lines().find_map(|line| {
+        let mut parts = line.splitn(3, '|');
+        let (key, _, path) = (parts.next()?, parts.next()?, parts.next()?);
+        (agent_from_key(key) == Some(agent)).then(|| path.trim().to_string())
+    });
+    let Some(source) = source else {
+        return Ok(None);
+    };
+    let Some(command) = turns_command(agent, &source) else {
+        return Ok(None);
+    };
+    let project_dir = project_container_dir(adapter, container_id)
+        .await
+        .ok()
+        .flatten();
+    let (code, out) = run(adapter, container_id, command).await?;
+    if code != 0 {
+        return Err(Error::Protocol(format!(
+            "reading the {} transcript exited with {code}",
+            agent.label()
+        )));
+    }
+    Ok(Some(parse_turns(
+        agent,
+        &source,
+        &out,
+        project_dir.as_deref(),
+        prices,
+    )))
 }
 
 /// Usage and files for one agent with a running session.
@@ -1536,5 +1605,25 @@ P:{"id":"prt_5","messageID":"msg_2","type":"tool","callID":"call_b","tool":"edit
         let tree = activity.working_tree.unwrap();
         assert!(tree.is_repo);
         assert_eq!(tree.changes.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn reads_turns_from_mock() {
+        use crate::mock::MockAdapter;
+        let adapter: Arc<dyn RuntimeAdapter> = Arc::new(MockAdapter::demo());
+        let prices = crate::usage::default_prices();
+        let report = read_turns(&adapter, "sandbox-web-shop", AgentKind::ClaudeCode, &prices)
+            .await
+            .unwrap()
+            .expect("demo has a Claude transcript");
+        assert!(report.source.ends_with("abc.jsonl"));
+        assert_eq!(report.turns.len(), 2);
+        assert!(report.turns[0].prompt.starts_with("Why does the cart"));
+        assert_eq!(report.turns[1].tool_calls, 3);
+        assert_eq!(report.turns[1].usage.as_ref().unwrap().turns, 2);
+        let none = read_turns(&adapter, "sandbox-web-shop", AgentKind::Codex, &prices)
+            .await
+            .unwrap();
+        assert!(none.is_none());
     }
 }

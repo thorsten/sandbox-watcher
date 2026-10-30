@@ -15,6 +15,7 @@ import type {
   NetworkReport,
   Overview,
   ResourceSample,
+  TurnReport,
 } from "./types";
 
 export function getOverview(): Promise<Overview> {
@@ -66,6 +67,11 @@ export function getStats(): Promise<Record<string, ResourceSample[]>> {
 
 export function getActivity(containerId: string): Promise<ContainerActivity> {
   return invoke<ContainerActivity>("get_activity", { containerId });
+}
+
+/** Turn-by-turn detail of an agent's transcript; reads it in full, so on demand only. */
+export function getTurns(containerId: string, agent: AgentKind): Promise<TurnReport | null> {
+  return invoke<TurnReport | null>("get_turns", { containerId, agent });
 }
 
 export function getContainerDetails(containerId: string): Promise<ContainerDetails | null> {

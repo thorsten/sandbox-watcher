@@ -23,6 +23,9 @@ agent sessions. The right side shows the selected container:
   the processes running under it. Plus the project's git changes.
 - **Files:** every file the agent read, created, edited or deleted, from its
   whole transcript, changed files first. Click one to open it in your editor.
+- **Turns:** one row per prompt you typed, with its duration, tokens, cost,
+  tool calls and the files it changed. Read from the whole transcript when
+  you ask for it.
 - **Network:** blocked and allowed destinations from sandbox's own logs.
 - **Resources:** CPU and memory sparklines, network and disk I/O.
 - **Logs:** the container log with follow and filter.
