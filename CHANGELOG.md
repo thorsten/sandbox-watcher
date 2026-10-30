@@ -3,16 +3,27 @@
 All notable changes to Sandbox Watcher. Generated from
 [Conventional Commits](https://www.conventionalcommits.org/) by `scripts/changelog.mjs`.
 
-## Unreleased
+## 0.2.0 (2026-10-30)
+
+### Features
+
+- show the product name and copyright in About and on the site ([4b0f6e7](https://github.com/thorsten/sandbox-watcher/commit/4b0f6e7393ad72b70415d4e4c7b497d8ea85cc74))
+- history view, allow-list triage and cost figures in the app ([0916ce2](https://github.com/thorsten/sandbox-watcher/commit/0916ce255a6141be73ce78aa7e03edd88276e69c))
+- **core:** token usage, session history and allow-list editing ([5e3012b](https://github.com/thorsten/sandbox-watcher/commit/5e3012b5bc319b6390a80607b94b58baa329e1ee))
+- **scripts:** render unreleased commits under the pending version ([b9d98c0](https://github.com/thorsten/sandbox-watcher/commit/b9d98c037a5a2369bd863d91881562b72465e959))
+- pick a project in the tray to select it in the window ([ae8010a](https://github.com/thorsten/sandbox-watcher/commit/ae8010aed8b4e5b2581130bf159166002f28793a))
+- generate the changelog and release notes from commits ([c8dbdd3](https://github.com/thorsten/sandbox-watcher/commit/c8dbdd3661bd5f50b11d67703abe6b8e2c7e7363))
+
+### Fixes
+
+- **scripts:** format the changelog before the release commit ([f74d01e](https://github.com/thorsten/sandbox-watcher/commit/f74d01e8e38957d5cdfde8a9d0243aa2dc46e055))
+- name app menu items and the site footer after the product ([e80d90f](https://github.com/thorsten/sandbox-watcher/commit/e80d90f0ec635c67c4ff827027f51868f948879d))
+- **ui:** space the live badge from the duration in the history table ([92b046c](https://github.com/thorsten/sandbox-watcher/commit/92b046ce519822696fff06283f564ff6ca3e8883))
 
 ### CI
 
-- build the Intel macOS bundle on Apple silicon and add a release script ([e0f2708](https://github.com/thorsten/sandbox-watcher/commit/e0f2708caae5001c73ebac9ccc7c361f1637012b))
-
-## 0.1.1 (2026-10-30)
-
-_No notable changes._
-**Full changelog:** [v0.1.0...v0.1.1](https://github.com/thorsten/sandbox-watcher/compare/v0.1.0...v0.1.1)
+- build macOS bundles for Apple silicon only ([18569e1](https://github.com/thorsten/sandbox-watcher/commit/18569e1af153d28fc5ea33309ff592cafab15afb))
+- build the Intel macOS bundle on Apple silicon and add a release script ([49522df](https://github.com/thorsten/sandbox-watcher/commit/49522df318a6012ce2f60fb477f089db7da9563f))
 
 ## 0.1.0 (2026-10-30)
 
