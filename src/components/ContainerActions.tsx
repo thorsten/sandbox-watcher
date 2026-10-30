@@ -58,10 +58,8 @@ export function ContainerActions({ container, onChanged }: Props) {
         text = dir;
       } else text = networkLogsCommand(dir);
     }
-    flash(
-      (await copyText(text)) ? "ok" : "err",
-      (await copyText(text)) ? "Copied" : "Clipboard unavailable",
-    );
+    const ok = await copyText(text);
+    flash(ok ? "ok" : "err", ok ? "Copied" : "Clipboard unavailable");
   };
 
   return (
