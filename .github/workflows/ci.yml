@@ -32,6 +32,24 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo clippy -p sandbox-core --all-targets -- -D warnings
       - run: cargo test -p sandbox-core
+      - name: Start a sandbox-like container for the Docker conformance test
+        if: runner.os == 'Linux'
+        run: |
+          docker run -d --name sandbox-watcher-test \
+            --label sandbox.project=watcher-test --label sandbox.hash=abcdef123456 \
+            alpine:3 sh -c 'mkdir -p /tmp/sandbox-sessions && touch /tmp/.sandbox-ready && echo ready && sleep 600'
+          for i in $(seq 1 20); do
+            docker exec sandbox-watcher-test test -f /tmp/.sandbox-ready && break || sleep 0.5
+          done
+      - name: Docker conformance test
+        if: runner.os == 'Linux'
+        env:
+          SANDBOX_WATCHER_DOCKER_TESTS: "1"
+          SANDBOX_WATCHER_TEST_SLUG: watcher-test
+        run: cargo test -p sandbox-core --test conformance -- --nocapture
+      - name: Remove the test container
+        if: always() && runner.os == 'Linux'
+        run: docker rm -f sandbox-watcher-test || true
 
   web:
     name: Web UI
