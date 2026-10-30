@@ -1,0 +1,89 @@
+[
+  {
+    "Id": "3f9c1d2e4b5a6c7d8e9f0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5",
+    "Names": [
+      "/sandbox-web-shop"
+    ],
+    "Image": "localhost/sandbox-project-web-shop:0.73.1-7f3a",
+    "ImageID": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+    "Command": "/usr/local/bin/sandbox-entrypoint",
+    "Created": 1761810000,
+    "Ports": [],
+    "Labels": {
+      "sandbox.project": "web-shop",
+      "sandbox.hash": "a1b2c3d4e5f6"
+    },
+    "State": "running",
+    "Status": "Up 2 hours",
+    "HostConfig": {
+      "NetworkMode": "bridge"
+    },
+    "NetworkSettings": {
+      "Networks": {
+        "bridge": {
+          "IPAddress": "172.17.0.2"
+        }
+      }
+    },
+    "Mounts": [
+      {
+        "Type": "bind",
+        "Source": "/Users/dev/projects/web-shop",
+        "Destination": "/home/sandbox/web-shop",
+        "Mode": "",
+        "RW": true,
+        "Propagation": "rprivate"
+      }
+    ]
+  },
+  {
+    "Id": "9a8b7c6d5e4f30211203f4e5d6c7b8a99a8b7c6d5e4f30211203f4e5d6c7b8a9",
+    "Names": [
+      "/sandbox-billing-api"
+    ],
+    "Image": "localhost/sandbox-project-billing-api:0.73.1-02cc",
+    "ImageID": "sha256:2222222222222222222222222222222222222222222222222222222222222222",
+    "Command": "/usr/local/bin/sandbox-entrypoint",
+    "Created": 1761800000,
+    "Ports": [],
+    "Labels": {
+      "sandbox.project": "billing-api",
+      "sandbox.hash": "0f0f0f0f0f0f"
+    },
+    "State": "exited",
+    "Status": "Exited (0) 10 minutes ago",
+    "HostConfig": {
+      "NetworkMode": "bridge"
+    },
+    "NetworkSettings": {
+      "Networks": {}
+    },
+    "Mounts": []
+  },
+  {
+    "Id": "f00df00df00df00df00df00df00df00df00df00df00df00df00df00df00df00d",
+    "Names": [
+      "/postgres-dev"
+    ],
+    "Image": "postgres:17",
+    "ImageID": "sha256:3333333333333333333333333333333333333333333333333333333333333333",
+    "Command": "docker-entrypoint.sh postgres",
+    "Created": 1761700000,
+    "Ports": [
+      {
+        "PrivatePort": 5432,
+        "Type": "tcp"
+      }
+    ],
+    "Labels": {},
+    "State": "running",
+    "Status": "Up 3 days",
+    "HostConfig": {
+      "NetworkMode": "bridge"
+    },
+    "NetworkSettings": {
+      "Networks": {}
+    },
+    "Mounts": []
+  }
+]

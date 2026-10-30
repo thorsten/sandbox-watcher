@@ -1,0 +1,37 @@
+{
+  "name": "sandbox-watcher",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Overview of your running MaibornWolff Sandbox containers",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "tauri": "tauri",
+    "tauri:dev:mock": "SANDBOX_WATCHER_MOCK=1 tauri dev"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.12.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.0",
+    "@tauri-apps/cli": "^2.12.0",
+    "@types/node": "^24.19.2",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^6.0.0",
+    "typescript": "^5.9.0",
+    "vite": "^8.0.0",
+    "vitest": "^5.0.0"
+  }
+}

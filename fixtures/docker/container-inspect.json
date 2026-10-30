@@ -1,0 +1,73 @@
+{
+  "Id": "3f9c1d2e4b5a6c7d8e9f0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5",
+  "Created": "2026-10-30T08:00:00.123456789Z",
+  "Path": "/usr/local/bin/sandbox-entrypoint",
+  "Args": [],
+  "State": {
+    "Status": "running",
+    "Running": true,
+    "Paused": false,
+    "Restarting": false,
+    "OOMKilled": false,
+    "Dead": false,
+    "Pid": 48213,
+    "ExitCode": 0,
+    "Error": "",
+    "StartedAt": "2026-10-30T08:00:01.5Z",
+    "FinishedAt": "0001-01-01T00:00:00Z"
+  },
+  "Image": "sha256:1111111111111111111111111111111111111111111111111111111111111111",
+  "Name": "/sandbox-web-shop",
+  "RestartCount": 0,
+  "Driver": "overlay2",
+  "Platform": "linux",
+  "Mounts": [
+    {
+      "Type": "bind",
+      "Source": "/Users/dev/projects/web-shop",
+      "Destination": "/home/sandbox/web-shop",
+      "Mode": "",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/Users/dev/Library/Application Support/sandbox/data/web-shop/home/.claude",
+      "Destination": "/home/sandbox/.claude",
+      "Mode": "",
+      "RW": true,
+      "Propagation": "rprivate"
+    },
+    {
+      "Type": "bind",
+      "Source": "/Users/dev/Library/Caches/sandbox/runtime/0.73.1-9c1e",
+      "Destination": "/opt/sandbox",
+      "Mode": "ro",
+      "RW": false,
+      "Propagation": "rprivate"
+    }
+  ],
+  "Config": {
+    "Hostname": "3f9c1d2e4b5a",
+    "User": "sandbox",
+    "Env": [
+      "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+      "HOME=/home/sandbox",
+      "ANTHROPIC_API_KEY=REDACTED",
+      "SANDBOX_PROJECT=web-shop",
+      "TERM=xterm-256color"
+    ],
+    "Image": "localhost/sandbox-project-web-shop:0.73.1-7f3a",
+    "Labels": {
+      "sandbox.project": "web-shop",
+      "sandbox.hash": "a1b2c3d4e5f6"
+    }
+  },
+  "NetworkSettings": {
+    "Ports": {
+      "3000/tcp": [{ "HostIp": "127.0.0.1", "HostPort": "3000" }],
+      "9229/tcp": null
+    },
+    "Networks": { "bridge": { "IPAddress": "172.17.0.2" } }
+  }
+}

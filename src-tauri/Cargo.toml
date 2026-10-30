@@ -1,0 +1,21 @@
+[package]
+name = "sandbox-watcher"
+description = "Overview of your running MaibornWolff Sandbox containers"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lib]
+name = "sandbox_watcher_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+sandbox-core = { path = "../crates/sandbox-core" }
+serde.workspace = true
+serde_json.workspace = true
+tauri = { version = "2", features = [] }
+tokio.workspace = true
