@@ -3,10 +3,17 @@
 All notable changes to Sandbox Watcher. Generated from
 [Conventional Commits](https://www.conventionalcommits.org/) by `scripts/changelog.mjs`.
 
+## 0.1.1 (2026-10-30)
+
+_No notable changes._
+**Full changelog:** [v0.1.0...v0.1.1](https://github.com/thorsten/sandbox-watcher/compare/v0.1.0...v0.1.1)
+
 ## 0.1.0 (2026-10-30)
 
 ### Features
 
+- pick a project in the tray to select it in the window ([6adc012](https://github.com/thorsten/sandbox-watcher/commit/6adc01222c3126438bbdcc3885b724cf7537c154))
+- generate the changelog and release notes from commits ([2d3fbd0](https://github.com/thorsten/sandbox-watcher/commit/2d3fbd0cf17a69194d062e689d065eee43878292))
 - **site:** redesign the landing page ([3f1ce79](https://github.com/thorsten/sandbox-watcher/commit/3f1ce79ffe89bf5c673e18ccd29385adf96f24d1))
 - activity timelines for Codex, Pi and OpenCode ([b883800](https://github.com/thorsten/sandbox-watcher/commit/b883800bb315e3f4306be08aaad2ebdea3ee3460))
 - **ui:** master-detail layout with an Activity view ([6a44bc7](https://github.com/thorsten/sandbox-watcher/commit/6a44bc70ca65c9f381ad0a097d7bd937f89517f7))

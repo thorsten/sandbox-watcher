@@ -118,6 +118,11 @@ GitHub Pages.
 Release notes for a tag come from the same script and land in the GitHub
 release automatically.
 
+To cut a release, run `pnpm release 0.1.1`. It bumps the version in
+`Cargo.toml`, `Cargo.lock`, `package.json` and `tauri.conf.json`, regenerates
+the changelog, commits and tags. Push `main` and the tag; the `Release`
+workflow builds and publishes the installers.
+
 ## Commits
 
 Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)

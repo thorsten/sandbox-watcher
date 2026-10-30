@@ -51,8 +51,9 @@ jobs:
           - name: macOS Apple silicon
             os: macos-latest
             target: aarch64-apple-darwin
+          # Intel macOS runners are retired; cross-compile on Apple silicon.
           - name: macOS Intel
-            os: macos-13
+            os: macos-latest
             target: x86_64-apple-darwin
           - name: Linux x64
             os: ubuntu-22.04
