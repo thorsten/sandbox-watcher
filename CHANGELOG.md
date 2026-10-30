@@ -3,6 +3,20 @@
 All notable changes to Sandbox Watcher. Generated from
 [Conventional Commits](https://www.conventionalcommits.org/) by `scripts/changelog.mjs`.
 
+## 0.3.0 (2026-10-30)
+
+### Features
+
+- self-update from GitHub Releases ([2267c8e](https://github.com/thorsten/sandbox-watcher/commit/2267c8ea4d8bda026b8d81cc2da55e02cf6f83c8))
+
+### Tests
+
+- **ui:** cover every component and helper with Vitest ([45266bb](https://github.com/thorsten/sandbox-watcher/commit/45266bbe0b5a6e70025271cee420dca7f99f133e))
+
+### Chores
+
+- pin pnpm 11.22.0 and stop the release script from reinstalling ([33d0e35](https://github.com/thorsten/sandbox-watcher/commit/33d0e3578305e10d4c1d2d81bf8b944c3bd67d85))
+
 ## 0.2.0 (2026-10-30)
 
 ### Features
@@ -24,6 +38,12 @@ All notable changes to Sandbox Watcher. Generated from
 
 - build macOS bundles for Apple silicon only ([18569e1](https://github.com/thorsten/sandbox-watcher/commit/18569e1af153d28fc5ea33309ff592cafab15afb))
 - build the Intel macOS bundle on Apple silicon and add a release script ([49522df](https://github.com/thorsten/sandbox-watcher/commit/49522df318a6012ce2f60fb477f089db7da9563f))
+
+### Chores
+
+- **release:** v0.2.0 ([b2efe21](https://github.com/thorsten/sandbox-watcher/commit/b2efe218d2e851e5cd06747a55be60edaf7d6181))
+
+**Full changelog:** [v0.1.0...v0.2.0](https://github.com/thorsten/sandbox-watcher/compare/v0.1.0...v0.2.0)
 
 ## 0.1.0 (2026-10-30)
 
