@@ -463,7 +463,14 @@ impl RuntimeAdapter for DockerAdapter {
         let mut filters: HashMap<String, Vec<String>> = HashMap::new();
         filters.insert("type".into(), vec!["container".into()]);
         filters.insert("label".into(), vec![PROJECT_LABEL.into()]);
-        let options = EventsOptionsBuilder::new().filters(&filters).build();
+        // The request is only sent when the stream is first polled. Asking for
+        // events since a moment ago means nothing is lost between creating the
+        // stream and consuming it.
+        let since = (Utc::now().timestamp() - 2).max(0).to_string();
+        let options = EventsOptionsBuilder::new()
+            .since(&since)
+            .filters(&filters)
+            .build();
         let adapter = self.clone();
         let stream = self.docker.events(Some(options)).filter_map(move |item| {
             let adapter = adapter.clone();

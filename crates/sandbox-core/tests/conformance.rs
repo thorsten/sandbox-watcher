@@ -129,24 +129,34 @@ async fn conformance(adapter: Arc<dyn RuntimeAdapter>, slug: &str) {
 
     let deadline = Duration::from_secs(20);
     if caps.events {
+        // Consume the stream before stopping: the request goes out on first
+        // poll, and events emitted before that are not replayed.
         let mut events = adapter.events().await.expect("events");
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let consumer = tokio::spawn(async move {
+            while let Some(item) = events.next().await {
+                if tx.send(item).is_err() {
+                    break;
+                }
+            }
+        });
+        tokio::time::sleep(Duration::from_millis(500)).await;
         adapter
             .stop(&container.id, Some(Duration::from_secs(2)))
             .await
             .expect("stop");
-        // Collect everything seen so a failure log shows the runtime's vocabulary.
-        let seen: std::sync::Arc<std::sync::Mutex<Vec<String>>> = Default::default();
-        let seen_in_task = seen.clone();
-        let outcome = tokio::time::timeout(deadline, async {
-            while let Some(event) = events.next().await {
-                let event = match event {
+
+        let mut seen: Vec<String> = Vec::new();
+        let outcome: Result<bool, String> = tokio::time::timeout(deadline, async {
+            while let Some(item) = rx.recv().await {
+                let event = match item {
                     Ok(event) => event,
                     Err(e) => {
-                        seen_in_task.lock().unwrap().push(format!("error: {e}"));
+                        seen.push(format!("error: {e}"));
                         return Err(e.to_string());
                     }
                 };
-                seen_in_task.lock().unwrap().push(format!(
+                seen.push(format!(
                     "{} {:?} {}",
                     event.container_id.chars().take(12).collect::<String>(),
                     event.kind,
@@ -165,12 +175,12 @@ async fn conformance(adapter: Arc<dyn RuntimeAdapter>, slug: &str) {
         })
         .await
         .unwrap_or(Ok(false));
+        consumer.abort();
         match outcome {
             Ok(saw_stop) => assert!(
                 saw_stop,
-                "stop or die event for {} within {deadline:?}; events seen: {:?}",
-                container.name,
-                seen.lock().unwrap()
+                "stop or die event for {} within {deadline:?}; events seen: {seen:?}",
+                container.name
             ),
             // Some setups (rootless Podman without journald) have no events
             // backend. The app falls back to polling there; so does this test.
