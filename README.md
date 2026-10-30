@@ -37,6 +37,18 @@ cargo clippy --all-targets -- -D warnings
 pnpm lint && pnpm format:check && pnpm test && pnpm build
 ```
 
+## Commits
+
+Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)
+and are checked by commitlint. Husky installs the hooks on `pnpm install`:
+`pre-commit` runs lint and format check, `commit-msg` runs commitlint.
+Pull requests are checked again in CI.
+
+```sh
+git commit -m "feat(core): add docker adapter"
+git commit -m "fix(ui): keep stopped containers visible"
+```
+
 ## License
 
 MIT, see [`LICENSE`](LICENSE).

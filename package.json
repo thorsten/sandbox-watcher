@@ -15,7 +15,8 @@
     "format": "oxfmt",
     "format:check": "oxfmt --check",
     "tauri": "tauri",
-    "tauri:dev:mock": "SANDBOX_WATCHER_MOCK=1 tauri dev"
+    "tauri:dev:mock": "SANDBOX_WATCHER_MOCK=1 tauri dev",
+    "prepare": "husky"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.0",
@@ -23,11 +24,14 @@
     "react-dom": "^19.2.0"
   },
   "devDependencies": {
+    "@commitlint/cli": "^21.2.4",
+    "@commitlint/config-conventional": "^21.2.4",
     "@tauri-apps/cli": "^2.12.0",
     "@types/node": "^24.19.2",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@vitejs/plugin-react": "^6.0.0",
+    "husky": "^9.1.7",
     "oxfmt": "^0.75.0",
     "oxlint": "^1.90.0",
     "typescript": "^5.9.0",
