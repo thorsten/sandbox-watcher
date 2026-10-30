@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use sandbox_core::RuntimeAdapter;
-use sandbox_core::actions::{STOP_TIMEOUT, StopResult, terminal_launches};
+use sandbox_core::actions::{MacTerminal, STOP_TIMEOUT, StopResult, terminal_launches};
 use sandbox_core::adapter::{ContainerFilter, LogOptions};
 use sandbox_core::detect::{DetectedRuntime, Environment, detect};
 use sandbox_core::live::LiveRuntime;
@@ -224,8 +224,31 @@ async fn open_project(
         .map_err(|e| e.to_string())
 }
 
+/// Terminal apps installed on this Mac, user preference first.
+/// `SANDBOX_WATCHER_TERMINAL=iterm|terminal` pins one.
+fn mac_terminals() -> Vec<MacTerminal> {
+    let mut list = Vec::new();
+    if let Some(choice) = std::env::var("SANDBOX_WATCHER_TERMINAL")
+        .ok()
+        .and_then(|v| MacTerminal::from_name(&v))
+    {
+        list.push(choice);
+    }
+    let home = std::env::var("HOME").unwrap_or_default();
+    let iterm_installed = [
+        "/Applications/iTerm.app",
+        &format!("{home}/Applications/iTerm.app"),
+    ]
+    .iter()
+    .any(|p| std::path::Path::new(p).exists());
+    if iterm_installed && !list.contains(&MacTerminal::ITerm) {
+        list.push(MacTerminal::ITerm);
+    }
+    list
+}
+
 /// Open a terminal in the project directory. Tries the platform's usual
-/// terminals in order until one starts.
+/// terminals in order until one succeeds.
 #[tauri::command]
 async fn open_terminal(state: State<'_, AppState>, container_id: String) -> Result<String, String> {
     let adapter = state.adapter_for(&container_id)?;
@@ -234,20 +257,57 @@ async fn open_terminal(state: State<'_, AppState>, container_id: String) -> Resu
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "this container has no bind-mounted project directory".to_string())?;
     let terminal_env = std::env::var("TERMINAL").ok();
-    let launches = terminal_launches(std::env::consts::OS, &dir, terminal_env.as_deref());
+    let launches = terminal_launches(
+        std::env::consts::OS,
+        &dir,
+        terminal_env.as_deref(),
+        &mac_terminals(),
+    );
     let mut errors = Vec::new();
     for launch in &launches {
-        let mut command = std::process::Command::new(&launch.program);
+        let mut command = tokio::process::Command::new(&launch.program);
         command.args(&launch.args);
         if let Some(cwd) = &launch.cwd {
             command.current_dir(cwd);
         }
         command.stdin(std::process::Stdio::null());
         command.stdout(std::process::Stdio::null());
-        command.stderr(std::process::Stdio::null());
-        match command.spawn() {
-            Ok(_) => return Ok(launch.program.clone()),
-            Err(e) => errors.push(format!("{}: {e}", launch.program)),
+        command.stderr(std::process::Stdio::piped());
+        if !launch.wait {
+            match command.spawn() {
+                Ok(_) => return Ok(launch.program.clone()),
+                Err(e) => errors.push(format!("{}: {e}", launch.program)),
+            }
+            continue;
+        }
+        let child = match command.spawn() {
+            Ok(child) => child,
+            Err(e) => {
+                errors.push(format!("{}: {e}", launch.program));
+                continue;
+            }
+        };
+        match tokio::time::timeout(std::time::Duration::from_secs(20), child.wait_with_output())
+            .await
+        {
+            Ok(Ok(output)) if output.status.success() => {
+                let label = launch
+                    .args
+                    .iter()
+                    .find_map(|a| {
+                        a.strip_prefix("tell application \"")
+                            .map(|r| r.trim_end_matches('"').to_string())
+                    })
+                    .unwrap_or_else(|| launch.program.clone());
+                return Ok(label);
+            }
+            Ok(Ok(output)) => errors.push(format!(
+                "{}: {}",
+                launch.program,
+                String::from_utf8_lossy(&output.stderr).trim()
+            )),
+            Ok(Err(e)) => errors.push(format!("{}: {e}", launch.program)),
+            Err(_) => errors.push(format!("{}: timed out", launch.program)),
         }
     }
     Err(format!(

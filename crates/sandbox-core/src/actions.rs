@@ -72,6 +72,40 @@ pub struct TerminalLaunch {
     pub args: Vec<String>,
     /// Working directory to start the process in. Most terminals open there.
     pub cwd: Option<String>,
+    /// Wait for the process and require exit code 0 before calling it a
+    /// success. Needed for `osascript`, which starts fine and then fails.
+    pub wait: bool,
+}
+
+/// Terminal apps we know how to drive on macOS, in preference order.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MacTerminal {
+    ITerm,
+    TerminalApp,
+}
+
+impl MacTerminal {
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name.trim().to_ascii_lowercase().as_str() {
+            "iterm" | "iterm2" | "iterm.app" => Some(MacTerminal::ITerm),
+            "terminal" | "terminal.app" | "apple" => Some(MacTerminal::TerminalApp),
+            _ => None,
+        }
+    }
+}
+
+fn applescript_launch(lines: &[String]) -> TerminalLaunch {
+    let mut args = Vec::with_capacity(lines.len() * 2);
+    for line in lines {
+        args.push("-e".into());
+        args.push(line.clone());
+    }
+    TerminalLaunch {
+        program: "osascript".into(),
+        args,
+        cwd: None,
+        wait: true,
+    }
 }
 
 fn applescript_string(value: &str) -> String {
@@ -84,44 +118,64 @@ fn shell_single_quote(value: &str) -> String {
 }
 
 /// Candidate launches, most specific first. The caller tries them in order
-/// until one spawns. `terminal_env` is `$TERMINAL` on Linux.
-pub fn terminal_launches(os: &str, dir: &str, terminal_env: Option<&str>) -> Vec<TerminalLaunch> {
+/// until one succeeds. `terminal_env` is `$TERMINAL` on Linux. On macOS,
+/// `mac_terminals` lists the installed apps in preference order (the user's
+/// explicit choice first, then whatever is installed, Terminal.app last).
+pub fn terminal_launches(
+    os: &str,
+    dir: &str,
+    terminal_env: Option<&str>,
+    mac_terminals: &[MacTerminal],
+) -> Vec<TerminalLaunch> {
     let hint = "echo 'sandbox-watcher: run `sandbox` for a shell in this project, `sandbox status` for sessions'";
     match os {
         "macos" => {
-            let script = format!("cd {} && clear && {hint}", shell_single_quote(dir));
-            vec![
-                TerminalLaunch {
-                    program: "osascript".into(),
-                    args: vec![
-                        "-e".into(),
-                        "tell application \"Terminal\"".into(),
-                        "-e".into(),
+            let script = applescript_string(&format!(
+                "cd {} && clear && {hint}",
+                shell_single_quote(dir)
+            ));
+            let mut launches = Vec::new();
+            let mut order: Vec<MacTerminal> = mac_terminals.to_vec();
+            if !order.contains(&MacTerminal::TerminalApp) {
+                order.push(MacTerminal::TerminalApp);
+            }
+            for app in order {
+                match app {
+                    MacTerminal::ITerm => launches.push(applescript_launch(&[
+                        "tell application \"iTerm\"".into(),
                         "activate".into(),
-                        "-e".into(),
-                        format!("do script \"{}\"", applescript_string(&script)),
-                        "-e".into(),
+                        "set newWindow to (create window with default profile)".into(),
+                        format!("tell current session of newWindow to write text \"{script}\""),
                         "end tell".into(),
-                    ],
-                    cwd: None,
-                },
-                TerminalLaunch {
-                    program: "open".into(),
-                    args: vec!["-a".into(), "Terminal".into(), dir.into()],
-                    cwd: None,
-                },
-            ]
+                    ])),
+                    MacTerminal::TerminalApp => launches.push(applescript_launch(&[
+                        "tell application \"Terminal\"".into(),
+                        "activate".into(),
+                        format!("do script \"{script}\""),
+                        "end tell".into(),
+                    ])),
+                }
+            }
+            launches.push(TerminalLaunch {
+                program: "open".into(),
+                args: vec!["-a".into(), "Terminal".into(), dir.into()],
+                cwd: None,
+                wait: true,
+            });
+            launches
         }
         "windows" => vec![
             TerminalLaunch {
                 program: "wt.exe".into(),
                 args: vec!["-d".into(), dir.into()],
                 cwd: None,
+                wait: false,
             },
             TerminalLaunch {
                 program: "cmd.exe".into(),
                 args: vec!["/c".into(), "start".into(), String::new(), "cmd.exe".into()],
                 cwd: Some(dir.into()),
+                wait: false,
             },
         ],
         _ => {
@@ -131,6 +185,7 @@ pub fn terminal_launches(os: &str, dir: &str, terminal_env: Option<&str>) -> Vec
                     program: term.into(),
                     args: vec![],
                     cwd: Some(dir.into()),
+                    wait: false,
                 });
             }
             for program in [
@@ -147,6 +202,7 @@ pub fn terminal_launches(os: &str, dir: &str, terminal_env: Option<&str>) -> Vec
                     program: program.into(),
                     args: vec![],
                     cwd: Some(dir.into()),
+                    wait: false,
                 });
             }
             launches
@@ -171,31 +227,62 @@ mod tests {
     use crate::mock::MockAdapter;
 
     #[test]
-    fn macos_uses_terminal_app_with_escaped_path() {
-        let launches = terminal_launches("macos", "/Users/me/it's \"here\"", None);
+    fn macos_prefers_iterm_when_listed_and_escapes_the_path() {
+        let dir = "/Users/me/it's \"here\"";
+        let launches = terminal_launches("macos", dir, None, &[MacTerminal::ITerm]);
+        assert_eq!(launches.len(), 3, "iTerm, Terminal.app, open fallback");
         assert_eq!(launches[0].program, "osascript");
-        let script = &launches[0].args[5];
-        assert!(script.starts_with("do script \""));
+        assert!(launches[0].wait);
+        assert!(launches[0].args.iter().any(|a| a.contains("iTerm")));
+        let write = launches[0]
+            .args
+            .iter()
+            .find(|a| a.starts_with("tell current session"))
+            .unwrap();
         assert!(
-            script.contains("cd '/Users/me/it'\\\\''s \\\"here\\\"'"),
-            "{script}"
+            write.contains("cd '/Users/me/it'\\\\''s \\\"here\\\"'"),
+            "{write}"
         );
-        assert_eq!(launches[1].program, "open");
+        assert!(launches[1].args.iter().any(|a| a.contains("Terminal")));
+        assert_eq!(launches[2].program, "open");
+    }
+
+    #[test]
+    fn macos_without_iterm_goes_straight_to_terminal_app() {
+        let launches = terminal_launches("macos", "/p", None, &[]);
+        assert_eq!(launches.len(), 2);
+        assert!(
+            launches[0]
+                .args
+                .iter()
+                .any(|a| a == "tell application \"Terminal\"")
+        );
+    }
+
+    #[test]
+    fn mac_terminal_names() {
+        assert_eq!(MacTerminal::from_name("iTerm2"), Some(MacTerminal::ITerm));
+        assert_eq!(
+            MacTerminal::from_name(" terminal "),
+            Some(MacTerminal::TerminalApp)
+        );
+        assert_eq!(MacTerminal::from_name("ghostty"), None);
     }
 
     #[test]
     fn linux_prefers_terminal_env_and_starts_in_dir() {
-        let launches = terminal_launches("linux", "/home/me/p", Some("wezterm"));
+        let launches = terminal_launches("linux", "/home/me/p", Some("wezterm"), &[]);
         assert_eq!(launches[0].program, "wezterm");
         assert_eq!(launches[0].cwd.as_deref(), Some("/home/me/p"));
+        assert!(!launches[0].wait);
         assert!(launches.iter().any(|l| l.program == "gnome-terminal"));
-        let without = terminal_launches("linux", "/home/me/p", Some("  "));
+        let without = terminal_launches("linux", "/home/me/p", Some("  "), &[]);
         assert_eq!(without[0].program, "x-terminal-emulator");
     }
 
     #[test]
     fn windows_tries_windows_terminal_then_cmd() {
-        let launches = terminal_launches("windows", r"C:\work\p", None);
+        let launches = terminal_launches("windows", r"C:\work\p", None, &[]);
         assert_eq!(launches[0].program, "wt.exe");
         assert_eq!(launches[1].cwd.as_deref(), Some(r"C:\work\p"));
     }
