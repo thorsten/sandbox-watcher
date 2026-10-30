@@ -19,7 +19,7 @@
       {
         "Type": "bind",
         "Source": "/Users/dev/projects/web-shop",
-        "Destination": "/home/sandbox/web-shop",
+        "Destination": "/Users/dev/projects/web-shop",
         "Mode": "",
         "RW": true,
         "Propagation": "rprivate"

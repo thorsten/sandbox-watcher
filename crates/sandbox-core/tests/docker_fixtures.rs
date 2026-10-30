@@ -107,12 +107,27 @@ fn classifies_fixture_mounts() {
         .unwrap();
     assert_eq!(
         details.working_dir.as_deref(),
-        Some("/home/sandbox/web-shop")
+        Some("/Users/dev/projects/web-shop")
     );
     classify(&mut details);
     let roles: Vec<_> = details.mounts.iter().map(|m| m.role).collect();
     assert_eq!(
         roles,
         vec![MountRole::Project, MountRole::Persisted, MountRole::Runtime]
+    );
+}
+
+#[test]
+fn classifies_fixture_mounts_without_working_dir() {
+    let mut details = container_inspect(&fixture("container-inspect.json"))
+        .unwrap()
+        .unwrap();
+    details.working_dir = None;
+    classify(&mut details);
+    let roles: Vec<_> = details.mounts.iter().map(|m| m.role).collect();
+    assert_eq!(
+        roles,
+        vec![MountRole::Project, MountRole::Persisted, MountRole::Runtime],
+        "identity mount wins"
     );
 }

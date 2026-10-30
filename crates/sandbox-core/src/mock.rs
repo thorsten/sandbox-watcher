@@ -134,7 +134,7 @@ pub fn mock_container(slug: &str, instance: u32, state: &str, hash: &str) -> Moc
             },
             mounts: vec![Mount {
                 source: format!("/Users/dev/projects/{slug}"),
-                destination: format!("/home/sandbox/{slug}"),
+                destination: format!("/Users/dev/projects/{slug}"),
                 read_only: false,
                 kind: "bind".into(),
                 role: Default::default(),
@@ -143,7 +143,7 @@ pub fn mock_container(slug: &str, instance: u32, state: &str, hash: &str) -> Moc
             ports: vec![],
             env_names: vec!["ANTHROPIC_API_KEY".into(), "TERM".into()],
             user: Some("sandbox".into()),
-            working_dir: Some(format!("/home/sandbox/{slug}")),
+            working_dir: Some(format!("/Users/dev/projects/{slug}")),
             exit_code: if container_state.is_running() {
                 None
             } else {

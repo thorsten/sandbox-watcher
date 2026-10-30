@@ -27,6 +27,9 @@ pub const SESSIONS_DIRECTORY: &str = "/tmp/sandbox-sessions";
 /// `src/modules/network-diagnostics/container-diagnostic-commands.ts`.
 pub const CONTAINER_TOOLS_PATH: &str = "/usr/local/bin/sandbox-container-tools";
 
+/// Home directory of the container user. `configuration/mount-path-resolution.ts`.
+pub const CONTAINER_HOME: &str = "/home/sandbox";
+
 /// Where the read-only runtime files are mounted. `sandbox-runtime/runtime-paths.ts`.
 pub const CONTAINER_RUNTIME_DIRECTORY: &str = "/opt/sandbox-cli";
 
