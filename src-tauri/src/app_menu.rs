@@ -10,11 +10,22 @@ const WEBSITE: &str = "https://thorsten.github.io/sandbox-watcher/";
 pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     let pkg = app.package_info();
     let config = app.config();
+    // The Cargo package is `sandbox-watcher`; people should see the product name.
+    let product_name = config
+        .product_name
+        .clone()
+        .unwrap_or_else(|| "Sandbox Watcher".to_string());
     let icon = Image::from_bytes(include_bytes!("../icons/128x128@2x.png")).ok();
     let about = AboutMetadataBuilder::new()
-        .name(Some(pkg.name.clone()))
+        .name(Some(product_name.clone()))
         .version(Some(pkg.version.to_string()))
-        .copyright(config.bundle.copyright.clone())
+        .copyright(
+            config
+                .bundle
+                .copyright
+                .clone()
+                .or_else(|| Some("© 2026 Thorsten Rinne".to_string())),
+        )
         .authors(config.bundle.publisher.clone().map(|p| vec![p]))
         .license(config.bundle.license.clone())
         .website(Some(WEBSITE))
@@ -47,10 +58,10 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     #[cfg(target_os = "macos")]
     let app_menu = Submenu::with_items(
         app,
-        pkg.name.clone(),
+        product_name.clone(),
         true,
         &[
-            &PredefinedMenuItem::about(app, None, Some(about))?,
+            &PredefinedMenuItem::about(app, Some(&format!("About {product_name}")), Some(about))?,
             &PredefinedMenuItem::separator(app)?,
             &PredefinedMenuItem::services(app, None)?,
             &PredefinedMenuItem::separator(app)?,
