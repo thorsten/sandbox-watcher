@@ -61,6 +61,11 @@ impl LiveRuntime {
         })
     }
 
+    /// The adapter from the last successful refresh, if any.
+    pub fn adapter(&self) -> Option<Arc<dyn RuntimeAdapter>> {
+        self.cached()
+    }
+
     fn cached(&self) -> Option<Arc<dyn RuntimeAdapter>> {
         self.adapter.lock().expect("live adapter poisoned").clone()
     }
