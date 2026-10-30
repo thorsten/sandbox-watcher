@@ -60,6 +60,15 @@ pnpm lint && pnpm format:check && pnpm test && pnpm build
 Conformance against a real runtime needs a prepared container; the recipe is
 in `.github/workflows/ci.yml` (Docker and Podman) and in the README (Apple).
 
+## UI tests
+
+Vitest runs in Node without a DOM library. Components are rendered with
+`react-dom/server` (`src/test/render.tsx`) and asserted on markup and text;
+the Tauri bridge is mocked globally in `src/test/tauriMock.ts`, and
+`src/test/fixtures.ts` builds containers, sessions, reports and settings.
+Effects do not run under static rendering, so panels are tested in their
+initial state and their logic lives in pure modules with their own tests.
+
 ## Verification expectations
 
 - Run the Rust and web checks above before every commit; the pre-commit hook
