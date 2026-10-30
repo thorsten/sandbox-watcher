@@ -15,6 +15,7 @@ pub mod mock;
 pub mod model;
 pub mod overview;
 pub mod sandbox;
+pub mod sessions;
 
 pub use adapter::RuntimeAdapter;
 pub use error::{Error, Result};

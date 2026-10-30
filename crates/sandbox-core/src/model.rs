@@ -65,11 +65,12 @@ impl ContainerState {
 }
 
 /// Whether the sandbox entrypoint has finished preparing the container.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum Readiness {
     Starting,
     Ready,
+    #[default]
     Unknown,
 }
 
@@ -180,7 +181,8 @@ pub enum RuntimeEventKind {
     Started,
     Stopped,
     Died,
-    ExecCreated,
+    /// Carries the exec command as reported by the runtime, if any.
+    ExecCreated(String),
     Removed,
     Other(String),
 }

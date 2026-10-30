@@ -7,6 +7,8 @@
 /// Newest sandbox release these conventions were verified against.
 pub const TESTED_SANDBOX_VERSION: &str = "0.73.1";
 
+use crate::model::Readiness;
+
 /// Label carrying the project slug. `src/modules/sandbox-containers/container-labels.ts`.
 pub const PROJECT_LABEL: &str = "sandbox.project";
 
@@ -51,27 +53,54 @@ pub fn parse_container_name(name: &str) -> Option<(String, u32)> {
     Some((rest.to_string(), 1))
 }
 
-/// Shell snippet that lists active sessions as `<pid>|<cmdline>` lines.
+/// Marker passed as `$0` to our probe so its `exec_create` event can be told
+/// apart from execs started by sandbox or the user.
+pub const PROBE_SENTINEL: &str = "sandbox-watcher-probe";
+
+/// What one probe exec reports about a running container.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProbeReport {
+    pub readiness: Readiness,
+    /// `(pid, command line)` of each live session.
+    pub sessions: Vec<(u32, String)>,
+}
+
+/// Shell snippet that reports readiness and active sessions in one exec.
 ///
-/// Mirrors what `sandbox status` runs (`container-status.ts`,
-/// `buildSessionDetailsCommand`): drop markers whose PID is gone, then read
-/// `/proc/<pid>/cmdline` for the rest. NUL separators become spaces.
-pub fn session_details_command() -> Vec<String> {
+/// First line is `ready` or `starting` depending on [`READY_FILE`]. Then one
+/// `<pid>|<cmdline>` line per session marker, mirroring what `sandbox status`
+/// runs (`container-status.ts`, `buildSessionDetailsCommand`): markers whose
+/// PID is gone are removed, `/proc/<pid>/cmdline` is read for the rest and NUL
+/// separators become spaces.
+pub fn status_probe_command() -> Vec<String> {
     let script = format!(
-        "set -eu; d='{dir}'; [ -d \"$d\" ] || exit 0; \
+        "if [ -f '{ready}' ]; then echo ready; else echo starting; fi; \
+         d='{dir}'; [ -d \"$d\" ] || exit 0; \
          for m in \"$d\"/*; do [ -e \"$m\" ] || continue; p=\"${{m##*/}}\"; \
          if [ -d \"/proc/$p\" ]; then \
            printf '%s|' \"$p\"; tr '\\0' ' ' < \"/proc/$p/cmdline\" 2>/dev/null || true; printf '\\n'; \
          else rm -f \"$m\"; fi; done",
+        ready = READY_FILE,
         dir = SESSIONS_DIRECTORY
     );
-    vec!["sh".into(), "-c".into(), script]
+    vec!["sh".into(), "-c".into(), script, PROBE_SENTINEL.into()]
 }
 
-/// Parse the output of [`session_details_command`].
-pub fn parse_session_details(output: &str) -> Vec<(u32, String)> {
-    output
-        .lines()
+/// Parse the output of [`status_probe_command`].
+pub fn parse_probe(output: &str) -> ProbeReport {
+    let mut lines = output.lines().peekable();
+    let readiness = match lines.peek().map(|l| l.trim()) {
+        Some("ready") => {
+            lines.next();
+            Readiness::Ready
+        }
+        Some("starting") => {
+            lines.next();
+            Readiness::Starting
+        }
+        _ => Readiness::Unknown,
+    };
+    let sessions = lines
         .filter_map(|line| {
             let (pid, command) = line.split_once('|')?;
             let pid = pid.trim().parse::<u32>().ok()?;
@@ -83,7 +112,11 @@ pub fn parse_session_details(output: &str) -> Vec<(u32, String)> {
             };
             Some((pid, command.to_string()))
         })
-        .collect()
+        .collect();
+    ProbeReport {
+        readiness,
+        sessions,
+    }
 }
 
 #[cfg(test)]
@@ -110,15 +143,29 @@ mod tests {
     }
 
     #[test]
-    fn parses_session_lines() {
-        let out = "123|claude --dangerously-skip-permissions\n  456 | \nbroken\n7|zsh -l\n";
+    fn parses_probe_output() {
+        let out = "ready\n123|claude --dangerously-skip-permissions\n  456 | \nbroken\n7|zsh -l\n";
+        let report = parse_probe(out);
+        assert_eq!(report.readiness, Readiness::Ready);
         assert_eq!(
-            parse_session_details(out),
+            report.sessions,
             vec![
                 (123, "claude --dangerously-skip-permissions".to_string()),
                 (456, "unknown".to_string()),
                 (7, "zsh -l".to_string()),
             ]
         );
+        assert_eq!(parse_probe("starting\n").readiness, Readiness::Starting);
+        let legacy = parse_probe("42|codex\n");
+        assert_eq!(legacy.readiness, Readiness::Unknown);
+        assert_eq!(legacy.sessions.len(), 1);
+    }
+
+    #[test]
+    fn probe_command_carries_sentinel() {
+        let cmd = status_probe_command();
+        assert_eq!(cmd[0], "sh");
+        assert_eq!(cmd.last().unwrap(), PROBE_SENTINEL);
+        assert!(cmd[2].contains(READY_FILE) && cmd[2].contains(SESSIONS_DIRECTORY));
     }
 }

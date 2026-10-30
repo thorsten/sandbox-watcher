@@ -146,7 +146,7 @@ pub fn mock_container(slug: &str, instance: u32, state: &str, hash: &str) -> Moc
         },
         exec_output: ExecOutput {
             exit_code: 0,
-            stdout: "4242|claude\n".into(),
+            stdout: "ready\n4242|claude\n4300|zsh -l\n".into(),
             stderr: String::new(),
         },
         logs: "sandbox: container ready\n".into(),
@@ -278,21 +278,17 @@ impl RuntimeAdapter for MockAdapter {
 }
 
 fn tokio_stream_from_broadcast(
-    mut rx: broadcast::Receiver<RuntimeEvent>,
+    rx: broadcast::Receiver<RuntimeEvent>,
 ) -> impl futures::Stream<Item = Result<RuntimeEvent>> {
-    futures::stream::poll_fn(move |cx| {
-        let fut = rx.recv();
-        let mut fut = std::pin::pin!(fut);
-        match fut.as_mut().poll(cx) {
-            std::task::Poll::Ready(Ok(event)) => std::task::Poll::Ready(Some(Ok(event))),
-            std::task::Poll::Ready(Err(broadcast::error::RecvError::Lagged(_))) => {
-                cx.waker().wake_by_ref();
-                std::task::Poll::Pending
+    // `unfold` keeps one `recv()` future alive across polls, so the waker
+    // registered with the channel survives and the stream is woken on send.
+    futures::stream::unfold(rx, |mut rx| async move {
+        loop {
+            match rx.recv().await {
+                Ok(event) => return Some((Ok(event), rx)),
+                Err(broadcast::error::RecvError::Lagged(_)) => continue,
+                Err(broadcast::error::RecvError::Closed) => return None,
             }
-            std::task::Poll::Ready(Err(broadcast::error::RecvError::Closed)) => {
-                std::task::Poll::Ready(None)
-            }
-            std::task::Poll::Pending => std::task::Poll::Pending,
         }
     })
 }

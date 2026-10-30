@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useState } from "react";
-import { appVersion, getOverview } from "./api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { appVersion, getOverview, onRuntimeEvent } from "./api";
 import { ContainerList } from "./components/ContainerList";
 import { RuntimeBanner } from "./components/RuntimeBanner";
 import type { Overview } from "./types";
 
-const REFRESH_MS = 5_000;
+/** Fallback poll. Lifecycle events from the runtime trigger refreshes sooner. */
+const POLL_MS = 10_000;
+/** Collapse bursts of events (start, exec_create, ...) into one refresh. */
+const EVENT_DEBOUNCE_MS = 250;
 
 type LoadState =
   | { phase: "loading" }
@@ -13,13 +16,18 @@ type LoadState =
 
 export function App() {
   const [state, setState] = useState<LoadState>({ phase: "loading" });
+  const inFlight = useRef(false);
 
   const refresh = useCallback(async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     try {
       const [overview, version] = await Promise.all([getOverview(), appVersion().catch(() => "")]);
       setState({ phase: "ready", overview, version, refreshedAt: new Date() });
     } catch (error) {
       setState({ phase: "error", message: error instanceof Error ? error.message : String(error) });
+    } finally {
+      inFlight.current = false;
     }
   }, []);
 
@@ -28,8 +36,19 @@ export function App() {
     // setState here; the rule cannot see through the async boundary.
     // oxlint-disable-next-line react/set-state-in-effect
     void refresh();
-    const timer = window.setInterval(() => void refresh(), REFRESH_MS);
-    return () => window.clearInterval(timer);
+    const timer = window.setInterval(() => void refresh(), POLL_MS);
+
+    let debounce: number | undefined;
+    const unlisten = onRuntimeEvent(() => {
+      window.clearTimeout(debounce);
+      debounce = window.setTimeout(() => void refresh(), EVENT_DEBOUNCE_MS);
+    });
+
+    return () => {
+      window.clearInterval(timer);
+      window.clearTimeout(debounce);
+      unlisten.then((fn) => fn()).catch(() => undefined);
+    };
   }, [refresh]);
 
   return (

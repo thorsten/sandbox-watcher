@@ -11,6 +11,16 @@ export type ContainerState =
   | "dead"
   | "unknown";
 
+export type Readiness = "starting" | "ready" | "unknown";
+
+export type AgentKind = "claude-code" | "codex" | "open-code" | "pi" | "shell" | "other";
+
+export interface Session {
+  pid: number;
+  command: string;
+  agent: AgentKind;
+}
+
 export interface SandboxContainer {
   id: string;
   name: string;
@@ -21,7 +31,21 @@ export interface SandboxContainer {
   started_at: string | null;
   config_hash: string | null;
   labels: Record<string, string>;
+  /** Only meaningful for running containers. */
+  readiness: Readiness;
+  sessions: Session[];
 }
+
+export type RuntimeEventKind =
+  | { kind: "created" | "started" | "stopped" | "died" | "removed" }
+  | { kind: "exec-created"; detail: string }
+  | { kind: "other"; detail: string };
+
+export type RuntimeEvent = {
+  at: string;
+  container_id: string;
+  container_name: string | null;
+} & RuntimeEventKind;
 
 export interface RuntimeInfo {
   kind: RuntimeKind;

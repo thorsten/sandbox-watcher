@@ -161,12 +161,13 @@ pub fn map_event(message: &EventMessage) -> Option<RuntimeEvent> {
     let actor = message.actor.as_ref()?;
     let container_id = actor.id.clone()?;
     let action = message.action.as_deref().unwrap_or("");
-    let kind = match action.split(':').next().unwrap_or("").trim() {
+    let (verb, detail) = action.split_once(':').unwrap_or((action, ""));
+    let kind = match verb.trim() {
         "create" => RuntimeEventKind::Created,
         "start" => RuntimeEventKind::Started,
         "stop" => RuntimeEventKind::Stopped,
         "die" => RuntimeEventKind::Died,
-        "exec_create" => RuntimeEventKind::ExecCreated,
+        "exec_create" => RuntimeEventKind::ExecCreated(detail.trim().to_string()),
         "destroy" => RuntimeEventKind::Removed,
         other => RuntimeEventKind::Other(other.to_string()),
     };
@@ -506,7 +507,7 @@ mod tests {
             "exec_create: sh -c ls",
         ))
         .unwrap();
-        assert_eq!(e.kind, RuntimeEventKind::ExecCreated);
+        assert_eq!(e.kind, RuntimeEventKind::ExecCreated("sh -c ls".into()));
 
         let e = map_event(&event(EventMessageTypeEnum::CONTAINER, "rename")).unwrap();
         assert_eq!(e.kind, RuntimeEventKind::Other("rename".into()));

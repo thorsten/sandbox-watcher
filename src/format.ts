@@ -1,4 +1,4 @@
-import type { SandboxContainer } from "./types";
+import type { AgentKind, SandboxContainer } from "./types";
 
 /** Same buckets as `sandbox status` (container-status.ts, getContainerUptime). */
 export function formatUptime(startedAt: string | null, now: Date = new Date()): string {
@@ -42,4 +42,47 @@ export function staleHashes(containers: SandboxContainer[]): Set<string> {
     }
   }
   return stale;
+}
+
+export const AGENT_LABELS: Record<AgentKind, string> = {
+  "claude-code": "Claude Code",
+  codex: "Codex",
+  "open-code": "OpenCode",
+  pi: "Pi",
+  shell: "Shell",
+  other: "Other",
+};
+
+export interface Summary {
+  projects: number;
+  running: number;
+  stopped: number;
+  sessions: number;
+  byAgent: Map<AgentKind, number>;
+}
+
+/** Totals for the dashboard header. Agents are ordered by count, then label. */
+export function summarize(containers: SandboxContainer[]): Summary {
+  const byAgent = new Map<AgentKind, number>();
+  let sessions = 0;
+  let running = 0;
+  for (const c of containers) {
+    if (c.state === "running") running++;
+    for (const s of c.sessions) {
+      sessions++;
+      byAgent.set(s.agent, (byAgent.get(s.agent) ?? 0) + 1);
+    }
+  }
+  const ordered = new Map(
+    [...byAgent].toSorted(
+      ([a, x], [b, y]) => y - x || AGENT_LABELS[a].localeCompare(AGENT_LABELS[b]),
+    ),
+  );
+  return {
+    projects: groupByProject(containers).size,
+    running,
+    stopped: containers.length - running,
+    sessions,
+    byAgent: ordered,
+  };
 }

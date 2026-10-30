@@ -1,5 +1,6 @@
 //! Tauri shell around `sandbox-core`. Commands are thin: resolve the adapter,
-//! call core, return serialisable state.
+//! call core, return serialisable state. Runtime events are forwarded to the
+//! webview as the `runtime-event` Tauri event.
 
 use std::sync::Arc;
 
@@ -8,14 +9,17 @@ use sandbox_core::detect::{DetectedRuntime, Environment, detect};
 use sandbox_core::live::LiveRuntime;
 use sandbox_core::mock::MockAdapter;
 use sandbox_core::overview::{DataSource, Overview};
-use tauri::State;
+use tauri::{Emitter, Manager, State};
+
+/// Name of the Tauri event the UI listens to for refresh triggers.
+pub const RUNTIME_EVENT: &str = "runtime-event";
 
 /// Shared application state.
 pub enum AppState {
     /// `SANDBOX_WATCHER_MOCK=1`: demo data, no runtime access.
     Mock(Arc<dyn RuntimeAdapter>),
     /// Detect the runtime and keep the adapter between refreshes.
-    Live(LiveRuntime),
+    Live(Arc<LiveRuntime>),
 }
 
 impl AppState {
@@ -24,7 +28,7 @@ impl AppState {
         if mock {
             Self::Mock(Arc::new(MockAdapter::demo()))
         } else {
-            Self::Live(LiveRuntime::new())
+            Self::Live(Arc::new(LiveRuntime::new()))
         }
     }
 }
@@ -53,6 +57,15 @@ fn app_version() -> &'static str {
 pub fn run() {
     tauri::Builder::default()
         .manage(AppState::from_env())
+        .setup(|app| {
+            if let AppState::Live(live) = app.state::<AppState>().inner() {
+                let handle = app.handle().clone();
+                live.set_listener(Arc::new(move |event| {
+                    let _ = handle.emit(RUNTIME_EVENT, &event);
+                }));
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             get_overview,
             detect_runtimes,

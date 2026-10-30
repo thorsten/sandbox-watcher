@@ -218,3 +218,70 @@ footer {
   margin-top: 2rem;
   font-size: 0.8rem;
 }
+
+.dot-warn {
+  background: var(--warn);
+}
+
+.agent-chips {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  padding: 0.6rem 0;
+}
+.chip {
+  font-size: 0.75rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  background: var(--border);
+  color: var(--fg);
+  white-space: nowrap;
+}
+.chip strong {
+  margin-left: 0.2rem;
+}
+.agent-claude-code {
+  background: #d97757;
+  color: #fff;
+}
+.agent-codex {
+  background: #10a37f;
+  color: #fff;
+}
+.agent-open-code {
+  background: #4f46e5;
+  color: #fff;
+}
+.agent-pi {
+  background: #0ea5e9;
+  color: #fff;
+}
+.agent-shell {
+  background: var(--muted);
+  color: #fff;
+}
+
+.sessions {
+  list-style: none;
+  margin: 0.4rem 0 0;
+  padding: 0.4rem 0 0;
+  border-top: 1px dashed var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 0.85rem;
+}
+.session {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+}
+.session-command {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}

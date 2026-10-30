@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatUptime, groupByProject, staleHashes } from "./format";
+import { formatUptime, groupByProject, staleHashes, summarize } from "./format";
 import type { SandboxContainer } from "./types";
 
 const now = new Date("2026-10-30T12:00:00Z");
@@ -14,6 +14,8 @@ function container(partial: Partial<SandboxContainer> & { id: string }): Sandbox
     started_at: null,
     config_hash: null,
     labels: {},
+    readiness: "unknown",
+    sessions: [],
     ...partial,
   };
 }
@@ -77,5 +79,39 @@ describe("staleHashes", () => {
         container({ id: "b", config_hash: "aaa" }),
       ]).size,
     ).toBe(0);
+  });
+});
+
+describe("summarize", () => {
+  it("counts sessions per agent, most frequent first", () => {
+    const summary = summarize([
+      container({
+        id: "a",
+        project_slug: "x",
+        sessions: [
+          { pid: 1, command: "claude", agent: "claude-code" },
+          { pid: 2, command: "zsh", agent: "shell" },
+        ],
+      }),
+      container({
+        id: "b",
+        project_slug: "y",
+        state: "exited",
+        sessions: [],
+      }),
+      container({
+        id: "c",
+        project_slug: "y",
+        sessions: [{ pid: 3, command: "claude", agent: "claude-code" }],
+      }),
+    ]);
+    expect(summary.projects).toBe(2);
+    expect(summary.running).toBe(2);
+    expect(summary.stopped).toBe(1);
+    expect(summary.sessions).toBe(3);
+    expect([...summary.byAgent]).toEqual([
+      ["claude-code", 2],
+      ["shell", 1],
+    ]);
   });
 });
