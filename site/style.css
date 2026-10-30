@@ -1,0 +1,127 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f6f7f9;
+  --fg: #1f2a37;
+  --muted: #6b7280;
+  --card: #ffffff;
+  --border: #e5e7eb;
+  --accent: #0284c7;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.5;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0b1120;
+    --fg: #e5e7eb;
+    --muted: #9ca3af;
+    --card: #111827;
+    --border: #1f2937;
+    --accent: #38bdf8;
+  }
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+}
+a {
+  color: var(--accent);
+}
+code,
+pre {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92em;
+}
+pre {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.75rem 1rem;
+  overflow-x: auto;
+}
+.hero {
+  text-align: center;
+  padding: 4rem 1.5rem 2.5rem;
+  max-width: 780px;
+  margin: 0 auto;
+}
+.hero h1 {
+  font-size: 2.4rem;
+  margin: 0.75rem 0 0.25rem;
+}
+.tagline {
+  font-size: 1.15rem;
+  margin: 0 0 1.5rem;
+  color: var(--muted);
+}
+.downloads {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  justify-content: center;
+}
+.button {
+  display: inline-block;
+  padding: 0.6rem 1.1rem;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  text-decoration: none;
+  font-weight: 600;
+}
+.button:hover {
+  filter: brightness(1.08);
+}
+.muted {
+  color: var(--muted);
+}
+.small {
+  font-size: 0.9rem;
+}
+main {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 1.5rem 3rem;
+}
+.features {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1rem;
+}
+.features article {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.1rem 1.25rem;
+}
+.features h2 {
+  font-size: 1.05rem;
+  margin: 0 0 0.4rem;
+}
+.features p {
+  margin: 0;
+  color: var(--muted);
+}
+section {
+  margin-top: 3rem;
+}
+.install dl {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.75rem 1.25rem;
+}
+.install dt {
+  font-weight: 600;
+}
+.install dd {
+  margin: 0;
+}
+footer {
+  text-align: center;
+  color: var(--muted);
+  padding: 2rem 1rem 3rem;
+  border-top: 1px solid var(--border);
+}

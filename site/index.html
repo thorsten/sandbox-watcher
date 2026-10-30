@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sandbox Watcher – see what your sandboxed agents are doing</title>
+    <meta
+      name="description"
+      content="A desktop app that shows what is happening inside your running MaibornWolff Sandbox containers: agents, sessions, network, resources, logs and mounts."
+    />
+    <link rel="icon" href="logo.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <header class="hero">
+      <img src="logo.svg" alt="" width="96" height="96" />
+      <h1>Sandbox Watcher</h1>
+      <p class="tagline">
+        One window for everything happening in your running
+        <a href="https://github.com/MaibornWolff/sandbox">MaibornWolff Sandbox</a> containers.
+      </p>
+      <div id="downloads" class="downloads">
+        <a class="button" href="https://github.com/thorsten/sandbox-watcher/releases/latest"
+          >Download from GitHub Releases</a
+        >
+      </div>
+      <p class="muted small" id="release-note">
+        Unsigned builds for macOS, Windows and Linux. Free and open source, MIT.
+      </p>
+    </header>
+
+    <main>
+      <section class="features">
+        <article>
+          <h2>Who is running where</h2>
+          <p>
+            Every sandbox container across Docker, Podman and Apple <code>container</code>, grouped
+            by project, with the agent sessions inside: Claude Code, Codex, OpenCode, Pi or a plain
+            shell.
+          </p>
+        </article>
+        <article>
+          <h2>What they reach</h2>
+          <p>
+            Blocked and allowed destinations per container, read from sandbox's own firewall, proxy
+            and DNS logs. A header stat shows blocked requests of the last five minutes.
+          </p>
+        </article>
+        <article>
+          <h2>What they cost</h2>
+          <p>
+            CPU and memory sparklines, network and disk I/O, container logs with follow and filter,
+            and every mount classified as project, persisted, runtime or extra.
+          </p>
+        </article>
+        <article>
+          <h2>The few things you want to do</h2>
+          <p>
+            Stop a container or all of them, with a list of the sessions it interrupts. Open the
+            project in your terminal or file manager. Copy names, paths and ready-made commands.
+          </p>
+        </article>
+        <article>
+          <h2>Lives in the tray</h2>
+          <p>
+            A menu bar icon with a summary per project, and notifications when a session starts, a
+            sandbox stops unexpectedly, requests get blocked in bursts, or a stale container shows
+            up.
+          </p>
+        </article>
+        <article>
+          <h2>Private by design</h2>
+          <p>
+            Talks only to your local container runtime. Never reads environment variable values,
+            only their names. Sends nothing anywhere.
+          </p>
+        </article>
+      </section>
+
+      <section class="install">
+        <h2>Install</h2>
+        <p>Builds are not signed yet, so each OS asks once for trust.</p>
+        <dl>
+          <dt>macOS</dt>
+          <dd>
+            Open the <code>.dmg</code>, drag the app to Applications, then run once:
+            <pre>xattr -dr com.apple.quarantine "/Applications/Sandbox Watcher.app"</pre>
+            or right-click the app and choose <em>Open</em>. Apple silicon and Intel builds are
+            separate.
+          </dd>
+          <dt>Windows</dt>
+          <dd>
+            Run the <code>.msi</code> or the <code>-setup.exe</code>. If SmartScreen appears, choose
+            <em>More info</em>, then <em>Run anyway</em>. Works with Docker Desktop, Rancher Desktop
+            and Podman.
+          </dd>
+          <dt>Linux</dt>
+          <dd>
+            Use the <code>.deb</code>, <code>.rpm</code> or <code>.AppImage</code>. The AppImage
+            needs <code>chmod +x</code>. Your user must be allowed to use the Docker or Podman
+            socket.
+          </dd>
+        </dl>
+        <p>
+          Requirements: a running Docker, Podman or Apple <code>container</code>, and at least one
+          project set up with <code>sandbox init</code>.
+        </p>
+      </section>
+
+      <section class="build">
+        <h2>Build it yourself</h2>
+        <pre>
+git clone https://github.com/thorsten/sandbox-watcher
+cd sandbox-watcher
+pnpm install
+pnpm tauri dev</pre>
+        <p>
+          Rust stable, Node 24 and pnpm are required. See the
+          <a href="https://github.com/thorsten/sandbox-watcher#readme">README</a> and the
+          <a href="https://github.com/thorsten/sandbox-watcher/blob/main/docs/MILESTONES.md"
+            >milestone plan</a
+          >.
+        </p>
+      </section>
+    </main>
+
+    <footer>
+      <p>
+        <a href="https://github.com/thorsten/sandbox-watcher">Source on GitHub</a> · MIT License ·
+        Not affiliated with MaibornWolff.
+      </p>
+    </footer>
+
+    <script>
+      // Fill in direct download links from the latest release, if the API answers.
+      (async () => {
+        try {
+          const res = await fetch(
+            "https://api.github.com/repos/thorsten/sandbox-watcher/releases/latest",
+            { headers: { Accept: "application/vnd.github+json" } },
+          );
+          if (!res.ok) return;
+          const release = await res.json();
+          const groups = [
+            { label: "macOS (Apple silicon)", test: (n) => /aarch64.*\.dmg$/i.test(n) },
+            { label: "macOS (Intel)", test: (n) => /x64.*\.dmg$|x86_64.*\.dmg$/i.test(n) },
+            { label: "Windows (.msi)", test: (n) => /\.msi$/i.test(n) },
+            { label: "Windows (setup .exe)", test: (n) => /setup\.exe$/i.test(n) },
+            { label: "Linux (.AppImage)", test: (n) => /\.AppImage$/i.test(n) },
+            { label: "Linux (.deb)", test: (n) => /\.deb$/i.test(n) },
+            { label: "Linux (.rpm)", test: (n) => /\.rpm$/i.test(n) },
+          ];
+          const links = groups
+            .map((g) => ({ g, asset: (release.assets || []).find((a) => g.test(a.name)) }))
+            .filter((x) => x.asset);
+          if (links.length === 0) return;
+          const container = document.getElementById("downloads");
+          container.innerHTML = "";
+          for (const { g, asset } of links) {
+            const a = document.createElement("a");
+            a.className = "button";
+            a.href = asset.browser_download_url;
+            a.textContent = g.label;
+            container.appendChild(a);
+          }
+          document.getElementById("release-note").textContent =
+            `Latest release ${release.tag_name}, ${new Date(release.published_at).toLocaleDateString()}. Unsigned builds, MIT licensed.`;
+        } catch {
+          // Keep the generic link.
+        }
+      })();
+    </script>
+  </body>
+</html>

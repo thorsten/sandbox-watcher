@@ -59,7 +59,7 @@ jobs:
         with:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
           releaseName: "Sandbox Watcher ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}"
-          releaseBody: "Unsigned pre-release build. See docs/MILESTONES.md for status."
-          releaseDraft: true
-          prerelease: true
+          releaseBody: "Unsigned builds for macOS (Apple silicon and Intel), Windows and Linux. See https://thorsten.github.io/sandbox-watcher/ for install notes."
+          releaseDraft: false
+          prerelease: ${{ github.ref_type != 'tag' }}
           args: --target ${{ matrix.target }}
