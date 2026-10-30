@@ -16,7 +16,8 @@
     "format:check": "oxfmt --check",
     "tauri": "tauri",
     "tauri:dev:mock": "SANDBOX_WATCHER_MOCK=1 tauri dev",
-    "prepare": "husky"
+    "prepare": "husky",
+    "changelog": "node scripts/changelog.mjs --write"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.12.0",

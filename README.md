@@ -112,6 +112,12 @@ Linux, web lint, tests and build, and an unsigned Tauri debug build per OS.
 and notarisation are a follow-up. `Pages` deploys the `site/` folder to
 GitHub Pages.
 
+## Changelog
+
+`CHANGELOG.md` is generated from the commit history by `pnpm changelog`.
+Release notes for a tag come from the same script and land in the GitHub
+release automatically.
+
 ## Commits
 
 Commit messages follow [Conventional Commits](https://www.conventionalcommits.org/)
