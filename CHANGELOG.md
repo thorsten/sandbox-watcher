@@ -3,6 +3,13 @@
 All notable changes to Sandbox Watcher. Generated from
 [Conventional Commits](https://www.conventionalcommits.org/) by `scripts/changelog.mjs`.
 
+## 0.4.0 (2026-10-30)
+
+### Features
+
+- show touched files and open them in your editor ([9da680b](https://github.com/thorsten/sandbox-watcher/commit/9da680bda037f20be208204d39b6a811ef3b22bc))
+- **core:** files per agent session and editor launching ([27150f5](https://github.com/thorsten/sandbox-watcher/commit/27150f5aebe01dce047a8ac9edc92aec27fbffee))
+
 ## 0.3.0 (2026-10-30)
 
 ### Features
@@ -15,7 +22,10 @@ All notable changes to Sandbox Watcher. Generated from
 
 ### Chores
 
+- **release:** v0.3.0 ([5c81601](https://github.com/thorsten/sandbox-watcher/commit/5c8160132dba98c0ad85e02cd7c71f635fa8f94d))
 - pin pnpm 11.22.0 and stop the release script from reinstalling ([33d0e35](https://github.com/thorsten/sandbox-watcher/commit/33d0e3578305e10d4c1d2d81bf8b944c3bd67d85))
+
+**Full changelog:** [v0.2.0...v0.3.0](https://github.com/thorsten/sandbox-watcher/compare/v0.2.0...v0.3.0)
 
 ## 0.2.0 (2026-10-30)
 
