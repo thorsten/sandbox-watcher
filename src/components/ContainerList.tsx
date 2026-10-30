@@ -1,13 +1,18 @@
+import { useState } from "react";
 import { AGENT_LABELS, formatUptime, groupByProject, staleHashes, summarize } from "../format";
-import type { RuntimeStatus, SandboxContainer, Session } from "../types";
+import { recentBlockedCount } from "../network";
+import type { NetworkReport, RuntimeStatus, SandboxContainer, Session } from "../types";
+import { NetworkPanel } from "./NetworkPanel";
 
 interface Props {
   containers: SandboxContainer[];
   runtimeStatus: RuntimeStatus["status"];
+  /** Undefined until the first network collection finished. */
+  network: NetworkReport[] | undefined;
   now: Date;
 }
 
-export function ContainerList({ containers, runtimeStatus, now }: Props) {
+export function ContainerList({ containers, runtimeStatus, network, now }: Props) {
   if (runtimeStatus !== "connected") return null;
 
   if (containers.length === 0) {
@@ -23,6 +28,8 @@ export function ContainerList({ containers, runtimeStatus, now }: Props) {
 
   const stale = staleHashes(containers);
   const summary = summarize(containers);
+  const recentBlocked = network ? recentBlockedCount(network, now) : 0;
+  const reportFor = (id: string) => network?.find((r) => r.container_id === id);
 
   return (
     <section>
@@ -31,6 +38,11 @@ export function ContainerList({ containers, runtimeStatus, now }: Props) {
         <Stat label="Running" value={summary.running} />
         <Stat label="Stopped" value={summary.stopped} />
         <Stat label="Sessions" value={summary.sessions} />
+        <Stat
+          label="Blocked, last 5 min"
+          value={recentBlocked}
+          tone={recentBlocked > 0 ? "warn" : undefined}
+        />
         {summary.byAgent.size > 0 && (
           <div className="agent-chips" aria-label="Sessions per agent">
             {[...summary.byAgent].map(([agent, count]) => (
@@ -46,7 +58,13 @@ export function ContainerList({ containers, runtimeStatus, now }: Props) {
           <h2>{slug}</h2>
           <ul className="containers">
             {group.map((c) => (
-              <ContainerRow key={c.id} container={c} stale={stale.has(c.id)} now={now} />
+              <ContainerRow
+                key={c.id}
+                container={c}
+                stale={stale.has(c.id)}
+                report={reportFor(c.id)}
+                now={now}
+              />
             ))}
           </ul>
         </article>
@@ -55,9 +73,9 @@ export function ContainerList({ containers, runtimeStatus, now }: Props) {
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({ label, value, tone }: { label: string; value: number; tone?: "warn" }) {
   return (
-    <div className="stat">
+    <div className={`stat ${tone ? `stat-${tone}` : ""}`}>
       <span className="stat-value">{value}</span>
       <span className="stat-label">{label}</span>
     </div>
@@ -67,13 +85,17 @@ function Stat({ label, value }: { label: string; value: number }) {
 function ContainerRow({
   container,
   stale,
+  report,
   now,
 }: {
   container: SandboxContainer;
   stale: boolean;
+  report: NetworkReport | undefined;
   now: Date;
 }) {
+  const [showNetwork, setShowNetwork] = useState(false);
   const isRunning = container.state === "running";
+  const blocked = report?.entries.filter((e) => e.status === "blocked").length ?? 0;
   const starting = isRunning && container.readiness === "starting";
   const dot = !isRunning ? "dot-off" : starting ? "dot-warn" : "dot-ok";
   return (
@@ -107,6 +129,20 @@ function ContainerRow({
           {container.config_hash && <code title="sandbox.hash">{container.config_hash}</code>}
         </div>
         {isRunning && <SessionList sessions={container.sessions} />}
+        {isRunning && (
+          <div className="container-actions">
+            <button
+              type="button"
+              className="link"
+              aria-expanded={showNetwork}
+              onClick={() => setShowNetwork((v) => !v)}
+            >
+              {showNetwork ? "Hide network" : "Network"}
+              {blocked > 0 && <span className="badge badge-err">{blocked} blocked</span>}
+            </button>
+          </div>
+        )}
+        {isRunning && showNetwork && <NetworkPanel report={report} now={now} />}
       </div>
     </li>
   );

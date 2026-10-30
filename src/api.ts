@@ -1,9 +1,13 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type { DetectedRuntime, Overview, RuntimeEvent } from "./types";
+import type { DetectedRuntime, NetworkReport, Overview, RuntimeEvent } from "./types";
 
 export function getOverview(): Promise<Overview> {
   return invoke<Overview>("get_overview");
+}
+
+export function getNetworkOverview(): Promise<NetworkReport[]> {
+  return invoke<NetworkReport[]>("get_network_overview");
 }
 
 export function detectRuntimes(): Promise<DetectedRuntime[]> {

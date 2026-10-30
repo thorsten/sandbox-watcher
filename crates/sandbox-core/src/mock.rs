@@ -17,7 +17,8 @@ use crate::model::{
     ContainerDetails, ContainerState, Mount, Readiness, ResourceSample, RuntimeEvent,
     RuntimeEventKind, RuntimeInfo, RuntimeKind, SandboxContainer,
 };
-use crate::sandbox::{HASH_LABEL, PROJECT_LABEL};
+use crate::network::NetworkSource;
+use crate::sandbox::{CONTAINER_TOOLS_PATH, HASH_LABEL, PROJECT_LABEL};
 use crate::{Error, Result};
 
 #[derive(Debug, Clone)]
@@ -26,6 +27,8 @@ pub struct MockContainer {
     /// Output returned for any `exec` call.
     pub exec_output: ExecOutput,
     pub logs: String,
+    /// Raw log returned for `sandbox-container-tools network diagnostic <source>`.
+    pub network_logs: BTreeMap<NetworkSource, String>,
 }
 
 #[derive(Default)]
@@ -150,7 +153,34 @@ pub fn mock_container(slug: &str, instance: u32, state: &str, hash: &str) -> Moc
             stderr: String::new(),
         },
         logs: "sandbox: container ready\n".into(),
+        network_logs: demo_network_logs(),
     }
+}
+
+/// Small but realistic logs in sandbox's three formats.
+pub fn demo_network_logs() -> BTreeMap<NetworkSource, String> {
+    let mut logs = BTreeMap::new();
+    logs.insert(
+        NetworkSource::Firewall,
+        "1761810001.1 IP 172.17.0.2.51234 > 93.184.216.34.443: Flags [S]\n\
+         1761810002.2 IP 172.17.0.2.51235 > 93.184.216.34.443: Flags [S]\n"
+            .into(),
+    );
+    logs.insert(
+        NetworkSource::Dns,
+        "Oct 30 08:00:05 dnsmasq[12]: reply registry.npmjs.org is 104.16.1.35\n\
+         Oct 30 08:00:06 dnsmasq[12]: reply example.com is 93.184.216.34\n\
+         Oct 30 08:00:07 dnsmasq[12]: config telemetry.example is NXDOMAIN\n"
+            .into(),
+    );
+    logs.insert(
+        NetworkSource::ProxyAccess,
+        "1761810010.1 45 127.0.0.1 TCP_TUNNEL/200 5000 CONNECT registry.npmjs.org:443 - HIER_DIRECT/104.16.1.35 -\n\
+         1761810011.4 0 127.0.0.1 TCP_DENIED/403 3456 CONNECT evil.example:443 - HIER_NONE/- text/html\n\
+         1761810012.7 200 127.0.0.1 TCP_TUNNEL/200 900 CONNECT api.anthropic.com:443 - HIER_DIRECT/160.79.104.10 -\n"
+            .into(),
+    );
+    logs
 }
 
 #[async_trait]
@@ -201,6 +231,35 @@ impl RuntimeAdapter for MockAdapter {
         let container = self
             .find(id)
             .ok_or_else(|| Error::ContainerNotFound(id.into()))?;
+        // `sandbox-container-tools network diagnostic <source>` serves the stored log.
+        if let [tools, network, diagnostic, source] = request.command.as_slice()
+            && tools == CONTAINER_TOOLS_PATH
+            && network == "network"
+            && diagnostic == "diagnostic"
+        {
+            let source = match source.as_str() {
+                "firewall" => NetworkSource::Firewall,
+                "dns" => NetworkSource::Dns,
+                "proxy-access" => NetworkSource::ProxyAccess,
+                _ => {
+                    return Ok(ExecOutput {
+                        exit_code: 2,
+                        stdout: String::new(),
+                        stderr: "unknown source".into(),
+                    });
+                }
+            };
+            let stdout = container
+                .network_logs
+                .get(&source)
+                .cloned()
+                .unwrap_or_default();
+            return Ok(ExecOutput {
+                exit_code: 0,
+                stdout,
+                stderr: String::new(),
+            });
+        }
         // Honour `sh -c "exit N"` so adapter conformance tests can check exit codes.
         if let [sh, flag, script] = request.command.as_slice()
             && sh == "sh"

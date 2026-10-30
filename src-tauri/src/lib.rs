@@ -4,10 +4,13 @@
 
 use std::sync::Arc;
 
+use chrono::Utc;
 use sandbox_core::RuntimeAdapter;
+use sandbox_core::adapter::ContainerFilter;
 use sandbox_core::detect::{DetectedRuntime, Environment, detect};
 use sandbox_core::live::LiveRuntime;
 use sandbox_core::mock::MockAdapter;
+use sandbox_core::network::NetworkReport;
 use sandbox_core::overview::{DataSource, Overview};
 use tauri::{Emitter, Manager, State};
 
@@ -43,6 +46,24 @@ async fn get_overview(state: State<'_, AppState>) -> Result<Overview, String> {
     })
 }
 
+/// Network activity of every running sandbox container. Separate from the
+/// overview so a slow log read never delays the container list.
+#[tauri::command]
+async fn get_network_overview(state: State<'_, AppState>) -> Result<Vec<NetworkReport>, String> {
+    let adapter = match state.inner() {
+        AppState::Mock(adapter) => adapter.clone(),
+        AppState::Live(live) => match live.adapter() {
+            Some(adapter) => adapter,
+            None => return Ok(vec![]),
+        },
+    };
+    let containers = adapter
+        .list_containers(&ContainerFilter::running())
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(sandbox_core::network::collect_all(&adapter, &containers, Utc::now()).await)
+}
+
 #[tauri::command]
 fn detect_runtimes() -> Vec<DetectedRuntime> {
     detect(&Environment::current())
@@ -68,6 +89,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_overview,
+            get_network_overview,
             detect_runtimes,
             app_version
         ])

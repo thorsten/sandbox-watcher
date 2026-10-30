@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { appVersion, getOverview, onRuntimeEvent } from "./api";
+import { appVersion, getNetworkOverview, getOverview, onRuntimeEvent } from "./api";
 import { ContainerList } from "./components/ContainerList";
 import { RuntimeBanner } from "./components/RuntimeBanner";
-import type { Overview } from "./types";
+import type { NetworkReport, Overview } from "./types";
 
 /** Fallback poll. Lifecycle events from the runtime trigger refreshes sooner. */
 const POLL_MS = 10_000;
@@ -16,7 +16,22 @@ type LoadState =
 
 export function App() {
   const [state, setState] = useState<LoadState>({ phase: "loading" });
+  const [network, setNetwork] = useState<NetworkReport[] | undefined>(undefined);
   const inFlight = useRef(false);
+  const networkInFlight = useRef(false);
+
+  // Network logs are read in a second round trip so a slow log never delays the list.
+  const refreshNetwork = useCallback(async () => {
+    if (networkInFlight.current) return;
+    networkInFlight.current = true;
+    try {
+      setNetwork(await getNetworkOverview());
+    } catch {
+      // Keep the last good reports; the panel shows per-source failures itself.
+    } finally {
+      networkInFlight.current = false;
+    }
+  }, []);
 
   const refresh = useCallback(async () => {
     if (inFlight.current) return;
@@ -24,12 +39,13 @@ export function App() {
     try {
       const [overview, version] = await Promise.all([getOverview(), appVersion().catch(() => "")]);
       setState({ phase: "ready", overview, version, refreshedAt: new Date() });
+      if (overview.runtime.status === "connected") void refreshNetwork();
     } catch (error) {
       setState({ phase: "error", message: error instanceof Error ? error.message : String(error) });
     } finally {
       inFlight.current = false;
     }
-  }, []);
+  }, [refreshNetwork]);
 
   useEffect(() => {
     // refresh() awaits the Tauri command before it sets state, so there is no synchronous
@@ -90,6 +106,7 @@ export function App() {
           <ContainerList
             containers={state.overview.containers}
             runtimeStatus={state.overview.runtime.status}
+            network={network}
             now={state.refreshedAt}
           />
           <footer className="muted">

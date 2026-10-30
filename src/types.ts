@@ -73,3 +73,25 @@ export interface Overview {
   containers: SandboxContainer[];
   tested_sandbox_version: string;
 }
+
+export type NetworkStatus = "allowed" | "blocked";
+export type NetworkSource = "firewall" | "dns" | "proxy-access";
+
+export interface NetworkEntry {
+  container_id: string;
+  destination: string;
+  dst_ip: string | null;
+  /** 0 when only seen in DNS. */
+  port: number;
+  count: number;
+  last_seen: string | null;
+  status: NetworkStatus;
+}
+
+export interface NetworkReport {
+  container_id: string;
+  collected_at: string;
+  entries: NetworkEntry[];
+  unparsed_sources: NetworkSource[];
+  failed_sources: NetworkSource[];
+}

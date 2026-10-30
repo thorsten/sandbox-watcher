@@ -1,0 +1,13 @@
+Oct 30 08:00:01 dnsmasq[12]: started, version 2.90 cachesize 150
+Oct 30 08:00:05 dnsmasq[12]: query[A] registry.npmjs.org from 172.17.0.2
+Oct 30 08:00:05 dnsmasq[12]: forwarded registry.npmjs.org to 1.1.1.1
+Oct 30 08:00:05 dnsmasq[12]: reply registry.npmjs.org is 104.16.1.35
+Oct 30 08:00:06 dnsmasq[12]: query[A] example.com from 172.17.0.2
+Oct 30 08:00:06 dnsmasq[12]: reply example.com is 93.184.216.34
+Oct 30 08:00:07 dnsmasq[12]: query[A] evil.example from 172.17.0.2
+Oct 30 08:00:07 dnsmasq[12]: config evil.example is NXDOMAIN
+Oct 30 08:00:08 dnsmasq[12]: config evil.example is NXDOMAIN
+Oct 30 08:00:09 dnsmasq[12]: query[A] www.github.com from 172.17.0.2
+Oct 30 08:00:09 dnsmasq[12]: reply www.github.com is <CNAME>
+Oct 30 08:00:09 dnsmasq[12]: reply github.com is 140.82.121.4
+Oct  2 23:59:59 dnsmasq[12]: reply early.example is 10.1.1.1
