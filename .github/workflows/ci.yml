@@ -74,6 +74,25 @@ jobs:
           SANDBOX_WATCHER_TEST_SLUG: watcher-podman
           DOCKER_HOST: unix:///tmp/podman.sock
         run: cargo test -p sandbox-core --test conformance -- --nocapture
+      - name: Podman diagnostics
+        if: failure() && runner.os == 'Linux'
+        run: |
+          set +e
+          echo "--- podman version"; podman version
+          echo "--- podman info (host)"; podman info --format '{{json .Host}}' | head -c 2000; echo
+          API=http://d/v1.47
+          S=/tmp/podman.sock
+          echo "--- compat /version"; curl -s --unix-socket $S $API/version | head -c 600; echo
+          echo "--- compat containers (label filter)"; curl -s --unix-socket $S "$API/containers/json?all=true&filters=%7B%22label%22%3A%5B%22sandbox.project%3Dwatcher-podman%22%5D%7D" | head -c 3000; echo
+          ID=$(podman ps -aq --filter name=sandbox-watcher-podman | head -1)
+          echo "--- compat inspect"; curl -s --unix-socket $S $API/containers/$ID/json | head -c 4000; echo
+          echo "--- compat stats one-shot"; curl -s --max-time 10 --unix-socket $S "$API/containers/$ID/stats?stream=false" | head -c 3000; echo
+          echo "--- compat exec"; EXEC=$(curl -s --unix-socket $S -H 'Content-Type: application/json' -d '{"Cmd":["sh","-c","exit 3"],"AttachStdout":true,"AttachStderr":true}' $API/containers/$ID/exec); echo "$EXEC"
+          EID=$(echo "$EXEC" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("Id",""))')
+          curl -s --max-time 10 --unix-socket $S -H 'Content-Type: application/json' -d '{"Detach":false,"Tty":false}' $API/exec/$EID/start | head -c 300; echo
+          echo "--- compat exec inspect"; curl -s --unix-socket $S $API/exec/$EID/json | head -c 600; echo
+          echo "--- compat logs"; curl -s --unix-socket $S "$API/containers/$ID/logs?stdout=true&stderr=true&tail=5" | head -c 600; echo
+          echo "--- compat events (3s)"; timeout 3 curl -s --unix-socket $S "$API/events?filters=%7B%22type%22%3A%5B%22container%22%5D%7D" | head -c 600; echo
       - name: Remove the Podman test container
         if: always() && runner.os == 'Linux'
         run: |
