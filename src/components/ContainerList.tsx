@@ -2,7 +2,18 @@ import { useState } from "react";
 import { AGENT_LABELS, formatUptime, groupByProject, staleHashes, summarize } from "../format";
 import { recentBlockedCount } from "../network";
 import type { NetworkReport, RuntimeStatus, SandboxContainer, Session } from "../types";
+import { LogsPanel } from "./LogsPanel";
+import { MountsPanel } from "./MountsPanel";
 import { NetworkPanel } from "./NetworkPanel";
+import { ResourcesPanel } from "./ResourcesPanel";
+
+type Tab = "network" | "resources" | "logs" | "mounts";
+const TABS: { id: Tab; label: string }[] = [
+  { id: "network", label: "Network" },
+  { id: "resources", label: "Resources" },
+  { id: "logs", label: "Logs" },
+  { id: "mounts", label: "Mounts" },
+];
 
 interface Props {
   containers: SandboxContainer[];
@@ -93,7 +104,7 @@ function ContainerRow({
   report: NetworkReport | undefined;
   now: Date;
 }) {
-  const [showNetwork, setShowNetwork] = useState(false);
+  const [tab, setTab] = useState<Tab | null>(null);
   const isRunning = container.state === "running";
   const blocked = report?.entries.filter((e) => e.status === "blocked").length ?? 0;
   const starting = isRunning && container.readiness === "starting";
@@ -130,19 +141,27 @@ function ContainerRow({
         </div>
         {isRunning && <SessionList sessions={container.sessions} />}
         {isRunning && (
-          <div className="container-actions">
-            <button
-              type="button"
-              className="link"
-              aria-expanded={showNetwork}
-              onClick={() => setShowNetwork((v) => !v)}
-            >
-              {showNetwork ? "Hide network" : "Network"}
-              {blocked > 0 && <span className="badge badge-err">{blocked} blocked</span>}
-            </button>
+          <div className="tabs" aria-label="Container details">
+            {TABS.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                className={`tab ${tab === t.id ? "active" : ""}`}
+                aria-pressed={tab === t.id}
+                onClick={() => setTab((current) => (current === t.id ? null : t.id))}
+              >
+                {t.label}
+                {t.id === "network" && blocked > 0 && (
+                  <span className="badge badge-err">{blocked} blocked</span>
+                )}
+              </button>
+            ))}
           </div>
         )}
-        {isRunning && showNetwork && <NetworkPanel report={report} now={now} />}
+        {isRunning && tab === "network" && <NetworkPanel report={report} now={now} />}
+        {isRunning && tab === "resources" && <ResourcesPanel containerId={container.id} />}
+        {isRunning && tab === "logs" && <LogsPanel containerId={container.id} />}
+        {isRunning && tab === "mounts" && <MountsPanel containerId={container.id} />}
       </div>
     </li>
   );

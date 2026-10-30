@@ -9,7 +9,7 @@ use chrono::{DateTime, TimeZone, Utc};
 use serde_json::Value;
 
 use crate::model::{
-    ContainerDetails, ContainerState, Mount, PortBinding, Readiness, SandboxContainer,
+    ContainerDetails, ContainerState, Mount, MountRole, PortBinding, Readiness, SandboxContainer,
 };
 use crate::sandbox::{HASH_LABEL, PROJECT_LABEL};
 use crate::{Error, Result};
@@ -113,6 +113,7 @@ pub fn container_inspect(value: &Value) -> Result<Option<ContainerDetails>> {
                     destination: m["Destination"].as_str().unwrap_or_default().to_string(),
                     read_only: !m["RW"].as_bool().unwrap_or(true),
                     kind: m["Type"].as_str().unwrap_or("bind").to_string(),
+                    role: MountRole::Other,
                 })
                 .collect()
         })
@@ -154,6 +155,10 @@ pub fn container_inspect(value: &Value) -> Result<Option<ContainerDetails>> {
         mounts,
         ports,
         env_names,
+        working_dir: config["WorkingDir"]
+            .as_str()
+            .filter(|w| !w.is_empty())
+            .map(String::from),
         user: config["User"]
             .as_str()
             .filter(|u| !u.is_empty())

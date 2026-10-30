@@ -41,7 +41,7 @@
     {
       "Type": "bind",
       "Source": "/Users/dev/Library/Caches/sandbox/runtime/0.73.1-9c1e",
-      "Destination": "/opt/sandbox",
+      "Destination": "/opt/sandbox-cli",
       "Mode": "ro",
       "RW": false,
       "Propagation": "rprivate"
@@ -50,6 +50,7 @@
   "Config": {
     "Hostname": "3f9c1d2e4b5a",
     "User": "sandbox",
+    "WorkingDir": "/home/sandbox/web-shop",
     "Env": [
       "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
       "HOME=/home/sandbox",

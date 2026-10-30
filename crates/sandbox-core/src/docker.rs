@@ -422,6 +422,23 @@ impl RuntimeAdapter for DockerAdapter {
         }
     }
 
+    async fn stats_stream(
+        &self,
+        id: &str,
+    ) -> Result<Option<BoxStream<'static, Result<ResourceSample>>>> {
+        let options = StatsOptionsBuilder::new().stream(true).build();
+        let adapter = self.clone();
+        let id_owned = id.to_string();
+        let stream = self
+            .docker
+            .stats(id, Some(options))
+            .map(move |item| match item {
+                Ok(stats) => Ok(map_stats(&id_owned, &stats)),
+                Err(e) => Err(adapter.map_err(e, Some(&id_owned))),
+            });
+        Ok(Some(stream.boxed()))
+    }
+
     async fn logs(&self, id: &str, options: LogOptions) -> Result<String> {
         let mut builder = LogsOptionsBuilder::new()
             .stdout(true)

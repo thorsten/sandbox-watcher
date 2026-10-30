@@ -95,3 +95,41 @@ export interface NetworkReport {
   unparsed_sources: NetworkSource[];
   failed_sources: NetworkSource[];
 }
+
+export interface ResourceSample {
+  container_id: string;
+  at: string;
+  cpu_percent: number;
+  memory_used_bytes: number;
+  memory_limit_bytes: number | null;
+  net_rx_bytes: number;
+  net_tx_bytes: number;
+  block_read_bytes: number;
+  block_write_bytes: number;
+}
+
+export type MountRole = "project" | "persisted" | "runtime" | "other";
+
+export interface Mount {
+  source: string;
+  destination: string;
+  read_only: boolean;
+  type: string;
+  role: MountRole;
+}
+
+export interface PortBinding {
+  container_port: number;
+  host_port: number | null;
+  protocol: string;
+}
+
+export interface ContainerDetails {
+  readiness: Readiness;
+  mounts: Mount[];
+  ports: PortBinding[];
+  env_names: string[];
+  user: string | null;
+  working_dir: string | null;
+  exit_code: number | null;
+}

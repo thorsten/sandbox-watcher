@@ -124,8 +124,18 @@ pub trait RuntimeAdapter: Send + Sync {
 
     async fn exec(&self, id: &str, request: ExecRequest) -> Result<ExecOutput>;
 
-    /// One resource sample. Streaming is layered on top in M4.
+    /// One resource sample.
     async fn stats(&self, id: &str) -> Result<ResourceSample>;
+
+    /// Native stream of samples, about one per second, ending when the
+    /// container stops. `Ok(None)` when the runtime has no stream; callers
+    /// then poll [`RuntimeAdapter::stats`] instead.
+    async fn stats_stream(
+        &self,
+        _id: &str,
+    ) -> Result<Option<BoxStream<'static, Result<ResourceSample>>>> {
+        Ok(None)
+    }
 
     async fn logs(&self, id: &str, options: LogOptions) -> Result<String>;
 

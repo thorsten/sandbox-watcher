@@ -4,7 +4,8 @@ use std::path::PathBuf;
 
 use chrono::{TimeZone, Utc};
 use sandbox_core::docker_compat::{container_inspect, container_summary};
-use sandbox_core::model::ContainerState;
+use sandbox_core::model::{ContainerState, MountRole};
+use sandbox_core::mounts::classify;
 use serde_json::Value;
 
 fn fixture(name: &str) -> Value {
@@ -97,4 +98,21 @@ fn maps_inspect_details() {
         "env values must never reach the model"
     );
     assert_eq!(details.exit_code, None);
+}
+
+#[test]
+fn classifies_fixture_mounts() {
+    let mut details = container_inspect(&fixture("container-inspect.json"))
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        details.working_dir.as_deref(),
+        Some("/home/sandbox/web-shop")
+    );
+    classify(&mut details);
+    let roles: Vec<_> = details.mounts.iter().map(|m| m.role).collect();
+    assert_eq!(
+        roles,
+        vec![MountRole::Project, MountRole::Persisted, MountRole::Runtime]
+    );
 }

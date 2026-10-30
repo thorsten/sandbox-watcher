@@ -387,3 +387,117 @@ button.link:hover {
   margin: 0.3rem 0 0;
   padding-left: 1.2rem;
 }
+
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  margin-top: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  padding: 0.3rem 0.6rem;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.tab:hover {
+  color: var(--fg);
+}
+.tab.active {
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+
+.resources,
+.logs,
+.mounts {
+  margin-top: 0.5rem;
+  padding: 0.6rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 0.85rem;
+}
+.spark-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+}
+.spark {
+  margin: 0;
+}
+.spark figcaption {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.25rem;
+}
+.spark-title {
+  color: var(--muted);
+}
+.spark-value {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.spark svg {
+  display: block;
+  overflow: visible;
+}
+.spark-empty {
+  fill: var(--muted);
+  font-size: 10px;
+}
+.kv {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 0.25rem 1rem;
+  margin: 0.75rem 0 0;
+}
+.kv dt {
+  color: var(--muted);
+}
+.kv dd {
+  margin: 0;
+  min-width: 0;
+  word-break: break-all;
+}
+.env-names code {
+  margin-right: 0.4rem;
+}
+.check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.log-view {
+  max-height: 320px;
+  overflow: auto;
+  margin: 0;
+  padding: 0.5rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+.network-table td.path {
+  white-space: normal;
+  word-break: break-all;
+}
+.role-project {
+  background: var(--accent);
+  color: #fff;
+}
+.role-persisted {
+  background: #7c3aed;
+  color: #fff;
+}
+.role-runtime {
+  background: var(--muted);
+  color: #fff;
+}

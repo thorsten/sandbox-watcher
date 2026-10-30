@@ -90,6 +90,20 @@ pub struct SandboxContainer {
     pub labels: BTreeMap<String, String>,
 }
 
+/// What a mount is for, derived from sandbox's conventions. See `mounts`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MountRole {
+    /// The project directory the agent works in.
+    Project,
+    /// Data sandbox keeps between runs (agent state, dependency caches).
+    Persisted,
+    /// The read-only sandbox runtime files.
+    Runtime,
+    #[default]
+    Other,
+}
+
 /// Mount as reported by the runtime.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Mount {
@@ -98,6 +112,8 @@ pub struct Mount {
     pub read_only: bool,
     #[serde(rename = "type")]
     pub kind: String,
+    #[serde(default)]
+    pub role: MountRole,
 }
 
 /// Published or exposed port.
@@ -118,6 +134,7 @@ pub struct ContainerDetails {
     /// Names only. Values are never read, they may contain secrets.
     pub env_names: Vec<String>,
     pub user: Option<String>,
+    pub working_dir: Option<String>,
     pub exit_code: Option<i64>,
 }
 

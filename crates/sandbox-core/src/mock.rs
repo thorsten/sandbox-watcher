@@ -137,10 +137,12 @@ pub fn mock_container(slug: &str, instance: u32, state: &str, hash: &str) -> Moc
                 destination: format!("/home/sandbox/{slug}"),
                 read_only: false,
                 kind: "bind".into(),
+                role: Default::default(),
             }],
             ports: vec![],
             env_names: vec!["ANTHROPIC_API_KEY".into(), "TERM".into()],
             user: Some("sandbox".into()),
+            working_dir: Some(format!("/home/sandbox/{slug}")),
             exit_code: if container_state.is_running() {
                 None
             } else {
@@ -280,11 +282,14 @@ impl RuntimeAdapter for MockAdapter {
         let c = self
             .find(id)
             .ok_or_else(|| Error::ContainerNotFound(id.into()))?;
+        // Vary with time so demo sparklines move.
+        let t = Utc::now().timestamp() as f64;
+        let wave = (t / 7.0).sin() * 0.5 + 0.5;
         Ok(ResourceSample {
             container_id: c.details.container.id,
             at: Utc::now(),
-            cpu_percent: 12.5,
-            memory_used_bytes: 512 * 1024 * 1024,
+            cpu_percent: 5.0 + wave * 60.0,
+            memory_used_bytes: (400.0 + wave * 300.0) as u64 * 1024 * 1024,
             memory_limit_bytes: Some(4 * 1024 * 1024 * 1024),
             net_rx_bytes: 1_000_000,
             net_tx_bytes: 250_000,
