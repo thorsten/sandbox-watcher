@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use chrono::Utc;
 use sandbox_core::RuntimeAdapter;
-use sandbox_core::activity::collect_usage;
+use sandbox_core::activity::collect_insights;
 use sandbox_core::adapter::ContainerFilter;
 use sandbox_core::history::{History, HistoryQuery, HistoryView};
 use sandbox_core::live::LiveRuntime;
@@ -249,11 +249,15 @@ impl Watcher {
                 let Ok(adapter) = self.adapter_for(&c.container.id) else {
                     continue;
                 };
-                for usage in
-                    collect_usage(&adapter, &c.container.id, &c.sessions, &settings.prices).await
+                for insight in
+                    collect_insights(&adapter, &c.container.id, &c.sessions, &settings.prices).await
                 {
                     let mut history = self.history.lock().expect("history poisoned");
-                    changed = history.record_usage(&c.container.id, &usage) || changed;
+                    if let Some(usage) = &insight.usage {
+                        changed = history.record_usage(&c.container.id, usage) || changed;
+                    }
+                    changed = history.record_files(&c.container.id, insight.agent, &insight.files)
+                        || changed;
                 }
             }
             self.save_history(changed);

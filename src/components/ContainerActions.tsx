@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { getProjectPath, openProject, openTerminal, stopContainer } from "../api";
+import { getProjectPath, openInEditor, openProject, openTerminal, stopContainer } from "../api";
 import { confirmStopEnabled, copyText, describeInterruption, networkLogsCommand } from "../actions";
 import { disableConfirmStop } from "../settingsActions";
 import type { SandboxContainer } from "../types";
@@ -74,6 +74,14 @@ export function ContainerActions({ container, onChanged }: Props) {
         title="Open the project directory"
       >
         Folder
+      </button>
+      <button
+        type="button"
+        disabled={busy !== null}
+        onClick={() => void run("editor", () => openInEditor(container.id))}
+        title="Open the project in your editor"
+      >
+        Editor
       </button>
       <span className="menu">
         <button type="button" onClick={() => setCopyOpen((v) => !v)} aria-expanded={copyOpen}>

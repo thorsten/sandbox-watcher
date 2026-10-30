@@ -135,6 +135,46 @@ export function SettingsPanel({ settings, onSaved, onClose }: Props) {
       </fieldset>
 
       <fieldset>
+        <legend>Editor</legend>
+        <label>
+          Open files and projects with
+          <select
+            value={draft.editor.kind}
+            onChange={(e) => {
+              const kind = e.target.value as Settings["editor"]["kind"];
+              update({
+                editor:
+                  kind === "custom"
+                    ? { kind, command: draft.editor.kind === "custom" ? draft.editor.command : "" }
+                    : { kind },
+              });
+            }}
+          >
+            <option value="system">System default app</option>
+            <option value="vs-code">Visual Studio Code</option>
+            <option value="cursor">Cursor</option>
+            <option value="zed">Zed</option>
+            <option value="jet-brains">JetBrains IDE (PhpStorm, IntelliJ IDEA, WebStorm, …)</option>
+            <option value="custom">Custom command</option>
+          </select>
+        </label>
+        {draft.editor.kind === "custom" && (
+          <label>
+            Command
+            <input
+              type="text"
+              value={draft.editor.command}
+              placeholder="subl {path}"
+              onChange={(e) => update({ editor: { kind: "custom", command: e.target.value } })}
+            />
+            <span className="muted">
+              <code>{"{path}"}</code> is replaced by the quoted file or folder.
+            </span>
+          </label>
+        )}
+      </fieldset>
+
+      <fieldset>
         <legend>Notifications</legend>
         <label className="check">
           <input

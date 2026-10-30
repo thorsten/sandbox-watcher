@@ -1,4 +1,5 @@
 import type {
+  FileTouch,
   NetworkEntry,
   NetworkReport,
   RuntimeStatus,
@@ -125,6 +126,19 @@ export function settings(partial: Partial<Settings> = {}): Settings {
     history_enabled: true,
     prices: { "claude-sonnet-4": { input: 3, output: 15, cache_read: 0.3, cache_write: 3.75 } },
     check_for_updates: true,
+    editor: { kind: "system" },
+    ...partial,
+  };
+}
+
+export function file(partial: Partial<FileTouch> = {}): FileTouch {
+  return {
+    path: "/Users/dev/web-shop/src/cart.ts",
+    reads: 1,
+    edits: 0,
+    created: false,
+    deleted: false,
+    last_at: "2026-10-30T11:58:00Z",
     ...partial,
   };
 }

@@ -202,6 +202,7 @@ export interface Settings {
   history_enabled: boolean;
   prices: Record<string, ModelPrice>;
   check_for_updates: boolean;
+  editor: EditorChoice;
 }
 
 export interface ProcessInfo {
@@ -235,6 +236,7 @@ export interface AgentActivity {
   events: ActivityEvent[];
   in_flight: ActivityEvent | null;
   usage: Usage | null;
+  files: FileTouch[];
 }
 
 export interface WorkingTreeChange {
@@ -294,6 +296,7 @@ export interface SessionRecord {
   ended_at: string | null;
   last_seen_at: string;
   usage: Usage | null;
+  files: FileTouch[];
 }
 
 export interface Aggregate {
@@ -342,3 +345,20 @@ export interface UpdateInfo {
   notes: string | null;
   date: string | null;
 }
+
+export interface FileTouch {
+  path: string;
+  reads: number;
+  edits: number;
+  created: boolean;
+  deleted: boolean;
+  last_at: string | null;
+}
+
+export type EditorChoice =
+  | { kind: "system" }
+  | { kind: "vs-code" }
+  | { kind: "cursor" }
+  | { kind: "zed" }
+  | { kind: "jet-brains" }
+  | { kind: "custom"; command: string };

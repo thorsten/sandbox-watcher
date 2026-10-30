@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { getActivity } from "../api";
 import { AGENT_LABELS } from "../format";
+import { FilesList } from "./FilesList";
 import { formatRelative } from "../network";
 import { formatBytes } from "../sparkline";
 import { formatCost, formatTokens, totalTokens } from "../usageFormat";
@@ -128,6 +129,13 @@ export function ActivityPanel({ containerId, now }: { containerId: string; now: 
               <EventRow key={`${e.tool_use_id ?? ""}-${e.at ?? ""}-${i}`} event={e} now={now} />
             ))}
           </ol>
+          <h4 className="files-title">Files</h4>
+          <FilesList
+            files={agent.files}
+            containerId={containerId}
+            projectDir={activity.project_dir}
+            now={now}
+          />
         </section>
       ))}
 

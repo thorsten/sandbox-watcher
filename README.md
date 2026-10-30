@@ -21,6 +21,8 @@ agent sessions. The right side shows the selected container:
   tool calls from the agent's own session transcript, with the call in flight
   highlighted, for Claude Code, Codex, OpenCode and Pi. For every session,
   the processes running under it. Plus the project's git changes.
+- **Files:** every file the agent read, created, edited or deleted, from its
+  whole transcript, changed files first. Click one to open it in your editor.
 - **Network:** blocked and allowed destinations from sandbox's own logs.
 - **Resources:** CPU and memory sparklines, network and disk I/O.
 - **Logs:** the container log with follow and filter.
@@ -34,6 +36,14 @@ agent sessions. The right side shows the selected container:
 - **Tokens and cost:** per agent session from its own transcript. Pi and
   OpenCode report cost; Claude Code and Codex are estimated from an editable
   price table in Settings.
+
+## Editor
+
+"Editor" on a container and every file in the Files list open in the editor
+chosen in Settings: the system default app, Visual Studio Code, Cursor, Zed,
+the first installed JetBrains IDE (PhpStorm, IntelliJ IDEA, WebStorm, …) or a
+custom command with `{path}`. Only paths inside the container's project
+directory are opened.
 
 ## Install
 

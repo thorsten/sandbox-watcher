@@ -43,6 +43,18 @@ describe("api command names and arguments", () => {
     ["check update", () => api.checkForUpdate(), "check_for_update", undefined],
     ["install update", () => api.installUpdate(), "install_update", undefined],
     ["version", () => api.appVersion(), "app_version", undefined],
+    [
+      "editor project",
+      () => api.openInEditor("c1"),
+      "open_in_editor",
+      { containerId: "c1", path: null },
+    ],
+    [
+      "editor file",
+      () => api.openInEditor("c1", "/p/a.ts"),
+      "open_in_editor",
+      { containerId: "c1", path: "/p/a.ts" },
+    ],
   ];
 
   for (const [name, call, command, args] of cases) {

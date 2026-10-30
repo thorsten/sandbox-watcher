@@ -3,7 +3,9 @@ import { clearHistory, getHistory } from "../api";
 import { AGENT_LABELS } from "../format";
 import type { AgentKind, Aggregate, HistoryView as HistoryData } from "../types";
 import { formatCost, formatDuration, formatTokens } from "../usageFormat";
+import { describeFiles } from "../files";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { FilesList } from "./FilesList";
 
 const RANGES: { label: string; hours: number | null }[] = [
   { label: "Today", hours: 24 },
@@ -119,6 +121,7 @@ export function HistoryView({ onClose }: { onClose: () => void }) {
                   <th>Project</th>
                   <th>Agent</th>
                   <th>Command</th>
+                  <th>Files</th>
                   <th className="num">Tokens</th>
                   <th className="num">Cost</th>
                 </tr>
@@ -146,6 +149,21 @@ export function HistoryView({ onClose }: { onClose: () => void }) {
                     </td>
                     <td className="path">
                       <code title={s.command}>{s.command}</code>
+                    </td>
+                    <td>
+                      {s.files.length === 0 ? (
+                        <span className="muted">–</span>
+                      ) : (
+                        <details>
+                          <summary>{describeFiles(s.files)}</summary>
+                          <FilesList
+                            files={s.files}
+                            projectDir={null}
+                            now={new Date(now)}
+                            collapseReads={false}
+                          />
+                        </details>
+                      )}
                     </td>
                     <td className="num">
                       {s.usage

@@ -64,4 +64,20 @@ describe("SettingsPanel", () => {
     expect(text).toContain('"claude-sonnet-4": {');
     expect(text).toContain('"output": 15');
   });
+
+  it("offers the editors and shows the command field only for custom", () => {
+    const system = render(<SettingsPanel settings={settings()} onSaved={noop} onClose={noop} />);
+    for (const name of ["Visual Studio Code", "Cursor", "Zed", "JetBrains IDE"]) {
+      expect(system.text).toContain(name);
+    }
+    expect(system.html).not.toContain("subl {path}");
+    const custom = render(
+      <SettingsPanel
+        settings={settings({ editor: { kind: "custom", command: "subl {path}" } })}
+        onSaved={noop}
+        onClose={noop}
+      />,
+    );
+    expect(custom.html).toContain('value="subl {path}"');
+  });
 });

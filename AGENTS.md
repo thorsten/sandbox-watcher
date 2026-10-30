@@ -108,6 +108,11 @@ fix the parser:
 A transcript is only shown when a session of that agent is running in the
 container, so an old file never reads as current activity.
 
+Files per session come from the same stores (`files.rs`): the whole
+transcript is pre-filtered with `grep` to tool-call lines, capped at 16 MB,
+then parsed. Codex reads are inferred from simple shell commands (`cat`,
+`sed -n`, `head`, …); everything else comes from explicit file tools.
+
 ## Known gaps
 
 - Apple `container` adapter is tested only against sandbox's fixture JSON.

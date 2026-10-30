@@ -1169,3 +1169,60 @@ body,
   margin-bottom: 0.3rem;
   accent-color: var(--accent);
 }
+
+/* ---------- Files ---------- */
+.files-title {
+  margin: 0.7rem 0 0.3rem;
+  font-size: 0.85rem;
+}
+.files-head {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 0.3rem;
+}
+.file-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.file-list li {
+  display: grid;
+  grid-template-columns: 4.5rem minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: baseline;
+  padding: 0.15rem 0;
+}
+.file-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+}
+.file-meta {
+  white-space: nowrap;
+}
+.file-created {
+  background: var(--ok);
+  color: #fff;
+}
+.file-edited {
+  background: var(--warn);
+  color: #fff;
+}
+.file-deleted {
+  background: var(--err);
+  color: #fff;
+}
+.file-read {
+  background: var(--border);
+  color: var(--fg);
+}
+.history details summary {
+  font-weight: 400;
+  font-size: 0.85rem;
+}

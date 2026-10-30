@@ -149,6 +149,11 @@ export function onUpdateProgress(
   );
 }
 
+/** Open the project (no path) or a file inside it in the configured editor. */
+export function openInEditor(containerId: string, path?: string): Promise<string> {
+  return invoke<string>("open_in_editor", { containerId, path: path ?? null });
+}
+
 export function detectRuntimes(): Promise<DetectedRuntime[]> {
   return invoke<DetectedRuntime[]>("detect_runtimes");
 }

@@ -13,7 +13,8 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use sandbox_core::actions::{
-    MacTerminal, STOP_TIMEOUT, StopResult, custom_terminal_launch, terminal_launches,
+    MacTerminal, STOP_TIMEOUT, StopResult, TerminalLaunch, custom_terminal_launch,
+    terminal_launches,
 };
 use sandbox_core::activity::ContainerActivity;
 use sandbox_core::adapter::LogOptions;
@@ -233,52 +234,11 @@ async fn open_project(
         .map_err(|e| e.to_string())
 }
 
-/// Terminal apps to try on macOS, from settings, then what is installed.
-fn mac_terminals(choice: &TerminalChoice) -> Vec<MacTerminal> {
-    match choice {
-        TerminalChoice::Iterm => return vec![MacTerminal::ITerm],
-        TerminalChoice::TerminalApp => return vec![MacTerminal::TerminalApp],
-        TerminalChoice::Auto | TerminalChoice::Custom(_) => {}
-    }
-    let home = std::env::var("HOME").unwrap_or_default();
-    let iterm_installed = [
-        "/Applications/iTerm.app",
-        &format!("{home}/Applications/iTerm.app"),
-    ]
-    .iter()
-    .any(|p| std::path::Path::new(p).exists());
-    if iterm_installed {
-        vec![MacTerminal::ITerm]
-    } else {
-        vec![]
-    }
-}
-
-/// Open a terminal in the project directory. Tries the configured or the
-/// platform's usual terminals in order until one succeeds.
-#[tauri::command]
-async fn open_terminal(state: State<'_, App>, container_id: String) -> Result<String, String> {
-    let adapter = state.adapter_for(&container_id)?;
-    let dir = sandbox_core::actions::project_path(&adapter, &container_id, cfg!(windows))
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "this container has no bind-mounted project directory".to_string())?;
-    let settings = state.settings();
-    let os = std::env::consts::OS;
-    let mut launches = Vec::new();
-    if let TerminalChoice::Custom(template) = &settings.terminal {
-        launches.push(custom_terminal_launch(os, template, &dir));
-    }
-    let terminal_env = std::env::var("TERMINAL").ok();
-    launches.extend(terminal_launches(
-        os,
-        &dir,
-        terminal_env.as_deref(),
-        &mac_terminals(&settings.terminal),
-    ));
-
+/// Try launch candidates in order until one starts (or, for `wait`
+/// launches, exits successfully). Returns a label for the one that worked.
+async fn run_launches(launches: &[TerminalLaunch]) -> Result<String, String> {
     let mut errors = Vec::new();
-    for launch in &launches {
+    for launch in launches {
         let mut command = tokio::process::Command::new(&launch.program);
         command.args(&launch.args);
         if let Some(cwd) = &launch.cwd {
@@ -324,10 +284,89 @@ async fn open_terminal(state: State<'_, App>, container_id: String) -> Result<St
             Err(_) => errors.push(format!("{}: timed out", launch.program)),
         }
     }
-    Err(format!(
-        "no terminal could be started ({})",
-        errors.join("; ")
-    ))
+    Err(errors.join("; "))
+}
+
+/// Open the project, or a file inside it, in the editor chosen in Settings.
+/// The path is checked to lie inside the container's project directory.
+#[tauri::command]
+async fn open_in_editor(
+    app: AppHandle,
+    state: State<'_, App>,
+    container_id: String,
+    path: Option<String>,
+) -> Result<String, String> {
+    let adapter = state.adapter_for(&container_id)?;
+    let root = sandbox_core::actions::project_path(&adapter, &container_id, cfg!(windows))
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "this container has no bind-mounted project directory".to_string())?;
+    // Transcripts carry container paths; on Windows hosts translate them first.
+    let requested = path.map(|p| sandbox_core::paths::display_host_path(&p, cfg!(windows)));
+    let target =
+        sandbox_core::editor::validate_target(std::path::Path::new(&root), requested.as_deref())
+            .ok_or_else(|| "path is outside this container's project".to_string())?;
+    let target = target.to_string_lossy().into_owned();
+    let choice = state.settings().editor;
+    let launches = sandbox_core::editor::editor_launches(std::env::consts::OS, &choice, &target);
+    if launches.is_empty() {
+        app.opener()
+            .open_path(&target, None::<&str>)
+            .map_err(|e| e.to_string())?;
+        return Ok("default app".into());
+    }
+    run_launches(&launches)
+        .await
+        .map_err(|e| format!("no editor could be started ({e})"))
+}
+
+/// Terminal apps to try on macOS, from settings, then what is installed.
+fn mac_terminals(choice: &TerminalChoice) -> Vec<MacTerminal> {
+    match choice {
+        TerminalChoice::Iterm => return vec![MacTerminal::ITerm],
+        TerminalChoice::TerminalApp => return vec![MacTerminal::TerminalApp],
+        TerminalChoice::Auto | TerminalChoice::Custom(_) => {}
+    }
+    let home = std::env::var("HOME").unwrap_or_default();
+    let iterm_installed = [
+        "/Applications/iTerm.app",
+        &format!("{home}/Applications/iTerm.app"),
+    ]
+    .iter()
+    .any(|p| std::path::Path::new(p).exists());
+    if iterm_installed {
+        vec![MacTerminal::ITerm]
+    } else {
+        vec![]
+    }
+}
+
+/// Open a terminal in the project directory. Tries the configured or the
+/// platform's usual terminals in order until one succeeds.
+#[tauri::command]
+async fn open_terminal(state: State<'_, App>, container_id: String) -> Result<String, String> {
+    let adapter = state.adapter_for(&container_id)?;
+    let dir = sandbox_core::actions::project_path(&adapter, &container_id, cfg!(windows))
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "this container has no bind-mounted project directory".to_string())?;
+    let settings = state.settings();
+    let os = std::env::consts::OS;
+    let mut launches = Vec::new();
+    if let TerminalChoice::Custom(template) = &settings.terminal {
+        launches.push(custom_terminal_launch(os, template, &dir));
+    }
+    let terminal_env = std::env::var("TERMINAL").ok();
+    launches.extend(terminal_launches(
+        os,
+        &dir,
+        terminal_env.as_deref(),
+        &mac_terminals(&settings.terminal),
+    ));
+
+    run_launches(&launches)
+        .await
+        .map_err(|e| format!("no terminal could be started ({e})"))
 }
 
 /// Session history for a time range, optionally narrowed to a project or agent.
@@ -574,6 +613,7 @@ pub fn run() {
             get_project_path,
             open_project,
             open_terminal,
+            open_in_editor,
             check_for_update,
             install_update,
             detect_runtimes,
