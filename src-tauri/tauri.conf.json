@@ -40,6 +40,18 @@
     "homepage": "https://thorsten.github.io/sandbox-watcher/",
     "category": "DeveloperTool",
     "shortDescription": "Overview of your running MaibornWolff Sandbox containers",
-    "longDescription": "Shows which sandbox containers are running, which agents work inside them, what they reach on the network, what they consume, and lets you stop them or open the project."
+    "longDescription": "Shows which sandbox containers are running, which agents work inside them, what they reach on the network, what they consume, and lets you stop them or open the project.",
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMwMUMzRUUwM0U4QzZFRjgKUldUNGJvdys0RDRjTUhLbEF2VEVwWWNsVVZvU3htNUc4NkhzR2tMdk1TSEU1ZE1vdmVOS1BLTlEK",
+      "endpoints": [
+        "https://github.com/thorsten/sandbox-watcher/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

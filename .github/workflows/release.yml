@@ -80,10 +80,14 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Signs the updater artifacts; the public half is in tauri.conf.json.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
           releaseName: "Sandbox Watcher ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}"
           releaseBody: ${{ needs.notes.outputs.body }}
           releaseDraft: false
           prerelease: ${{ github.ref_type != 'tag' }}
+          includeUpdaterJson: true
           args: --target ${{ matrix.target }}

@@ -10,6 +10,7 @@ import type {
   ContainerDetails,
   Settings,
   StopResult,
+  UpdateInfo,
   DetectedRuntime,
   NetworkReport,
   Overview,
@@ -125,6 +126,27 @@ export function applyAllow(
   entries: string[],
 ): Promise<AllowResult> {
   return invoke<AllowResult>("apply_allow", { containerId, target, entries });
+}
+
+export function checkForUpdate(): Promise<UpdateInfo | null> {
+  return invoke<UpdateInfo | null>("check_for_update");
+}
+
+/** Downloads, installs and restarts; resolves only if something failed before restart. */
+export function installUpdate(): Promise<void> {
+  return invoke<void>("install_update");
+}
+
+export function onUpdateAvailable(handler: (info: UpdateInfo) => void): Promise<UnlistenFn> {
+  return listen<UpdateInfo>("update-available", (e) => handler(e.payload));
+}
+
+export function onUpdateProgress(
+  handler: (p: { downloaded: number; total: number | null }) => void,
+): Promise<UnlistenFn> {
+  return listen<{ downloaded: number; total: number | null }>("update-progress", (e) =>
+    handler(e.payload),
+  );
 }
 
 export function detectRuntimes(): Promise<DetectedRuntime[]> {

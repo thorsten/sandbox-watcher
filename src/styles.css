@@ -1135,3 +1135,37 @@ body,
   margin-left: 0.45rem;
   vertical-align: middle;
 }
+
+/* ---------- Update banner ---------- */
+.update-banner {
+  margin: 0.6rem 1rem 0;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--card);
+}
+.update-notes {
+  margin: 0.4rem 0 0;
+  padding-left: 1.2rem;
+  font-size: 0.85rem;
+}
+.update-actions,
+.settings-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.5rem;
+}
+.update-actions {
+  justify-content: flex-end;
+}
+.update-progress {
+  margin-top: 0.5rem;
+}
+.update-progress-bar {
+  display: block;
+  width: 100%;
+  height: 6px;
+  margin-bottom: 0.3rem;
+  accent-color: var(--accent);
+}

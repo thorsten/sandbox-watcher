@@ -81,6 +81,8 @@ pub struct Settings {
     pub history_enabled: bool,
     /// USD per million tokens, keyed by model id prefix.
     pub prices: PriceTable,
+    /// Look for a new release on start and every few hours.
+    pub check_for_updates: bool,
 }
 
 impl Default for Settings {
@@ -100,6 +102,7 @@ impl Default for Settings {
             history_retention_days: 30,
             history_enabled: true,
             prices: default_prices(),
+            check_for_updates: true,
         }
     }
 }

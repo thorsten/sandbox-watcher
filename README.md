@@ -111,6 +111,19 @@ SANDBOX_WATCHER_DOCKER_TESTS=1 SANDBOX_WATCHER_RUNTIME=apple-container \
   cargo test -p sandbox-core --test conformance -- --nocapture
 ```
 
+## Updates
+
+The app checks GitHub Releases on start and every six hours, shows the new
+version's notes in a banner, and installs on click. Downloads are verified
+against the public key in `src-tauri/tauri.conf.json` before installing.
+Supported for the macOS `.app`, the Windows installers and the Linux
+AppImage; `.deb` and `.rpm` installs update through the package manager.
+
+The release workflow signs the update artifacts with the
+`TAURI_SIGNING_PRIVATE_KEY` secret (and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
+if the key has one). Losing that key means existing installs can no longer
+verify updates.
+
 ## Builds and releases
 
 GitHub Actions builds everything. `CI` runs on every push and pull request:

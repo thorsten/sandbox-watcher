@@ -201,6 +201,7 @@ export interface Settings {
   history_retention_days: number;
   history_enabled: boolean;
   prices: Record<string, ModelPrice>;
+  check_for_updates: boolean;
 }
 
 export interface ProcessInfo {
@@ -333,4 +334,11 @@ export interface ModelPrice {
   output: number;
   cache_read: number;
   cache_write: number;
+}
+
+export interface UpdateInfo {
+  version: string;
+  current_version: string;
+  notes: string | null;
+  date: string | null;
 }

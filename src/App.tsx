@@ -10,6 +10,8 @@ import {
   onOverviewUpdated,
   onSelectContainer,
   onSettingsUpdated,
+  onUpdateAvailable,
+  onUpdateProgress,
   refreshNow,
 } from "./api";
 import logoUrl from "./assets/logo.svg";
@@ -19,10 +21,11 @@ import { RuntimeBanner } from "./components/RuntimeBanner";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { Sidebar } from "./components/Sidebar";
 import { StopAllButton } from "./components/StopAllButton";
+import { UpdateBanner } from "./components/UpdateBanner";
 import { AGENT_LABELS, summarize } from "./format";
 import { recentBlockedCount } from "./network";
 import { applyTheme } from "./theme";
-import type { NetworkReport, Overview, SandboxContainer, Settings } from "./types";
+import type { NetworkReport, Overview, SandboxContainer, Settings, UpdateInfo } from "./types";
 
 const EMPTY: SandboxContainer[] = [];
 
@@ -37,6 +40,12 @@ export function App() {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [update, setUpdate] = useState<UpdateInfo | null>(null);
+  const [dismissedVersion, setDismissedVersion] = useState<string | null>(null);
+  const [updateProgress, setUpdateProgress] = useState<{
+    downloaded: number;
+    total: number | null;
+  } | null>(null);
   const [version, setVersion] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -72,6 +81,8 @@ export function App() {
       onNetworkUpdated((n) => !cancelled && setNetwork(n)),
       onSettingsUpdated((s) => !cancelled && acceptSettings(s)),
       onOpenSettings(() => !cancelled && setShowSettings(true)),
+      onUpdateAvailable((u) => !cancelled && setUpdate(u)),
+      onUpdateProgress((p) => !cancelled && setUpdateProgress(p)),
       onSelectContainer((id) => {
         if (cancelled) return;
         setSelectedId(id);
@@ -172,6 +183,14 @@ export function App() {
           {version && <span className="muted small">v{version}</span>}
         </div>
       </header>
+
+      {update && update.version !== dismissedVersion && (
+        <UpdateBanner
+          update={update}
+          progress={updateProgress}
+          onDismiss={() => setDismissedVersion(update.version)}
+        />
+      )}
 
       {state.phase === "loading" && <p className="muted pad">Looking for container runtimes…</p>}
 

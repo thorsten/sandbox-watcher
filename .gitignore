@@ -19,3 +19,6 @@ Thumbs.db
 # Local env
 .env
 .env.*
+
+# Updater signing keys: never commit
+.keys/

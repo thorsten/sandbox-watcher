@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { saveSettings } from "../api";
+import { checkForUpdate, saveSettings } from "../api";
 import { RUNTIME_LABELS, type RuntimeKind, type Settings } from "../types";
 
 interface Props {
@@ -17,6 +17,17 @@ export function SettingsPanel({ settings, onSaved, onClose }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [pricesText, setPricesText] = useState(() => JSON.stringify(settings.prices, null, 2));
   const [pricesError, setPricesError] = useState<string | null>(null);
+  const [updateStatus, setUpdateStatus] = useState<string | null>(null);
+
+  const checkNow = async () => {
+    setUpdateStatus("Checking…");
+    try {
+      const found = await checkForUpdate();
+      setUpdateStatus(found ? `Version ${found.version} is available.` : "You are up to date.");
+    } catch (e) {
+      setUpdateStatus(`Check failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  };
 
   const update = (patch: Partial<Settings>) => setDraft((d) => ({ ...d, ...patch }));
   const updateNotify = (patch: Partial<Settings["notifications"]>) =>
@@ -221,6 +232,24 @@ export function SettingsPanel({ settings, onSaved, onClose }: Props) {
             table. Unknown models show tokens only.
           </span>
         </label>
+      </fieldset>
+
+      <fieldset>
+        <legend>Updates</legend>
+        <label className="check">
+          <input
+            type="checkbox"
+            checked={draft.check_for_updates}
+            onChange={(e) => update({ check_for_updates: e.target.checked })}
+          />
+          Check for new releases on start and every six hours
+        </label>
+        <div className="settings-row">
+          <button type="button" onClick={() => void checkNow()}>
+            Check now
+          </button>
+          {updateStatus && <span className="muted small">{updateStatus}</span>}
+        </div>
       </fieldset>
 
       <fieldset>

@@ -5,6 +5,7 @@
 mod app_menu;
 mod settings_store;
 mod tray;
+mod updates;
 mod watcher;
 
 use std::collections::HashMap;
@@ -462,6 +463,18 @@ async fn apply_allow(
     sandbox_core::allowlist::apply(&path, &entries).map_err(|e| format!("{}: {e}", path.display()))
 }
 
+/// Check GitHub Releases for a newer version now.
+#[tauri::command]
+async fn check_for_update(app: AppHandle) -> Result<Option<updates::UpdateInfo>, String> {
+    updates::check(&app).await
+}
+
+/// Install the update found by the last check and restart.
+#[tauri::command]
+async fn install_update(app: AppHandle) -> Result<(), String> {
+    updates::install(&app).await
+}
+
 #[tauri::command]
 fn detect_runtimes() -> Vec<DetectedRuntime> {
     detect(&Environment::current())
@@ -491,6 +504,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .manage(updates::PendingUpdate::default())
         .plugin(tauri_plugin_autostart::init(
             MacosLauncher::LaunchAgent,
             None,
@@ -524,6 +539,10 @@ pub fn run() {
             }
 
             watcher.start();
+            if !matches!(watcher.mode, Mode::Mock(_)) {
+                let w = watcher.clone();
+                updates::spawn_periodic(handle.clone(), move || w.settings().check_for_updates);
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -555,6 +574,8 @@ pub fn run() {
             get_project_path,
             open_project,
             open_terminal,
+            check_for_update,
+            install_update,
             detect_runtimes,
             app_version
         ])
