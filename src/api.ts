@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
+  ContainerActivity,
   ContainerDetails,
   Settings,
   StopResult,
@@ -50,6 +51,10 @@ export function getNetworkOverview(): Promise<NetworkReport[]> {
 
 export function getStats(): Promise<Record<string, ResourceSample[]>> {
   return invoke<Record<string, ResourceSample[]>>("get_stats");
+}
+
+export function getActivity(containerId: string): Promise<ContainerActivity> {
+  return invoke<ContainerActivity>("get_activity", { containerId });
 }
 
 export function getContainerDetails(containerId: string): Promise<ContainerDetails | null> {

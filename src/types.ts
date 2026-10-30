@@ -199,3 +199,64 @@ export interface Settings {
   blocked_burst_threshold: number;
   blocked_burst_window_secs: number;
 }
+
+export interface ProcessInfo {
+  pid: number;
+  ppid: number;
+  command: string;
+  elapsed_secs: number;
+  rss_bytes: number;
+  depth: number;
+}
+
+export type ActivityEventKind =
+  | "user-message"
+  | "assistant-text"
+  | "tool-use"
+  | "tool-result"
+  | "tool-error";
+
+export interface ActivityEvent {
+  at: string | null;
+  kind: ActivityEventKind;
+  label: string;
+  detail: string;
+  tool_use_id: string | null;
+}
+
+export interface AgentActivity {
+  agent: AgentKind;
+  source: string;
+  updated_at: string | null;
+  events: ActivityEvent[];
+  in_flight: ActivityEvent | null;
+}
+
+export interface WorkingTreeChange {
+  status: string;
+  path: string;
+}
+
+export interface WorkingTree {
+  is_repo: boolean;
+  branch: string | null;
+  changes: WorkingTreeChange[];
+  truncated: boolean;
+  shortstat: string | null;
+}
+
+export interface SessionProcesses {
+  session: Session;
+  tree: ProcessInfo[];
+  running_now: ProcessInfo[];
+}
+
+export interface ContainerActivity {
+  container_id: string;
+  collected_at: string;
+  sessions: SessionProcesses[];
+  agents: AgentActivity[];
+  working_tree: WorkingTree | null;
+  project_dir: string | null;
+  errors: string[];
+}

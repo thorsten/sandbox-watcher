@@ -1,6 +1,28 @@
 import { RUNTIME_LABELS, type RuntimeStatus } from "../types";
 
-export function RuntimeBanner({ runtime }: { runtime: RuntimeStatus }) {
+export function RuntimeBanner({ runtime, compact }: { runtime: RuntimeStatus; compact?: boolean }) {
+  if (compact && runtime.status === "connected") {
+    return (
+      <div className="runtime-compact">
+        {runtime.runtimes.map((r) => (
+          <span
+            key={r.kind}
+            className="runtime-item"
+            title={`${r.endpoint}${r.version ? `, ${r.version}` : ""}`}
+          >
+            <span className="dot dot-ok" aria-hidden="true" />
+            {RUNTIME_LABELS[r.kind]}
+          </span>
+        ))}
+        {runtime.failures.map((f) => (
+          <span key={f.kind} className="runtime-item muted" title={f.reason}>
+            <span className="dot dot-off" aria-hidden="true" />
+            {RUNTIME_LABELS[f.kind]}
+          </span>
+        ))}
+      </div>
+    );
+  }
   switch (runtime.status) {
     case "not-detected":
       return (

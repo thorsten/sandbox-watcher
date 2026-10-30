@@ -10,9 +10,11 @@ mod watcher;
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use chrono::Utc;
 use sandbox_core::actions::{
     MacTerminal, STOP_TIMEOUT, StopResult, custom_terminal_launch, terminal_launches,
 };
+use sandbox_core::activity::ContainerActivity;
 use sandbox_core::adapter::LogOptions;
 use sandbox_core::detect::{DetectedRuntime, Environment, detect};
 use sandbox_core::model::{ContainerDetails, ResourceSample};
@@ -84,6 +86,26 @@ fn apply_autostart(app: &AppHandle, enabled: bool) {
     } else if !enabled && current {
         let _ = manager.disable();
     }
+}
+
+/// What is happening inside a running container right now: processes under
+/// each session, the agent's transcript where known, and git changes.
+#[tauri::command]
+async fn get_activity(
+    state: State<'_, App>,
+    container_id: String,
+) -> Result<ContainerActivity, String> {
+    let adapter = state.adapter_for(&container_id)?;
+    let sessions = state
+        .overview()
+        .and_then(|o| {
+            o.containers
+                .into_iter()
+                .find(|c| c.container.id == container_id)
+        })
+        .map(|c| c.sessions)
+        .unwrap_or_default();
+    Ok(sandbox_core::activity::collect(&adapter, &container_id, &sessions, Utc::now()).await)
 }
 
 /// Mounts, ports, env names and user of one container, mounts classified
@@ -375,6 +397,7 @@ pub fn run() {
             get_stats,
             get_settings,
             save_settings,
+            get_activity,
             get_container_details,
             get_logs,
             reveal_mount,

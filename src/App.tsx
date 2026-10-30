@@ -12,11 +12,17 @@ import {
   refreshNow,
 } from "./api";
 import logoUrl from "./assets/logo.svg";
-import { ContainerList } from "./components/ContainerList";
+import { DetailPane } from "./components/DetailPane";
 import { RuntimeBanner } from "./components/RuntimeBanner";
 import { SettingsPanel } from "./components/SettingsPanel";
+import { Sidebar } from "./components/Sidebar";
+import { StopAllButton } from "./components/StopAllButton";
+import { AGENT_LABELS, summarize } from "./format";
+import { recentBlockedCount } from "./network";
 import { applyTheme } from "./theme";
-import type { NetworkReport, Overview, Settings } from "./types";
+import type { NetworkReport, Overview, SandboxContainer, Settings } from "./types";
+
+const EMPTY: SandboxContainer[] = [];
 
 type LoadState =
   | { phase: "loading" }
@@ -30,6 +36,7 @@ export function App() {
   const [showSettings, setShowSettings] = useState(false);
   const [version, setVersion] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const acceptSettings = useCallback((s: Settings) => {
     setSettings(s);
@@ -41,8 +48,6 @@ export function App() {
     setState({ phase: "ready", overview, refreshedAt: new Date() });
   }, []);
 
-  // The Rust watcher refreshes on its own; the UI only asks for the current
-  // state once and then listens for pushes.
   useEffect(() => {
     let cancelled = false;
     const fail = (e: unknown) => {
@@ -59,7 +64,6 @@ export function App() {
       (n) => !cancelled && setNetwork(n),
       () => undefined,
     );
-
     const subscriptions = [
       onOverviewUpdated((o) => !cancelled && acceptOverview(o)),
       onNetworkUpdated((n) => !cancelled && setNetwork(n)),
@@ -72,6 +76,16 @@ export function App() {
     };
   }, [acceptSettings, acceptOverview]);
 
+  const containers = state.phase === "ready" ? state.overview.containers : EMPTY;
+
+  // Keep the selection on the same container across refreshes; otherwise
+  // pick the first running one.
+  const selected =
+    containers.find((c) => c.id === selectedId) ??
+    containers.find((c) => c.state === "running") ??
+    containers[0] ??
+    null;
+
   const refresh = async () => {
     setRefreshing(true);
     try {
@@ -83,20 +97,44 @@ export function App() {
     }
   };
 
+  const summary = summarize(containers);
+  const recentBlocked =
+    network && state.phase === "ready" ? recentBlockedCount(network, state.refreshedAt) : 0;
+
   return (
-    <main className="app">
+    <div className="app">
       <header className="app-header">
         <h1>
-          <img className="logo" src={logoUrl} alt="" width={28} height={28} />
+          <img className="logo" src={logoUrl} alt="" width={26} height={26} />
           Sandbox Watcher
         </h1>
+        {state.phase === "ready" && state.overview.runtime.status === "connected" && (
+          <div className="header-stats" aria-label="Summary">
+            <Stat label="projects" value={summary.projects} />
+            <Stat label="running" value={summary.running} />
+            <Stat label="sessions" value={summary.sessions} />
+            {[...summary.byAgent].map(([agent, n]) => (
+              <span key={agent} className={`chip agent-${agent}`}>
+                {AGENT_LABELS[agent]} <strong>{n}</strong>
+              </span>
+            ))}
+            {recentBlocked > 0 && (
+              <span className="badge badge-err" title="Blocked requests in the last five minutes">
+                {recentBlocked} blocked
+              </span>
+            )}
+          </div>
+        )}
         <div className="header-meta">
           {state.phase === "ready" && state.overview.source === "mock" && (
             <span className="badge badge-mock" title="SANDBOX_WATCHER_MOCK=1">
               mock data
             </span>
           )}
-          {version && <span className="muted">v{version}</span>}
+          <StopAllButton
+            running={containers.filter((c) => c.state === "running")}
+            onChanged={() => void refresh()}
+          />
           <button type="button" onClick={() => void refresh()} disabled={refreshing}>
             {refreshing ? "Refreshing…" : "Refresh"}
           </button>
@@ -108,43 +146,72 @@ export function App() {
           >
             Settings
           </button>
+          {version && <span className="muted small">v{version}</span>}
         </div>
       </header>
 
-      {showSettings && settings && (
-        <SettingsPanel
-          key={JSON.stringify(settings)}
-          settings={settings}
-          onSaved={acceptSettings}
-          onClose={() => setShowSettings(false)}
-        />
-      )}
-
-      {state.phase === "loading" && <p className="muted">Looking for container runtimes…</p>}
+      {state.phase === "loading" && <p className="muted pad">Looking for container runtimes…</p>}
 
       {state.phase === "error" && (
-        <section className="banner banner-error">
+        <section className="banner banner-error pad">
           <strong>Could not load overview.</strong>
           <pre>{state.message}</pre>
         </section>
       )}
 
       {state.phase === "ready" && (
-        <>
-          <RuntimeBanner runtime={state.overview.runtime} />
-          <ContainerList
-            containers={state.overview.containers}
+        <div className="layout">
+          <Sidebar
+            containers={containers}
             runtime={state.overview.runtime}
             network={network}
+            selectedId={selected?.id ?? null}
+            onSelect={setSelectedId}
             now={state.refreshedAt}
-            onChanged={() => void refresh()}
           />
-          <footer className="muted">
-            Tested against sandbox {state.overview.tested_sandbox_version}. Refreshed{" "}
-            {state.refreshedAt.toLocaleTimeString()}.
-          </footer>
-        </>
+          <main className="main">
+            {showSettings && settings ? (
+              <SettingsPanel
+                key={JSON.stringify(settings)}
+                settings={settings}
+                onSaved={acceptSettings}
+                onClose={() => setShowSettings(false)}
+              />
+            ) : state.overview.runtime.status !== "connected" ? (
+              <RuntimeBanner runtime={state.overview.runtime} />
+            ) : selected ? (
+              <DetailPane
+                key={selected.id}
+                container={selected}
+                runtime={state.overview.runtime}
+                report={network?.find((r) => r.container_id === selected.id)}
+                now={state.refreshedAt}
+                onChanged={() => void refresh()}
+              />
+            ) : (
+              <section className="empty">
+                <h2>No sandbox containers.</h2>
+                <p className="muted">
+                  Start one with <code>sandbox run claude</code> in a project and it appears on the
+                  left.
+                </p>
+              </section>
+            )}
+            <footer className="muted small">
+              Tested against sandbox {state.overview.tested_sandbox_version}. Refreshed{" "}
+              {state.refreshedAt.toLocaleTimeString()}.
+            </footer>
+          </main>
+        </div>
       )}
-    </main>
+    </div>
+  );
+}
+
+function Stat({ label, value }: { label: string; value: number }) {
+  return (
+    <span className="header-stat">
+      <strong>{value}</strong> <span className="muted">{label}</span>
+    </span>
   );
 }

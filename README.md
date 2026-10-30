@@ -12,6 +12,20 @@ on the network, and what they consume.
 Status: 0.1.0, all milestones implemented, unsigned builds. See [`docs/MILESTONES.md`](docs/MILESTONES.md)
 for the plan and [`docs/adr/`](docs/adr/) for decisions.
 
+## What you see
+
+Containers sit on the left, grouped by project, as compact cards with their
+agent sessions. The right side shows the selected container:
+
+- **Activity:** what the agent is doing right now. For Claude Code, the last
+  messages and tool calls from its own session transcript, with the call in
+  flight highlighted. For every session, the processes running under it.
+  Plus the project's git changes.
+- **Network:** blocked and allowed destinations from sandbox's own logs.
+- **Resources:** CPU and memory sparklines, network and disk I/O.
+- **Logs:** the container log with follow and filter.
+- **Mounts:** project, persisted, runtime and extra mounts, ports and env names.
+
 ## Install
 
 Download the latest build from the

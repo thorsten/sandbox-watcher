@@ -77,6 +77,14 @@ oxlint and oxfmt for TypeScript (not Biome, not ESLint, not Prettier). rustfmt
 and clippy with warnings as errors for Rust. pnpm with `supportedArchitectures`
 set, because the project folder is used from macOS and a Linux sandbox.
 
+## Activity view coupling
+
+`crates/sandbox-core/src/activity.rs` reads Claude Code's session transcript
+(`~/.claude/projects/*/*.jsonl` inside the container) and parses the
+`assistant` / `user` / `tool_use` / `tool_result` line shapes. That format is
+Claude Code's, not ours; other agents only get the process tree until a
+parser for their transcripts exists.
+
 ## Known gaps
 
 - Apple `container` adapter is tested only against sandbox's fixture JSON.
