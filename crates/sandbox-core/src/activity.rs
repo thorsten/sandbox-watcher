@@ -18,6 +18,7 @@ use crate::adapter::{ExecRequest, RuntimeAdapter};
 use crate::model::{AgentKind, MountRole, Session};
 use crate::mounts::classify;
 use crate::sandbox::CONTAINER_HOME;
+use crate::usage::{PriceTable, Usage, parse_usage, usage_command};
 
 pub const PS_SENTINEL: &str = "sandbox-watcher-ps";
 pub const TRANSCRIPT_SENTINEL: &str = "sandbox-watcher-transcript";
@@ -168,7 +169,7 @@ pub struct ActivityEvent {
     pub tool_use_id: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AgentActivity {
     pub agent: AgentKind,
     /// Path of the transcript inside the container.
@@ -177,6 +178,8 @@ pub struct AgentActivity {
     pub events: Vec<ActivityEvent>,
     /// Tool call that has no result yet: what the agent is doing now.
     pub in_flight: Option<ActivityEvent>,
+    /// Tokens and cost for the whole transcript, when the agent reports them.
+    pub usage: Option<Usage>,
 }
 
 fn truncate(text: &str, max: usize) -> String {
@@ -1007,7 +1010,7 @@ pub struct SessionProcesses {
     pub running_now: Vec<ProcessInfo>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ContainerActivity {
     pub container_id: String,
     pub collected_at: DateTime<Utc>,
@@ -1025,6 +1028,55 @@ async fn run(
 ) -> Result<(i64, String)> {
     let out = adapter.exec(id, ExecRequest::new(command)).await?;
     Ok((out.exit_code, out.stdout))
+}
+
+/// Tokens and cost for one agent transcript, `None` when unreadable.
+pub async fn read_usage(
+    adapter: &Arc<dyn RuntimeAdapter>,
+    container_id: &str,
+    agent: AgentKind,
+    source: &str,
+    prices: &PriceTable,
+) -> Option<Usage> {
+    let command = usage_command(agent, source)?;
+    match run(adapter, container_id, command).await {
+        Ok((0, out)) => parse_usage(agent, &out, prices),
+        _ => None,
+    }
+}
+
+/// Usage for every agent with a running session. Cheap enough to run on each
+/// refresh: a grep per transcript.
+pub async fn collect_usage(
+    adapter: &Arc<dyn RuntimeAdapter>,
+    container_id: &str,
+    sessions: &[Session],
+    prices: &PriceTable,
+) -> Vec<Usage> {
+    let active: HashSet<AgentKind> = sessions.iter().map(|s| s.agent).collect();
+    if active.is_empty() {
+        return vec![];
+    }
+    let Ok((0, listing)) = run(adapter, container_id, transcript_list_command()).await else {
+        return vec![];
+    };
+    let mut out = Vec::new();
+    for line in listing.lines() {
+        let mut parts = line.splitn(3, '|');
+        let (Some(key), Some(_), Some(path)) = (parts.next(), parts.next(), parts.next()) else {
+            continue;
+        };
+        let Some(agent) = agent_from_key(key) else {
+            continue;
+        };
+        if !active.contains(&agent) {
+            continue;
+        }
+        if let Some(usage) = read_usage(adapter, container_id, agent, path.trim(), prices).await {
+            out.push(usage);
+        }
+    }
+    out
 }
 
 /// Project directory as seen inside the container (identity mount).
@@ -1049,6 +1101,7 @@ pub async fn collect(
     container_id: &str,
     sessions: &[Session],
     now: DateTime<Utc>,
+    prices: &PriceTable,
 ) -> ContainerActivity {
     let mut errors = Vec::new();
 
@@ -1113,12 +1166,14 @@ pub async fn collect(
                 Ok((0, text)) => {
                     let events = parse_transcript(agent, &text);
                     let in_flight = in_flight(&events);
+                    let usage = read_usage(adapter, container_id, agent, &path, prices).await;
                     agents.push(AgentActivity {
                         agent,
                         source: path,
                         updated_at,
                         events,
                         in_flight,
+                        usage,
                     });
                 }
                 Ok((code, _)) => errors.push(format!(
@@ -1375,12 +1430,24 @@ P:{"id":"prt_5","messageID":"msg_2","type":"tool","callID":"call_b","tool":"edit
         use crate::sessions::probe_container;
         let adapter: Arc<dyn RuntimeAdapter> = Arc::new(MockAdapter::demo());
         let probe = probe_container(&adapter, "sandbox-web-shop").await.unwrap();
-        let activity = collect(&adapter, "sandbox-web-shop", &probe.sessions, Utc::now()).await;
+        let activity = collect(
+            &adapter,
+            "sandbox-web-shop",
+            &probe.sessions,
+            Utc::now(),
+            &crate::usage::default_prices(),
+        )
+        .await;
         assert!(activity.errors.is_empty(), "{:?}", activity.errors);
         assert_eq!(activity.sessions.len(), 2);
         assert_eq!(activity.sessions[0].running_now.len(), 1);
         assert_eq!(activity.agents.len(), 1);
         assert!(activity.agents[0].in_flight.is_some());
+        let usage = activity.agents[0]
+            .usage
+            .as_ref()
+            .expect("usage from mock transcript");
+        assert!(usage.input_tokens > 0 && usage.cost_usd.is_some());
         let tree = activity.working_tree.unwrap();
         assert!(tree.is_repo);
         assert_eq!(tree.changes.len(), 2);

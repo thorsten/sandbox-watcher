@@ -8,6 +8,7 @@
 pub mod actions;
 pub mod activity;
 pub mod adapter;
+pub mod allowlist;
 pub mod apple;
 pub mod config;
 pub mod detect;
@@ -15,6 +16,7 @@ pub mod docker;
 pub mod docker_compat;
 pub mod endpoints;
 pub mod error;
+pub mod history;
 pub mod live;
 pub mod mock;
 pub mod model;
@@ -27,6 +29,7 @@ pub mod sandbox;
 pub mod sessions;
 pub mod settings;
 pub mod stats_hub;
+pub mod usage;
 
 pub use adapter::RuntimeAdapter;
 pub use error::{Error, Result};

@@ -4,6 +4,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::model::RuntimeKind;
+use crate::usage::{PriceTable, default_prices};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -56,7 +57,7 @@ impl Default for NotificationSettings {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "snake_case")]
 pub struct Settings {
     /// Fallback refresh when no runtime events arrive, in seconds.
@@ -75,6 +76,11 @@ pub struct Settings {
     /// Blocked requests within `blocked_burst_window_secs` that count as a burst.
     pub blocked_burst_threshold: u64,
     pub blocked_burst_window_secs: u64,
+    /// Keep closed history records this long.
+    pub history_retention_days: u64,
+    pub history_enabled: bool,
+    /// USD per million tokens, keyed by model id prefix.
+    pub prices: PriceTable,
 }
 
 impl Default for Settings {
@@ -91,6 +97,9 @@ impl Default for Settings {
             theme: Theme::System,
             blocked_burst_threshold: 5,
             blocked_burst_window_secs: 60,
+            history_retention_days: 30,
+            history_enabled: true,
+            prices: default_prices(),
         }
     }
 }
@@ -101,6 +110,10 @@ impl Settings {
         self.poll_interval_secs = self.poll_interval_secs.clamp(2, 300);
         self.blocked_burst_threshold = self.blocked_burst_threshold.clamp(1, 10_000);
         self.blocked_burst_window_secs = self.blocked_burst_window_secs.clamp(10, 3_600);
+        self.history_retention_days = self.history_retention_days.clamp(1, 3_650);
+        if self.prices.is_empty() {
+            self.prices = default_prices();
+        }
         if let TerminalChoice::Custom(cmd) = &self.terminal
             && cmd.trim().is_empty()
         {
