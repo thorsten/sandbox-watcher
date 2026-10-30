@@ -3,6 +3,7 @@
 //
 //   node scripts/changelog.mjs                 # full CHANGELOG.md to stdout
 //   node scripts/changelog.mjs --write         # rewrite CHANGELOG.md
+//   node scripts/changelog.mjs --write --next v0.2.0   # unreleased commits under 0.2.0
 //   node scripts/changelog.mjs --release v0.2.0   # notes for that tag only
 //                                                 # (commits since the previous tag)
 //   node scripts/changelog.mjs --unreleased    # notes for commits after the last tag
@@ -109,13 +110,16 @@ function releaseNotes(tag, previous) {
   return out;
 }
 
-function fullChangelog() {
+function fullChangelog(nextVersion) {
   const list = tags();
   let out =
     "# Changelog\n\nAll notable changes to Sandbox Watcher. Generated from\n[Conventional Commits](https://www.conventionalcommits.org/) by `scripts/changelog.mjs`.\n\n";
   const last = list.at(-1);
   const unreleased = commits(last ? `${last}..HEAD` : undefined);
-  if (unreleased.length > 0) {
+  if (nextVersion) {
+    const today = new Date().toISOString().slice(0, 10);
+    out += `## ${nextVersion.replace(/^v/, "")} (${today})\n\n` + renderCommits(unreleased) + "\n";
+  } else if (unreleased.length > 0) {
     out += "## Unreleased\n\n" + renderCommits(unreleased);
   }
   for (let i = list.length - 1; i >= 0; i--) {
@@ -138,7 +142,9 @@ if (releaseIndex !== -1) {
   const last = tags().at(-1);
   process.stdout.write(renderCommits(commits(last ? `${last}..HEAD` : undefined)));
 } else if (args.includes("--write")) {
-  writeFileSync("CHANGELOG.md", fullChangelog());
+  const nextIndex = args.indexOf("--next");
+  const next = nextIndex === -1 ? undefined : args[nextIndex + 1];
+  writeFileSync("CHANGELOG.md", fullChangelog(next));
   process.stderr.write("CHANGELOG.md written\n");
 } else {
   process.stdout.write(fullChangelog());

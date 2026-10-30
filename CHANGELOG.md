@@ -3,6 +3,12 @@
 All notable changes to Sandbox Watcher. Generated from
 [Conventional Commits](https://www.conventionalcommits.org/) by `scripts/changelog.mjs`.
 
+## Unreleased
+
+### CI
+
+- build the Intel macOS bundle on Apple silicon and add a release script ([e0f2708](https://github.com/thorsten/sandbox-watcher/commit/e0f2708caae5001c73ebac9ccc7c361f1637012b))
+
 ## 0.1.1 (2026-10-30)
 
 _No notable changes._
