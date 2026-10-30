@@ -462,7 +462,12 @@ impl RuntimeAdapter for DockerAdapter {
     async fn events(&self) -> Result<BoxStream<'static, Result<RuntimeEvent>>> {
         let mut filters: HashMap<String, Vec<String>> = HashMap::new();
         filters.insert("type".into(), vec!["container".into()]);
-        filters.insert("label".into(), vec![PROJECT_LABEL.into()]);
+        // Docker accepts a key-only label filter; Podman's compat endpoint
+        // matches nothing for it, so Podman gets every container event. They
+        // are only refresh triggers, and refreshes are debounced.
+        if self.kind == RuntimeKind::Docker {
+            filters.insert("label".into(), vec![PROJECT_LABEL.into()]);
+        }
         // The request is only sent when the stream is first polled. Asking for
         // events since a moment ago means nothing is lost between creating the
         // stream and consuming it.
