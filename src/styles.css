@@ -1130,3 +1130,8 @@ body,
   background: var(--bg);
   color: var(--fg);
 }
+
+.badge-inline {
+  margin-left: 0.45rem;
+  vertical-align: middle;
+}

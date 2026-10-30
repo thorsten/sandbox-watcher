@@ -138,7 +138,7 @@ export function HistoryView({ onClose }: { onClose: () => void }) {
                           ),
                         ),
                       )}
-                      {!s.ended_at && <span className="badge badge-ok"> live</span>}
+                      {!s.ended_at && <span className="badge badge-ok badge-inline">live</span>}
                     </td>
                     <td>{s.project_slug}</td>
                     <td>
