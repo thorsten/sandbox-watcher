@@ -8,24 +8,25 @@ const REFRESH_MS = 5_000;
 
 type LoadState =
   | { phase: "loading" }
-  | { phase: "ready"; overview: Overview; refreshedAt: Date }
+  | { phase: "ready"; overview: Overview; version: string; refreshedAt: Date }
   | { phase: "error"; message: string };
 
 export function App() {
   const [state, setState] = useState<LoadState>({ phase: "loading" });
-  const [version, setVersion] = useState<string>("");
 
   const refresh = useCallback(async () => {
     try {
-      const overview = await getOverview();
-      setState({ phase: "ready", overview, refreshedAt: new Date() });
+      const [overview, version] = await Promise.all([getOverview(), appVersion().catch(() => "")]);
+      setState({ phase: "ready", overview, version, refreshedAt: new Date() });
     } catch (error) {
       setState({ phase: "error", message: error instanceof Error ? error.message : String(error) });
     }
   }, []);
 
   useEffect(() => {
-    appVersion().then(setVersion, () => setVersion(""));
+    // refresh() awaits the Tauri command before it sets state, so there is no synchronous
+    // setState here; the rule cannot see through the async boundary.
+    // oxlint-disable-next-line react/set-state-in-effect
     void refresh();
     const timer = window.setInterval(() => void refresh(), REFRESH_MS);
     return () => window.clearInterval(timer);
@@ -46,7 +47,9 @@ export function App() {
               mock data
             </span>
           )}
-          {version && <span className="muted">v{version}</span>}
+          {state.phase === "ready" && state.version && (
+            <span className="muted">v{state.version}</span>
+          )}
           <button type="button" onClick={() => void refresh()}>
             Refresh
           </button>

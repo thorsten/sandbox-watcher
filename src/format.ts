@@ -34,7 +34,7 @@ export function staleHashes(containers: SandboxContainer[]): Set<string> {
     // The newest running container defines the current hash.
     const current = group
       .filter((c) => c.state === "running" && c.started_at)
-      .sort(
+      .toSorted(
         (a, b) => Date.parse(b.started_at ?? "") - Date.parse(a.started_at ?? ""),
       )[0]?.config_hash;
     for (const c of group) {

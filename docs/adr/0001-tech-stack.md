@@ -20,7 +20,7 @@ long periods, and talk to a local container runtime (Docker, Podman, Apple
   `bollard` for Docker and Podman. Structured responses, streaming stats and
   events. Apple `container` gets a CLI-based adapter in M5.
 - **UI:** React 19 with TypeScript, built by Vite. Tests with Vitest. Lint
-  and format with Biome.
+  with oxlint, format with oxfmt (both from the Oxc project).
 - **Package manager:** pnpm. Node 24, matching sandbox's own requirement.
 
 ## Consequences

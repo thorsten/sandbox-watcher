@@ -1,0 +1,5 @@
+{
+  "$schema": "./node_modules/oxfmt/configuration_schema.json",
+  "ignorePatterns": ["fixtures/**", "src-tauri/**", "pnpm-lock.yaml"],
+  "printWidth": 100
+}

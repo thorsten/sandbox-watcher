@@ -16,23 +16,23 @@ surface the watcher builds on. Sandbox has no API or event stream of its own,
 so the watcher talks to the container runtime directly and reads sandbox's
 conventions.
 
-| Signal | Where it comes from | Notes |
-|---|---|---|
-| Sandbox containers | Runtime list filtered by label `sandbox.project=<slug>` | Works across all projects at once. `sandbox status` only shows the current project. |
-| Container name | `sandbox-<project-slug>`, suffixed `-2`, `-3`, … for extra containers | Slug is derived from the project root path. |
-| Config identity | Label `sandbox.hash` (12 hex chars) | Changes when image, mounts, env, version, or runtime change. Useful to flag "stale container". |
-| Image | Container image reference (`localhost/` prefix stripped) | Layered user/project images. |
-| Uptime / state | `inspect` → `startedAt`, `state` | States: running, exited, dead, stopping. |
-| Active sessions | Marker files in `/tmp/sandbox-sessions/<pid>` inside the container, plus `/proc/<pid>/cmdline` | Requires `exec` into the container. Stale markers are cleaned by sandbox. Command tells us the agent (claude, codex, opencode, pi, shell, …). |
-| Readiness | `/tmp/.sandbox-ready` inside the container | Distinguishes "starting" from "ready". |
-| Network traffic | `exec` `/usr/local/bin/sandbox-container-tools network diagnostic <source>` and `network state` as root | Sources are squid proxy log, dnsmasq log, firewall (iptables) log. Sandbox aggregates blocked/allowed destinations with counts and last-seen. |
-| Resource usage | Runtime stats API (CPU, memory, net I/O, block I/O) | Docker and Podman expose this. Apple `container` needs a fallback. |
-| Container logs | Runtime logs API | Startup diagnostics, proxy and firewall bootstrap. |
-| Mounts, ports, env names | `inspect` | Shows project path, extra host mounts, read-only flags. Env values are secrets, show names only. |
-| User config | `~/.config/sandbox/config.toml` or `%APPDATA%/sandbox/config.toml` | Runtime choice, `allow_network`, persist paths. Read-only for us. |
-| Persistent data | `{data}/<project-slug>/`, `{data}/global/`, named volumes | Size on disk per project is a nice-to-have. |
-| Lifecycle events | Runtime event stream (start, die, stop, exec_create…) | Enables live updates without polling. |
-| Control | `sandbox stop`, `sandbox stop --all`, or runtime stop | Containers also stop themselves after an idle period. |
+| Signal                   | Where it comes from                                                                                     | Notes                                                                                                                                         |
+| ------------------------ | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sandbox containers       | Runtime list filtered by label `sandbox.project=<slug>`                                                 | Works across all projects at once. `sandbox status` only shows the current project.                                                           |
+| Container name           | `sandbox-<project-slug>`, suffixed `-2`, `-3`, … for extra containers                                   | Slug is derived from the project root path.                                                                                                   |
+| Config identity          | Label `sandbox.hash` (12 hex chars)                                                                     | Changes when image, mounts, env, version, or runtime change. Useful to flag "stale container".                                                |
+| Image                    | Container image reference (`localhost/` prefix stripped)                                                | Layered user/project images.                                                                                                                  |
+| Uptime / state           | `inspect` → `startedAt`, `state`                                                                        | States: running, exited, dead, stopping.                                                                                                      |
+| Active sessions          | Marker files in `/tmp/sandbox-sessions/<pid>` inside the container, plus `/proc/<pid>/cmdline`          | Requires `exec` into the container. Stale markers are cleaned by sandbox. Command tells us the agent (claude, codex, opencode, pi, shell, …). |
+| Readiness                | `/tmp/.sandbox-ready` inside the container                                                              | Distinguishes "starting" from "ready".                                                                                                        |
+| Network traffic          | `exec` `/usr/local/bin/sandbox-container-tools network diagnostic <source>` and `network state` as root | Sources are squid proxy log, dnsmasq log, firewall (iptables) log. Sandbox aggregates blocked/allowed destinations with counts and last-seen. |
+| Resource usage           | Runtime stats API (CPU, memory, net I/O, block I/O)                                                     | Docker and Podman expose this. Apple `container` needs a fallback.                                                                            |
+| Container logs           | Runtime logs API                                                                                        | Startup diagnostics, proxy and firewall bootstrap.                                                                                            |
+| Mounts, ports, env names | `inspect`                                                                                               | Shows project path, extra host mounts, read-only flags. Env values are secrets, show names only.                                              |
+| User config              | `~/.config/sandbox/config.toml` or `%APPDATA%/sandbox/config.toml`                                      | Runtime choice, `allow_network`, persist paths. Read-only for us.                                                                             |
+| Persistent data          | `{data}/<project-slug>/`, `{data}/global/`, named volumes                                               | Size on disk per project is a nice-to-have.                                                                                                   |
+| Lifecycle events         | Runtime event stream (start, die, stop, exec_create…)                                                   | Enables live updates without polling.                                                                                                         |
+| Control                  | `sandbox stop`, `sandbox stop --all`, or runtime stop                                                   | Containers also stop themselves after an idle period.                                                                                         |
 
 Runtimes: Docker (macOS, Linux, Windows via Rancher Desktop/WSL2), Podman
 (all three), Apple `container` (Apple silicon, macOS 26+). Sandbox picks the

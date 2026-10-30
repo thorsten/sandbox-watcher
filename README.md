@@ -10,13 +10,13 @@ for the plan and [`docs/adr/`](docs/adr/) for decisions.
 
 ## Layout
 
-| Path | What |
-|---|---|
+| Path                  | What                                                                                                        |
+| --------------------- | ----------------------------------------------------------------------------------------------------------- |
 | `crates/sandbox-core` | Rust library: domain model, `RuntimeAdapter` contract, sandbox conventions, runtime detection, mock adapter |
-| `src-tauri` | Tauri 2 shell exposing core functions as commands |
-| `src` | React + TypeScript UI |
-| `fixtures/docker` | Docker Engine API responses used by tests |
-| `docs` | Milestone plan and ADRs |
+| `src-tauri`           | Tauri 2 shell exposing core functions as commands                                                           |
+| `src`                 | React + TypeScript UI                                                                                       |
+| `fixtures/docker`     | Docker Engine API responses used by tests                                                                   |
+| `docs`                | Milestone plan and ADRs                                                                                     |
 
 ## Develop
 
@@ -34,8 +34,12 @@ Checks:
 ```sh
 cargo test -p sandbox-core
 cargo clippy --all-targets -- -D warnings
-pnpm lint && pnpm test && pnpm build
+pnpm lint && pnpm format:check && pnpm test && pnpm build
 ```
+
+## License
+
+MIT, see [`LICENSE`](LICENSE).
 
 ## Privacy
 
