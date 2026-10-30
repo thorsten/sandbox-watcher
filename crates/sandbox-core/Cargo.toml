@@ -8,6 +8,7 @@ repository.workspace = true
 
 [dependencies]
 async-trait.workspace = true
+bollard = { version = "0.21", features = ["chrono"] }
 chrono.workspace = true
 futures.workspace = true
 serde.workspace = true

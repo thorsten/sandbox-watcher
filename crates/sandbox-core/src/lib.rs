@@ -7,8 +7,10 @@
 
 pub mod adapter;
 pub mod detect;
+pub mod docker;
 pub mod docker_compat;
 pub mod error;
+pub mod live;
 pub mod mock;
 pub mod model;
 pub mod overview;

@@ -62,6 +62,12 @@ impl MockAdapter {
         adapter.add(mock_container("web-shop", 1, "running", "a1b2c3d4e5f6"));
         adapter.add(mock_container("web-shop", 2, "running", "0f0f0f0f0f0f"));
         adapter.add(mock_container("billing-api", 1, "exited", "a1b2c3d4e5f6"));
+        adapter.add(mock_container(
+            "billing-api-live",
+            1,
+            "running",
+            "a1b2c3d4e5f6",
+        ));
         adapter
     }
 
@@ -191,10 +197,24 @@ impl RuntimeAdapter for MockAdapter {
         Ok(self.find(id).map(|c| c.details))
     }
 
-    async fn exec(&self, id: &str, _request: ExecRequest) -> Result<ExecOutput> {
-        self.find(id)
-            .map(|c| c.exec_output)
-            .ok_or_else(|| Error::ContainerNotFound(id.into()))
+    async fn exec(&self, id: &str, request: ExecRequest) -> Result<ExecOutput> {
+        let container = self
+            .find(id)
+            .ok_or_else(|| Error::ContainerNotFound(id.into()))?;
+        // Honour `sh -c "exit N"` so adapter conformance tests can check exit codes.
+        if let [sh, flag, script] = request.command.as_slice()
+            && sh == "sh"
+            && flag == "-c"
+            && let Some(code) = script.trim().strip_prefix("exit ")
+            && let Ok(code) = code.trim().parse::<i64>()
+        {
+            return Ok(ExecOutput {
+                exit_code: code,
+                stdout: String::new(),
+                stderr: String::new(),
+            });
+        }
+        Ok(container.exec_output)
     }
 
     async fn stats(&self, id: &str) -> Result<ResourceSample> {
@@ -288,12 +308,12 @@ mod tests {
             .list_containers(&ContainerFilter::running())
             .await
             .unwrap();
-        assert_eq!(running.len(), 2);
+        assert_eq!(running.len(), 3);
         let all = adapter
             .list_containers(&ContainerFilter::all())
             .await
             .unwrap();
-        assert_eq!(all.len(), 3);
+        assert_eq!(all.len(), 4);
         let billing = adapter
             .list_containers(&ContainerFilter::for_project("billing-api"))
             .await

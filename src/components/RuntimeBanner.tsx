@@ -16,7 +16,7 @@ export function RuntimeBanner({ runtime }: { runtime: RuntimeStatus }) {
     case "detected-only":
       return (
         <section className="banner banner-info">
-          <strong>Runtime found, adapter not wired yet.</strong>
+          <strong>Runtime found, but no adapter for it yet.</strong>
           <ul>
             {runtime.candidates.map((c) => (
               <li key={`${c.kind}-${c.endpoint}`}>
@@ -26,8 +26,8 @@ export function RuntimeBanner({ runtime }: { runtime: RuntimeStatus }) {
             ))}
           </ul>
           <p className="muted">
-            Listing containers arrives with milestone M1. Run with{" "}
-            <code>SANDBOX_WATCHER_MOCK=1</code> to see demo data.
+            Docker and Podman are supported today. Apple <code>container</code> support arrives with
+            milestone M5.
           </p>
         </section>
       );

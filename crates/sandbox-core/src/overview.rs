@@ -63,8 +63,11 @@ impl Overview {
 
 /// Load the overview through an adapter. Lists running and stopped
 /// containers so the UI can show recently exited sandboxes greyed out.
-pub async fn load(adapter: Arc<dyn RuntimeAdapter>, source: DataSource) -> Overview {
-    let candidates = Vec::new();
+pub async fn load(
+    adapter: Arc<dyn RuntimeAdapter>,
+    source: DataSource,
+    candidates: Vec<DetectedRuntime>,
+) -> Overview {
     let info = match adapter.ping().await {
         Ok(info) => info,
         Err(e) => {
@@ -113,7 +116,7 @@ mod tests {
 
     #[tokio::test]
     async fn running_containers_sort_first() {
-        let overview = load(Arc::new(MockAdapter::demo()), DataSource::Mock).await;
+        let overview = load(Arc::new(MockAdapter::demo()), DataSource::Mock, vec![]).await;
         assert!(matches!(overview.runtime, RuntimeStatus::Connected { .. }));
         let names: Vec<_> = overview
             .containers
@@ -123,6 +126,7 @@ mod tests {
         assert_eq!(
             names,
             vec![
+                "sandbox-billing-api-live",
                 "sandbox-web-shop",
                 "sandbox-web-shop-2",
                 "sandbox-billing-api"
@@ -132,7 +136,7 @@ mod tests {
 
     #[tokio::test]
     async fn empty_adapter_gives_no_containers() {
-        let overview = load(Arc::new(MockAdapter::empty()), DataSource::Mock).await;
+        let overview = load(Arc::new(MockAdapter::empty()), DataSource::Mock, vec![]).await;
         assert!(overview.containers.is_empty());
         let json = serde_json::to_value(&overview).unwrap();
         assert_eq!(json["runtime"]["status"], "connected");
