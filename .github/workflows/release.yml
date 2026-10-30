@@ -13,8 +13,36 @@ permissions:
   contents: write
 
 jobs:
+  notes:
+    name: Release notes
+    runs-on: ubuntu-latest
+    outputs:
+      body: ${{ steps.notes.outputs.body }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - id: notes
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            node scripts/changelog.mjs --release "${{ github.ref_name }}" > notes.md
+          else
+            node scripts/changelog.mjs --unreleased > notes.md
+          fi
+          printf '\nUnsigned builds for macOS (Apple silicon and Intel), Windows and Linux. Install notes: https://thorsten.github.io/sandbox-watcher/\n' >> notes.md
+          {
+            echo 'body<<NOTES_EOF'
+            cat notes.md
+            echo 'NOTES_EOF'
+          } >> "$GITHUB_OUTPUT"
+
   build:
     name: Bundle (${{ matrix.name }})
+    needs: notes
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -59,7 +87,7 @@ jobs:
         with:
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
           releaseName: "Sandbox Watcher ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}"
-          releaseBody: "Unsigned builds for macOS (Apple silicon and Intel), Windows and Linux. See https://thorsten.github.io/sandbox-watcher/ for install notes."
+          releaseBody: ${{ needs.notes.outputs.body }}
           releaseDraft: false
           prerelease: ${{ github.ref_type != 'tag' }}
           args: --target ${{ matrix.target }}
