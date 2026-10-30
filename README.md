@@ -117,7 +117,7 @@ GitHub Actions builds everything. `CI` runs on every push and pull request:
 Rust tests on macOS, Linux and Windows, the Docker conformance test on
 Linux, web lint, tests and build, and an unsigned Tauri debug build per OS.
 `Release` runs on tags `v*` (or manually) and publishes installers for macOS
-(Apple silicon and Intel), Linux and Windows. Bundles are unsigned; signing
+(Apple silicon), Linux and Windows. Bundles are unsigned; signing
 and notarisation are a follow-up. `Pages` deploys the `site/` folder to
 GitHub Pages.
 

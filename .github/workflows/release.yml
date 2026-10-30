@@ -33,7 +33,7 @@ jobs:
           else
             node scripts/changelog.mjs --unreleased > notes.md
           fi
-          printf '\nUnsigned builds for macOS (Apple silicon and Intel), Windows and Linux. Install notes: https://thorsten.github.io/sandbox-watcher/\n' >> notes.md
+          printf '\nUnsigned builds for macOS (Apple silicon), Windows and Linux. Install notes: https://thorsten.github.io/sandbox-watcher/\n' >> notes.md
           {
             echo 'body<<NOTES_EOF'
             cat notes.md
@@ -51,10 +51,6 @@ jobs:
           - name: macOS Apple silicon
             os: macos-latest
             target: aarch64-apple-darwin
-          # Intel macOS runners are retired; cross-compile on Apple silicon.
-          - name: macOS Intel
-            os: macos-latest
-            target: x86_64-apple-darwin
           - name: Linux x64
             os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu

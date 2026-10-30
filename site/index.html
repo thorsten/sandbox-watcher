@@ -317,7 +317,7 @@
               </svg>
               <h3>macOS</h3>
             </div>
-            <p>Apple silicon and Intel builds. macOS 12 or newer.</p>
+            <p>Apple silicon build. macOS 12 or newer.</p>
             <div class="platform-links" data-platform="macos">
               <a
                 class="button small"
@@ -475,10 +475,7 @@
           if (!release) return;
           const assets = release.assets || [];
           const groups = {
-            macos: [
-              ["Apple silicon (.dmg)", (n) => /aarch64.*\.dmg$/i.test(n)],
-              ["Intel (.dmg)", (n) => /(x64|x86_64).*\.dmg$/i.test(n)],
-            ],
+            macos: [["Apple silicon (.dmg)", (n) => /aarch64.*\.dmg$/i.test(n)]],
             windows: [
               ["Installer (.msi)", (n) => /\.msi$/i.test(n)],
               ["Setup (.exe)", (n) => /setup\.exe$/i.test(n)],
