@@ -40,6 +40,11 @@ export function onSettingsUpdated(handler: (settings: Settings) => void): Promis
   return listen<Settings>("settings-updated", (e) => handler(e.payload));
 }
 
+/** Tray menu picked a project: select this container in the window. */
+export function onSelectContainer(handler: (containerId: string) => void): Promise<UnlistenFn> {
+  return listen<string>("select-container", (e) => handler(e.payload));
+}
+
 /** Tray menu asked for the settings panel. */
 export function onOpenSettings(handler: () => void): Promise<UnlistenFn> {
   return listen<null>("open-settings", () => handler());
