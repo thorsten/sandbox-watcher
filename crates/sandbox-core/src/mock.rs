@@ -10,6 +10,7 @@ use futures::StreamExt;
 use futures::stream::BoxStream;
 use tokio::sync::broadcast;
 
+use crate::activity::{GIT_SENTINEL, PS_SENTINEL, TRANSCRIPT_SENTINEL};
 use crate::adapter::{
     Capabilities, ContainerFilter, ExecOutput, ExecRequest, LogOptions, RuntimeAdapter,
 };
@@ -263,6 +264,43 @@ impl RuntimeAdapter for MockAdapter {
                 stderr: String::new(),
             });
         }
+        // Activity scripts are recognised by their `$0` sentinel.
+        if let [sh, flag, script, sentinel] = request.command.as_slice()
+            && sh == "sh"
+            && flag == "-c"
+        {
+            let ok = |stdout: &str| {
+                Ok(ExecOutput {
+                    exit_code: 0,
+                    stdout: stdout.into(),
+                    stderr: String::new(),
+                })
+            };
+            match sentinel.as_str() {
+                PS_SENTINEL => {
+                    return ok("H|100|5000\n\
+P|1|0|100|300|/opt/sandbox-cli/entrypoint\n\
+P|4242|1|400000|60000|claude --dangerously-skip-permissions\n\
+P|4250|4242|480000|2000|/bin/sh -c npm test\n\
+P|4251|4250|481000|40000|node node_modules/.bin/vitest run\n\
+P|4300|1|420000|1500|zsh -l\n");
+                }
+                TRANSCRIPT_SENTINEL if script.starts_with("tail") => {
+                    return ok(DEMO_TRANSCRIPT);
+                }
+                TRANSCRIPT_SENTINEL => {
+                    return ok(
+                        "claude|1761818400|/home/sandbox/.claude/projects/-Users-dev-projects-web-shop/abc.jsonl\n",
+                    );
+                }
+                GIT_SENTINEL => {
+                    return ok(
+                        "B|feature/cart-totals\nS| M src/cart.ts\nS|?? src/cart.test.ts\nD| 1 file changed, 14 insertions(+), 3 deletions(-)\n",
+                    );
+                }
+                _ => {}
+            }
+        }
         // Honour `sh -c "exit N"` so adapter conformance tests can check exit codes.
         if let [sh, flag, script] = request.command.as_slice()
             && sh == "sh"
@@ -357,6 +395,15 @@ fn tokio_stream_from_broadcast(
         }
     })
 }
+
+/// A few lines of a Claude Code transcript for demo mode.
+const DEMO_TRANSCRIPT: &str = r#"{"type":"user","message":{"role":"user","content":"Fix the cart total rounding bug and add a test"},"timestamp":"2026-10-30T09:58:00Z"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"I'll reproduce it with a failing test first."},{"type":"tool_use","id":"toolu_01","name":"Read","input":{"file_path":"/Users/dev/projects/web-shop/src/cart.ts"}}]},"timestamp":"2026-10-30T09:58:04Z"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_01","content":"export function total(items) { ... }"}]},"timestamp":"2026-10-30T09:58:05Z"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_02","name":"Edit","input":{"file_path":"/Users/dev/projects/web-shop/src/cart.ts","old_string":"Math.floor","new_string":"Math.round"}}]},"timestamp":"2026-10-30T09:59:10Z"}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"toolu_02","content":"The file has been updated."}]},"timestamp":"2026-10-30T09:59:11Z"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Now running the suite."},{"type":"tool_use","id":"toolu_03","name":"Bash","input":{"command":"npm test -- --run","description":"Run tests"}}]},"timestamp":"2026-10-30T10:00:00Z"}
+"#;
 
 #[cfg(test)]
 mod tests {

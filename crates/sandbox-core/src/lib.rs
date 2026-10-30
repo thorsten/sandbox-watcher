@@ -6,6 +6,7 @@
 //! mock adapter for tests and demos.
 
 pub mod actions;
+pub mod activity;
 pub mod adapter;
 pub mod apple;
 pub mod config;

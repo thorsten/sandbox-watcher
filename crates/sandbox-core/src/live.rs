@@ -49,7 +49,9 @@ pub fn is_relevant(event: &RuntimeEvent) -> bool {
         | RuntimeEventKind::Died
         | RuntimeEventKind::Removed => true,
         RuntimeEventKind::ExecCreated(command) => {
-            !command.contains(PROBE_SENTINEL) && !command.contains(DIAGNOSTIC_COMMAND_PREFIX)
+            !command.contains(PROBE_SENTINEL)
+                && !command.contains(DIAGNOSTIC_COMMAND_PREFIX)
+                && !command.contains("sandbox-watcher-")
         }
         RuntimeEventKind::Other(_) => false,
     }
