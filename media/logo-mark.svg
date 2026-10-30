@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="120 90 784 844" width="784" height="844" role="img" aria-label="Sandbox Watcher mark">
+  <polygon points="512,150 826,331 826,693 512,874 198,693 198,331" fill="none" stroke="#38bdf8" stroke-width="54" stroke-linejoin="round"/>
+  <path d="M 252,512 C 356,362 668,362 772,512 C 668,662 356,662 252,512 Z" fill="#38bdf8"/>
+  <circle cx="512" cy="512" r="114" fill="#0a101f"/>
+  <circle cx="512" cy="512" r="82" fill="#38bdf8"/>
+  <circle cx="512" cy="512" r="42" fill="#0a101f"/>
+  <circle cx="474" cy="468" r="22" fill="#e0f2fe"/>
+</svg>

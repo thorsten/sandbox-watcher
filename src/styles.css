@@ -72,7 +72,9 @@ button:hover {
   gap: 0.5rem;
 }
 .logo {
-  color: var(--accent);
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
 }
 .header-meta {
   display: flex;

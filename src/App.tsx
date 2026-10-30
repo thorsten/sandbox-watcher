@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { appVersion, getNetworkOverview, getOverview, onRuntimeEvent } from "./api";
 import { ContainerList } from "./components/ContainerList";
 import { RuntimeBanner } from "./components/RuntimeBanner";
+import logoUrl from "./assets/logo.svg";
 import type { NetworkReport, Overview } from "./types";
 
 /** Fallback poll. Lifecycle events from the runtime trigger refreshes sooner. */
@@ -71,9 +72,7 @@ export function App() {
     <main className="app">
       <header className="app-header">
         <h1>
-          <span className="logo" aria-hidden="true">
-            ⬡
-          </span>
+          <img className="logo" src={logoUrl} alt="" width={28} height={28} />
           Sandbox Watcher
         </h1>
         <div className="header-meta">

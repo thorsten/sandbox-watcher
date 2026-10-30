@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="media/logo.svg" alt="Sandbox Watcher logo" width="128" height="128">
+</p>
+
 # Sandbox Watcher
 
 A cross-platform desktop app that shows what is happening in your running

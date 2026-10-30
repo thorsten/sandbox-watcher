@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img" aria-label="Sandbox Watcher">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1c2a44"/>
+      <stop offset="1" stop-color="#0a101f"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="230" fill="url(#bg)"/>
+  <!-- Hexagon: the sandbox -->
+  <polygon points="512,150 826,331 826,693 512,874 198,693 198,331" fill="none" stroke="#38bdf8" stroke-width="54" stroke-linejoin="round"/>
+  <!-- Eye: the watcher -->
+  <path d="M 252,512 C 356,362 668,362 772,512 C 668,662 356,662 252,512 Z" fill="#38bdf8"/>
+  <circle cx="512" cy="512" r="114" fill="#0a101f"/>
+  <circle cx="512" cy="512" r="82" fill="#38bdf8"/>
+  <circle cx="512" cy="512" r="42" fill="#0a101f"/>
+  <circle cx="474" cy="468" r="22" fill="#e0f2fe"/>
+</svg>
