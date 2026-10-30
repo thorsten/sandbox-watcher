@@ -9,7 +9,7 @@ A cross-platform desktop app that shows what is happening in your running
 which projects have a sandbox up, which agents run inside, what they reach
 on the network, and what they consume.
 
-Status: milestone M5 (multi-runtime and platform parity). See [`docs/MILESTONES.md`](docs/MILESTONES.md)
+Status: milestone M6 (actions). See [`docs/MILESTONES.md`](docs/MILESTONES.md)
 for the plan and [`docs/adr/`](docs/adr/) for decisions.
 
 ## Layout

@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use sandbox_core::RuntimeAdapter;
+use sandbox_core::actions::{STOP_TIMEOUT, StopResult, terminal_launches};
 use sandbox_core::adapter::{ContainerFilter, LogOptions};
 use sandbox_core::detect::{DetectedRuntime, Environment, detect};
 use sandbox_core::live::LiveRuntime;
@@ -178,6 +179,83 @@ async fn reveal_mount(
         .map_err(|e| e.to_string())
 }
 
+/// Stop one container. The UI asks for confirmation first.
+#[tauri::command]
+async fn stop_container(state: State<'_, AppState>, container_id: String) -> Result<(), String> {
+    let adapter = state.adapter_for(&container_id)?;
+    adapter
+        .stop(&container_id, Some(STOP_TIMEOUT))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Stop every running sandbox container across runtimes.
+#[tauri::command]
+async fn stop_all(state: State<'_, AppState>) -> Result<Vec<StopResult>, String> {
+    Ok(sandbox_core::actions::stop_all(&state.adapters(), STOP_TIMEOUT).await)
+}
+
+/// Host path of the container's project directory, if it has a bind-mounted one.
+#[tauri::command]
+async fn get_project_path(
+    state: State<'_, AppState>,
+    container_id: String,
+) -> Result<Option<String>, String> {
+    let adapter = state.adapter_for(&container_id)?;
+    sandbox_core::actions::project_path(&adapter, &container_id, cfg!(windows))
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Open the project directory in the file manager.
+#[tauri::command]
+async fn open_project(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    container_id: String,
+) -> Result<(), String> {
+    let adapter = state.adapter_for(&container_id)?;
+    let dir = sandbox_core::actions::project_path(&adapter, &container_id, cfg!(windows))
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "this container has no bind-mounted project directory".to_string())?;
+    app.opener()
+        .open_path(&dir, None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
+/// Open a terminal in the project directory. Tries the platform's usual
+/// terminals in order until one starts.
+#[tauri::command]
+async fn open_terminal(state: State<'_, AppState>, container_id: String) -> Result<String, String> {
+    let adapter = state.adapter_for(&container_id)?;
+    let dir = sandbox_core::actions::project_path(&adapter, &container_id, cfg!(windows))
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "this container has no bind-mounted project directory".to_string())?;
+    let terminal_env = std::env::var("TERMINAL").ok();
+    let launches = terminal_launches(std::env::consts::OS, &dir, terminal_env.as_deref());
+    let mut errors = Vec::new();
+    for launch in &launches {
+        let mut command = std::process::Command::new(&launch.program);
+        command.args(&launch.args);
+        if let Some(cwd) = &launch.cwd {
+            command.current_dir(cwd);
+        }
+        command.stdin(std::process::Stdio::null());
+        command.stdout(std::process::Stdio::null());
+        command.stderr(std::process::Stdio::null());
+        match command.spawn() {
+            Ok(_) => return Ok(launch.program.clone()),
+            Err(e) => errors.push(format!("{}: {e}", launch.program)),
+        }
+    }
+    Err(format!(
+        "no terminal could be started ({})",
+        errors.join("; ")
+    ))
+}
+
 #[tauri::command]
 fn detect_runtimes() -> Vec<DetectedRuntime> {
     detect(&Environment::current())
@@ -209,6 +287,11 @@ pub fn run() {
             get_container_details,
             get_logs,
             reveal_mount,
+            stop_container,
+            stop_all,
+            get_project_path,
+            open_project,
+            open_terminal,
             detect_runtimes,
             app_version
         ])

@@ -5,6 +5,7 @@
 //! runtime implements, sandbox's on-disk and in-container conventions, and a
 //! mock adapter for tests and demos.
 
+pub mod actions;
 pub mod adapter;
 pub mod apple;
 pub mod config;

@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   ContainerDetails,
+  StopResult,
   DetectedRuntime,
   NetworkReport,
   Overview,
@@ -31,6 +32,27 @@ export function getLogs(containerId: string, tail = 200): Promise<string> {
 
 export function revealMount(containerId: string, path: string): Promise<void> {
   return invoke<void>("reveal_mount", { containerId, path });
+}
+
+export function stopContainer(containerId: string): Promise<void> {
+  return invoke<void>("stop_container", { containerId });
+}
+
+export function stopAll(): Promise<StopResult[]> {
+  return invoke<StopResult[]>("stop_all");
+}
+
+export function getProjectPath(containerId: string): Promise<string | null> {
+  return invoke<string | null>("get_project_path", { containerId });
+}
+
+export function openProject(containerId: string): Promise<void> {
+  return invoke<void>("open_project", { containerId });
+}
+
+/** Resolves with the terminal program that was started. */
+export function openTerminal(containerId: string): Promise<string> {
+  return invoke<string>("open_terminal", { containerId });
 }
 
 export function detectRuntimes(): Promise<DetectedRuntime[]> {

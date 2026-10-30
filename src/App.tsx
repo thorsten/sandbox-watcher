@@ -107,6 +107,7 @@ export function App() {
             runtime={state.overview.runtime}
             network={network}
             now={state.refreshedAt}
+            onChanged={() => void refresh()}
           />
           <footer className="muted">
             Tested against sandbox {state.overview.tested_sandbox_version}. Refreshed{" "}

@@ -520,3 +520,96 @@ button.link:hover {
   margin: 0.4rem 0 0;
   padding-left: 1.2rem;
 }
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  margin-top: 0.5rem;
+}
+.actions button,
+.stop-all button {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.85rem;
+}
+button.danger {
+  color: var(--err);
+  border-color: var(--err);
+}
+button.danger:hover {
+  background: var(--err);
+  color: #fff;
+}
+.menu {
+  position: relative;
+}
+.menu-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 10;
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  min-width: 220px;
+}
+.menu-list button {
+  width: 100%;
+  text-align: left;
+  border: none;
+  background: none;
+  padding: 0.35rem 0.6rem;
+  border-radius: 4px;
+}
+.menu-list button:hover {
+  background: var(--bg);
+}
+.notice {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.notice-ok {
+  color: var(--ok);
+}
+.notice-err {
+  color: var(--err);
+}
+.stop-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-left: auto;
+  align-self: center;
+}
+
+dialog.confirm {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--fg);
+  padding: 1.25rem 1.5rem;
+  max-width: 520px;
+  width: calc(100% - 2rem);
+}
+dialog.confirm::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+dialog.confirm h3 {
+  margin: 0 0 0.75rem;
+}
+dialog.confirm ul {
+  margin: 0 0 0.75rem;
+  padding-left: 1.2rem;
+  font-size: 0.9rem;
+}
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}

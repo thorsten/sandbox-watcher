@@ -159,3 +159,10 @@ export interface ContainerDetails {
   working_dir: string | null;
   exit_code: number | null;
 }
+
+export interface StopResult {
+  container_id: string;
+  name: string;
+  ok: boolean;
+  error: string | null;
+}

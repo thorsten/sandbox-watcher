@@ -10,10 +10,12 @@ import {
   type SandboxContainer,
   type Session,
 } from "../types";
+import { ContainerActions } from "./ContainerActions";
 import { LogsPanel } from "./LogsPanel";
 import { MountsPanel } from "./MountsPanel";
 import { NetworkPanel } from "./NetworkPanel";
 import { ResourcesPanel } from "./ResourcesPanel";
+import { StopAllButton } from "./StopAllButton";
 
 type Tab = "network" | "resources" | "logs" | "mounts";
 const TABS: { id: Tab; label: string }[] = [
@@ -29,9 +31,11 @@ interface Props {
   /** Undefined until the first network collection finished. */
   network: NetworkReport[] | undefined;
   now: Date;
+  /** Ask the app to refresh after an action changed something. */
+  onChanged: () => void;
 }
 
-export function ContainerList({ containers, runtime, network, now }: Props) {
+export function ContainerList({ containers, runtime, network, now, onChanged }: Props) {
   if (runtime.status !== "connected") return null;
   const capabilities = new Map<RuntimeKind, Capabilities>(
     runtime.runtimes.map((r) => [r.kind, r.capabilities]),
@@ -66,6 +70,10 @@ export function ContainerList({ containers, runtime, network, now }: Props) {
           value={recentBlocked}
           tone={recentBlocked > 0 ? "warn" : undefined}
         />
+        <StopAllButton
+          running={containers.filter((c) => c.state === "running")}
+          onChanged={onChanged}
+        />
         {summary.byAgent.size > 0 && (
           <div className="agent-chips" aria-label="Sessions per agent">
             {[...summary.byAgent].map(([agent, count]) => (
@@ -89,6 +97,7 @@ export function ContainerList({ containers, runtime, network, now }: Props) {
                 capabilities={capabilities.get(c.runtime)}
                 showRuntime={showRuntime}
                 now={now}
+                onChanged={onChanged}
               />
             ))}
           </ul>
@@ -114,6 +123,7 @@ function ContainerRow({
   capabilities,
   showRuntime,
   now,
+  onChanged,
 }: {
   container: SandboxContainer;
   stale: boolean;
@@ -121,6 +131,7 @@ function ContainerRow({
   capabilities: Capabilities | undefined;
   showRuntime: boolean;
   now: Date;
+  onChanged: () => void;
 }) {
   const tabs = TABS.filter((t) => {
     if (t.id === "resources") return capabilities?.stats !== false;
@@ -164,6 +175,7 @@ function ContainerRow({
           {container.config_hash && <code title="sandbox.hash">{container.config_hash}</code>}
         </div>
         {isRunning && <SessionList sessions={container.sessions} />}
+        <ContainerActions container={container} onChanged={onChanged} />
         {isRunning && (
           <div className="tabs" aria-label="Container details">
             {tabs.map((t) => (
