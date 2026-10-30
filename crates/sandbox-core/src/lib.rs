@@ -6,9 +6,12 @@
 //! mock adapter for tests and demos.
 
 pub mod adapter;
+pub mod apple;
+pub mod config;
 pub mod detect;
 pub mod docker;
 pub mod docker_compat;
+pub mod endpoints;
 pub mod error;
 pub mod live;
 pub mod mock;
@@ -16,6 +19,7 @@ pub mod model;
 pub mod mounts;
 pub mod network;
 pub mod overview;
+pub mod paths;
 pub mod sandbox;
 pub mod sessions;
 pub mod stats_hub;

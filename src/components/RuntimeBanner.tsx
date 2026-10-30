@@ -1,4 +1,4 @@
-import type { RuntimeStatus } from "../types";
+import { RUNTIME_LABELS, type RuntimeStatus } from "../types";
 
 export function RuntimeBanner({ runtime }: { runtime: RuntimeStatus }) {
   switch (runtime.status) {
@@ -16,11 +16,11 @@ export function RuntimeBanner({ runtime }: { runtime: RuntimeStatus }) {
     case "detected-only":
       return (
         <section className="banner banner-info">
-          <strong>Runtime found, but no adapter for it yet.</strong>
+          <strong>Runtime found, but could not connect.</strong>
           <ul>
             {runtime.candidates.map((c) => (
               <li key={`${c.kind}-${c.endpoint}`}>
-                <code>{c.kind}</code> at <code>{c.endpoint}</code>{" "}
+                {RUNTIME_LABELS[c.kind]} at <code>{c.endpoint}</code>{" "}
                 <span className="muted">({c.source})</span>
               </li>
             ))}
@@ -44,10 +44,25 @@ export function RuntimeBanner({ runtime }: { runtime: RuntimeStatus }) {
     case "connected":
       return (
         <section className="banner banner-ok">
-          <span className="dot dot-ok" aria-hidden="true" />
-          Connected to <code>{runtime.info.kind}</code>
-          {runtime.info.version && <span className="muted"> {runtime.info.version}</span>}
-          <span className="muted"> via {runtime.info.endpoint}</span>
+          <div className="runtime-list">
+            {runtime.runtimes.map((r) => (
+              <span key={r.kind} className="runtime-item">
+                <span className="dot dot-ok" aria-hidden="true" />
+                {RUNTIME_LABELS[r.kind]}
+                {r.version && <span className="muted"> {r.version}</span>}
+                <span className="muted"> via {r.endpoint}</span>
+              </span>
+            ))}
+          </div>
+          {runtime.failures.length > 0 && (
+            <ul className="runtime-failures muted">
+              {runtime.failures.map((f) => (
+                <li key={f.kind}>
+                  {RUNTIME_LABELS[f.kind]} detected but not reachable: {f.reason}
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       );
   }

@@ -501,3 +501,22 @@ button.link:hover {
   background: var(--muted);
   color: #fff;
 }
+
+.runtime-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1.25rem;
+}
+.runtime-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.banner-ok {
+  flex-direction: column;
+  align-items: flex-start;
+}
+.runtime-failures {
+  margin: 0.4rem 0 0;
+  padding-left: 1.2rem;
+}

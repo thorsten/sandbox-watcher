@@ -104,7 +104,7 @@ export function App() {
           <RuntimeBanner runtime={state.overview.runtime} />
           <ContainerList
             containers={state.overview.containers}
-            runtimeStatus={state.overview.runtime.status}
+            runtime={state.overview.runtime}
             network={network}
             now={state.refreshedAt}
           />

@@ -25,6 +25,8 @@ pub struct Environment<'a> {
     pub os: &'a str,
     pub home: Option<PathBuf>,
     pub docker_host: Option<String>,
+    /// Podman's equivalent of `DOCKER_HOST`.
+    pub container_host: Option<String>,
     pub xdg_runtime_dir: Option<PathBuf>,
     pub path_exists: &'a dyn Fn(&Path) -> bool,
     pub binary_on_path: &'a dyn Fn(&str) -> bool,
@@ -56,6 +58,9 @@ impl Environment<'_> {
                 .or_else(|| std::env::var_os("USERPROFILE"))
                 .map(PathBuf::from),
             docker_host: std::env::var("DOCKER_HOST").ok().filter(|v| !v.is_empty()),
+            container_host: std::env::var("CONTAINER_HOST")
+                .ok()
+                .filter(|v| !v.is_empty()),
             xdg_runtime_dir: std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from),
             path_exists: &exists,
             binary_on_path: &on_path,
@@ -134,6 +139,13 @@ fn detect_docker(env: &Environment<'_>) -> Option<DetectedRuntime> {
 }
 
 fn detect_podman(env: &Environment<'_>) -> Option<DetectedRuntime> {
+    if let Some(host) = &env.container_host {
+        return Some(DetectedRuntime {
+            kind: RuntimeKind::Podman,
+            endpoint: host.clone(),
+            source: "CONTAINER_HOST".into(),
+        });
+    }
     let mut candidates: Vec<(PathBuf, &str)> = Vec::new();
     match env.os {
         "windows" => candidates.push((
@@ -199,6 +211,7 @@ mod tests {
             os,
             home: Some(PathBuf::from("/home/me")),
             docker_host: docker_host.map(String::from),
+            container_host: None,
             xdg_runtime_dir: Some(PathBuf::from("/run/user/1000")),
             path_exists: exists,
             binary_on_path: on_path,

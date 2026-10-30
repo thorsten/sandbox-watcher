@@ -1,7 +1,15 @@
 import { useState } from "react";
 import { AGENT_LABELS, formatUptime, groupByProject, staleHashes, summarize } from "../format";
 import { recentBlockedCount } from "../network";
-import type { NetworkReport, RuntimeStatus, SandboxContainer, Session } from "../types";
+import {
+  type Capabilities,
+  type NetworkReport,
+  RUNTIME_LABELS,
+  type RuntimeKind,
+  type RuntimeStatus,
+  type SandboxContainer,
+  type Session,
+} from "../types";
 import { LogsPanel } from "./LogsPanel";
 import { MountsPanel } from "./MountsPanel";
 import { NetworkPanel } from "./NetworkPanel";
@@ -17,14 +25,18 @@ const TABS: { id: Tab; label: string }[] = [
 
 interface Props {
   containers: SandboxContainer[];
-  runtimeStatus: RuntimeStatus["status"];
+  runtime: RuntimeStatus;
   /** Undefined until the first network collection finished. */
   network: NetworkReport[] | undefined;
   now: Date;
 }
 
-export function ContainerList({ containers, runtimeStatus, network, now }: Props) {
-  if (runtimeStatus !== "connected") return null;
+export function ContainerList({ containers, runtime, network, now }: Props) {
+  if (runtime.status !== "connected") return null;
+  const capabilities = new Map<RuntimeKind, Capabilities>(
+    runtime.runtimes.map((r) => [r.kind, r.capabilities]),
+  );
+  const showRuntime = runtime.runtimes.length > 1;
 
   if (containers.length === 0) {
     return (
@@ -74,6 +86,8 @@ export function ContainerList({ containers, runtimeStatus, network, now }: Props
                 container={c}
                 stale={stale.has(c.id)}
                 report={reportFor(c.id)}
+                capabilities={capabilities.get(c.runtime)}
+                showRuntime={showRuntime}
                 now={now}
               />
             ))}
@@ -97,13 +111,22 @@ function ContainerRow({
   container,
   stale,
   report,
+  capabilities,
+  showRuntime,
   now,
 }: {
   container: SandboxContainer;
   stale: boolean;
   report: NetworkReport | undefined;
+  capabilities: Capabilities | undefined;
+  showRuntime: boolean;
   now: Date;
 }) {
+  const tabs = TABS.filter((t) => {
+    if (t.id === "resources") return capabilities?.stats !== false;
+    if (t.id === "logs") return capabilities?.logs !== false;
+    return true;
+  });
   const [tab, setTab] = useState<Tab | null>(null);
   const isRunning = container.state === "running";
   const blocked = report?.entries.filter((e) => e.status === "blocked").length ?? 0;
@@ -115,6 +138,7 @@ function ContainerRow({
       <div className="container-main">
         <div className="container-title">
           <strong>{container.name}</strong>
+          {showRuntime && <span className="chip">{RUNTIME_LABELS[container.runtime]}</span>}
           <span className="muted">
             {isRunning ? formatUptime(container.started_at, now) : container.state}
           </span>
@@ -142,7 +166,7 @@ function ContainerRow({
         {isRunning && <SessionList sessions={container.sessions} />}
         {isRunning && (
           <div className="tabs" aria-label="Container details">
-            {TABS.map((t) => (
+            {tabs.map((t) => (
               <button
                 key={t.id}
                 type="button"

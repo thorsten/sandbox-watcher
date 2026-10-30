@@ -114,6 +114,10 @@ pub struct Mount {
     pub kind: String,
     #[serde(default)]
     pub role: MountRole,
+    /// `source` as the host spells it, e.g. `C:\\Users\\...` for a WSL path
+    /// on Windows. `None` for volumes.
+    #[serde(default)]
+    pub host_path: Option<String>,
 }
 
 /// Published or exposed port.

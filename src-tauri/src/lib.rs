@@ -24,7 +24,7 @@ pub const RUNTIME_EVENT: &str = "runtime-event";
 enum Mode {
     /// `SANDBOX_WATCHER_MOCK=1`: demo data, no runtime access.
     Mock(Arc<dyn RuntimeAdapter>),
-    /// Detect the runtime and keep the adapter between refreshes.
+    /// Detect runtimes and keep one adapter per runtime between refreshes.
     Live(Arc<LiveRuntime>),
 }
 
@@ -48,16 +48,19 @@ impl AppState {
         }
     }
 
-    fn adapter(&self) -> Option<Arc<dyn RuntimeAdapter>> {
+    fn adapters(&self) -> Vec<Arc<dyn RuntimeAdapter>> {
         match &self.mode {
-            Mode::Mock(adapter) => Some(adapter.clone()),
-            Mode::Live(live) => live.adapter(),
+            Mode::Mock(adapter) => vec![adapter.clone()],
+            Mode::Live(live) => live.adapters(),
         }
     }
 
-    fn adapter_or_err(&self) -> Result<Arc<dyn RuntimeAdapter>, String> {
-        self.adapter()
-            .ok_or_else(|| "no container runtime connected".to_string())
+    fn adapter_for(&self, container_id: &str) -> Result<Arc<dyn RuntimeAdapter>, String> {
+        match &self.mode {
+            Mode::Mock(adapter) => Some(adapter.clone()),
+            Mode::Live(live) => live.adapter_for(container_id),
+        }
+        .ok_or_else(|| format!("no runtime known for container {container_id}"))
     }
 }
 
@@ -69,33 +72,36 @@ async fn get_overview(state: State<'_, AppState>) -> Result<Overview, String> {
         }
         Mode::Live(live) => live.overview().await,
     };
-    match state.adapter() {
-        Some(adapter) => {
-            let running: Vec<String> = overview
+    let sets: Vec<(Arc<dyn RuntimeAdapter>, Vec<String>)> = state
+        .adapters()
+        .into_iter()
+        .map(|adapter| {
+            let kind = adapter.kind();
+            let ids = overview
                 .containers
                 .iter()
-                .filter(|c| c.container.state.is_running())
+                .filter(|c| c.runtime == kind && c.container.state.is_running())
                 .map(|c| c.container.id.clone())
                 .collect();
-            state.stats.sync(&adapter, &running);
-        }
-        None => state.stats.clear(),
-    }
+            (adapter, ids)
+        })
+        .collect();
+    state.stats.sync(&sets);
     Ok(overview)
 }
 
-/// Network activity of every running sandbox container. Separate from the
-/// overview so a slow log read never delays the container list.
+/// Network activity of every running sandbox container across runtimes.
+/// Separate from the overview so a slow log read never delays the list.
 #[tauri::command]
 async fn get_network_overview(state: State<'_, AppState>) -> Result<Vec<NetworkReport>, String> {
-    let Some(adapter) = state.adapter() else {
-        return Ok(vec![]);
-    };
-    let containers = adapter
-        .list_containers(&ContainerFilter::running())
-        .await
-        .map_err(|e| e.to_string())?;
-    Ok(sandbox_core::network::collect_all(&adapter, &containers, Utc::now()).await)
+    let mut reports = Vec::new();
+    for adapter in state.adapters() {
+        let Ok(containers) = adapter.list_containers(&ContainerFilter::running()).await else {
+            continue;
+        };
+        reports.extend(sandbox_core::network::collect_all(&adapter, &containers, Utc::now()).await);
+    }
+    Ok(reports)
 }
 
 /// Resource history per running container, oldest sample first.
@@ -104,19 +110,21 @@ fn get_stats(state: State<'_, AppState>) -> HashMap<String, Vec<ResourceSample>>
     state.stats.snapshot()
 }
 
-/// Mounts, ports, env names and user of one container, mounts classified.
+/// Mounts, ports, env names and user of one container, mounts classified
+/// and host paths spelled the way this OS shows them.
 #[tauri::command]
 async fn get_container_details(
     state: State<'_, AppState>,
     container_id: String,
 ) -> Result<Option<ContainerDetails>, String> {
-    let adapter = state.adapter_or_err()?;
+    let adapter = state.adapter_for(&container_id)?;
     let mut details = adapter
         .inspect(&container_id)
         .await
         .map_err(|e| e.to_string())?;
     if let Some(details) = details.as_mut() {
         sandbox_core::mounts::classify(details);
+        sandbox_core::paths::annotate_host_paths(details, cfg!(windows));
     }
     Ok(details)
 }
@@ -128,7 +136,7 @@ async fn get_logs(
     container_id: String,
     tail: Option<usize>,
 ) -> Result<String, String> {
-    let adapter = state.adapter_or_err()?;
+    let adapter = state.adapter_for(&container_id)?;
     adapter
         .logs(
             &container_id,
@@ -141,9 +149,9 @@ async fn get_logs(
         .map_err(|e| e.to_string())
 }
 
-/// Show a mount's host path in the file manager. Only paths that are bind
-/// mount sources of the given container are accepted, so the webview cannot
-/// open arbitrary locations.
+/// Show a mount's host path in the file manager. Only bind mount sources of
+/// the given container are accepted, so the webview cannot open arbitrary
+/// locations. On Windows the WSL spelling is translated first.
 #[tauri::command]
 async fn reveal_mount(
     app: AppHandle,
@@ -151,21 +159,22 @@ async fn reveal_mount(
     container_id: String,
     path: String,
 ) -> Result<(), String> {
-    let adapter = state.adapter_or_err()?;
-    let details = adapter
+    let adapter = state.adapter_for(&container_id)?;
+    let mut details = adapter
         .inspect(&container_id)
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("container {container_id} not found"))?;
-    let allowed = details
+    sandbox_core::paths::annotate_host_paths(&mut details, cfg!(windows));
+    let target = details
         .mounts
         .iter()
-        .any(|m| m.kind == "bind" && m.source == path);
-    if !allowed {
-        return Err("path is not a mount of this container".into());
-    }
+        .filter(|m| m.kind == "bind")
+        .find(|m| m.source == path || m.host_path.as_deref() == Some(path.as_str()))
+        .and_then(|m| m.host_path.clone())
+        .ok_or_else(|| "path is not a mount of this container".to_string())?;
     app.opener()
-        .reveal_item_in_dir(&path)
+        .reveal_item_in_dir(&target)
         .map_err(|e| e.to_string())
 }
 

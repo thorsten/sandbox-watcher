@@ -1,9 +1,11 @@
 //! Behaviour every `RuntimeAdapter` must share. Runs against the mock always,
-//! and against a real Docker daemon when `SANDBOX_WATCHER_DOCKER_TESTS=1`.
+//! and against a real runtime when `SANDBOX_WATCHER_DOCKER_TESTS=1`.
 //!
-//! The Docker variant expects a container prepared by the caller (see
+//! The real-runtime variant expects a container prepared by the caller (see
 //! `.github/workflows/ci.yml`): labelled `sandbox.project=<slug>` and
 //! `sandbox.hash=...`, running, with `/tmp/.sandbox-ready` present.
+//! `SANDBOX_WATCHER_RUNTIME` picks `docker` (default), `podman` or
+//! `apple-container`; `DOCKER_HOST` the socket for the first two.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -11,11 +13,32 @@ use std::time::Duration;
 use futures::StreamExt;
 use sandbox_core::RuntimeAdapter;
 use sandbox_core::adapter::{ContainerFilter, ExecRequest, LogOptions};
+use sandbox_core::apple::AppleContainerAdapter;
 use sandbox_core::docker::DockerAdapter;
 use sandbox_core::mock::MockAdapter;
 use sandbox_core::model::{ContainerState, Readiness, RuntimeEventKind, RuntimeKind};
 
+async fn wait_until_exited(
+    adapter: &Arc<dyn RuntimeAdapter>,
+    slug: &str,
+    deadline: Duration,
+) -> bool {
+    let start = std::time::Instant::now();
+    while start.elapsed() < deadline {
+        let running = adapter
+            .list_containers(&ContainerFilter::for_project(slug))
+            .await
+            .unwrap_or_default();
+        if running.is_empty() {
+            return true;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    false
+}
+
 async fn conformance(adapter: Arc<dyn RuntimeAdapter>, slug: &str) {
+    let caps = adapter.capabilities();
     let info = adapter.ping().await.expect("ping");
     assert_eq!(info.kind, adapter.kind());
 
@@ -79,59 +102,70 @@ async fn conformance(adapter: Arc<dyn RuntimeAdapter>, slug: &str) {
         )
         .await
         .expect("exec with non-zero exit");
-    assert!(failed.exit_code == 3 || adapter.kind() != RuntimeKind::Docker);
+    assert_eq!(failed.exit_code, 3);
 
-    let logs = adapter
-        .logs(
-            &container.id,
-            LogOptions {
-                tail: Some(5),
-                timestamps: false,
-            },
-        )
-        .await;
-    assert!(logs.is_ok());
+    if caps.logs {
+        adapter
+            .logs(
+                &container.id,
+                LogOptions {
+                    tail: Some(5),
+                    timestamps: false,
+                },
+            )
+            .await
+            .expect("logs");
+    }
 
-    let sample = adapter.stats(&container.id).await.expect("stats");
-    assert_eq!(sample.container_id, container.id);
-
-    let mut events = adapter.events().await.expect("events");
-    adapter
-        .stop(&container.id, Some(Duration::from_secs(2)))
-        .await
-        .expect("stop");
+    if caps.stats {
+        let sample = adapter.stats(&container.id).await.expect("stats");
+        assert_eq!(sample.container_id, container.id);
+    } else {
+        assert!(
+            adapter.stats(&container.id).await.is_err(),
+            "unsupported stats must error"
+        );
+    }
 
     let deadline = Duration::from_secs(20);
-    let saw_stop = tokio::time::timeout(deadline, async {
-        while let Some(event) = events.next().await {
-            let event = event.expect("event");
-            if event.container_id == container.id
-                && matches!(
-                    event.kind,
-                    RuntimeEventKind::Stopped | RuntimeEventKind::Died
-                )
-            {
-                return true;
+    if caps.events {
+        let mut events = adapter.events().await.expect("events");
+        adapter
+            .stop(&container.id, Some(Duration::from_secs(2)))
+            .await
+            .expect("stop");
+        let saw_stop = tokio::time::timeout(deadline, async {
+            while let Some(event) = events.next().await {
+                let event = event.expect("event");
+                if event.container_id == container.id
+                    && matches!(
+                        event.kind,
+                        RuntimeEventKind::Stopped | RuntimeEventKind::Died
+                    )
+                {
+                    return true;
+                }
             }
-        }
-        false
-    })
-    .await
-    .unwrap_or(false);
+            false
+        })
+        .await
+        .unwrap_or(false);
+        assert!(
+            saw_stop,
+            "stop or die event for {} within {deadline:?}",
+            container.name
+        );
+    } else {
+        adapter
+            .stop(&container.id, Some(Duration::from_secs(2)))
+            .await
+            .expect("stop");
+    }
     assert!(
-        saw_stop,
-        "stop or die event for {} within {deadline:?}",
-        container.name
+        wait_until_exited(&adapter, slug, deadline).await,
+        "container stopped within {deadline:?}"
     );
 
-    let still_running = adapter
-        .list_containers(&ContainerFilter::for_project(slug))
-        .await
-        .expect("list after stop");
-    assert!(
-        still_running.is_empty(),
-        "no running container after stop: {still_running:?}"
-    );
     let including_stopped = adapter
         .list_containers(&ContainerFilter {
             project_slug: Some(slug.into()),
@@ -155,7 +189,7 @@ async fn mock_adapter_conforms() {
 }
 
 #[tokio::test]
-async fn docker_adapter_conforms() {
+async fn real_runtime_adapter_conforms() {
     if std::env::var("SANDBOX_WATCHER_DOCKER_TESTS")
         .ok()
         .as_deref()
@@ -165,7 +199,20 @@ async fn docker_adapter_conforms() {
         return;
     }
     let slug = std::env::var("SANDBOX_WATCHER_TEST_SLUG").unwrap_or_else(|_| "watcher-test".into());
-    let endpoint = std::env::var("DOCKER_HOST").unwrap_or_else(|_| "/var/run/docker.sock".into());
-    let adapter = DockerAdapter::connect(RuntimeKind::Docker, &endpoint).expect("connect");
-    conformance(Arc::new(adapter), &slug).await;
+    let runtime = std::env::var("SANDBOX_WATCHER_RUNTIME").unwrap_or_else(|_| "docker".into());
+    let adapter: Arc<dyn RuntimeAdapter> = match runtime.as_str() {
+        "apple-container" => Arc::new(AppleContainerAdapter::new("container")),
+        "podman" | "docker" => {
+            let kind = if runtime == "podman" {
+                RuntimeKind::Podman
+            } else {
+                RuntimeKind::Docker
+            };
+            let endpoint =
+                std::env::var("DOCKER_HOST").unwrap_or_else(|_| "/var/run/docker.sock".into());
+            Arc::new(DockerAdapter::connect(kind, &endpoint).expect("connect"))
+        }
+        other => panic!("unknown SANDBOX_WATCHER_RUNTIME {other}"),
+    };
+    conformance(adapter, &slug).await;
 }

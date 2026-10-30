@@ -68,6 +68,7 @@ mod tests {
                     read_only: false,
                     kind: kind.into(),
                     role: MountRole::Other,
+                    host_path: None,
                 })
                 .collect(),
             ports: vec![],

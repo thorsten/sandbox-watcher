@@ -114,6 +114,7 @@ pub fn container_inspect(value: &Value) -> Result<Option<ContainerDetails>> {
                     read_only: !m["RW"].as_bool().unwrap_or(true),
                     kind: m["Type"].as_str().unwrap_or("bind").to_string(),
                     role: MountRole::Other,
+                    host_path: None,
                 })
                 .collect()
         })

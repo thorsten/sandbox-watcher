@@ -138,6 +138,7 @@ pub fn mock_container(slug: &str, instance: u32, state: &str, hash: &str) -> Moc
                 read_only: false,
                 kind: "bind".into(),
                 role: Default::default(),
+                host_path: None,
             }],
             ports: vec![],
             env_names: vec!["ANTHROPIC_API_KEY".into(), "TERM".into()],

@@ -50,6 +50,29 @@ jobs:
       - name: Remove the test container
         if: always() && runner.os == 'Linux'
         run: docker rm -f sandbox-watcher-test || true
+      - name: Start Podman's Docker-compatible socket and a sandbox-like container
+        if: runner.os == 'Linux'
+        run: |
+          podman --version
+          nohup podman system service --time=0 unix:///tmp/podman.sock >/tmp/podman-service.log 2>&1 &
+          for i in $(seq 1 30); do [ -S /tmp/podman.sock ] && break || sleep 0.5; done
+          podman run -d --name sandbox-watcher-podman \
+            --label sandbox.project=watcher-podman --label sandbox.hash=abcdef123456 \
+            docker.io/library/alpine:3 sh -c 'mkdir -p /tmp/sandbox-sessions && touch /tmp/.sandbox-ready && echo ready && sleep 600'
+          for i in $(seq 1 20); do
+            podman exec sandbox-watcher-podman test -f /tmp/.sandbox-ready && break || sleep 0.5
+          done
+      - name: Podman conformance test
+        if: runner.os == 'Linux'
+        env:
+          SANDBOX_WATCHER_DOCKER_TESTS: "1"
+          SANDBOX_WATCHER_RUNTIME: podman
+          SANDBOX_WATCHER_TEST_SLUG: watcher-podman
+          DOCKER_HOST: unix:///tmp/podman.sock
+        run: cargo test -p sandbox-core --test conformance -- --nocapture
+      - name: Remove the Podman test container
+        if: always() && runner.os == 'Linux'
+        run: podman rm -f sandbox-watcher-podman || true
 
   web:
     name: Web UI

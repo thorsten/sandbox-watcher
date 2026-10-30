@@ -22,12 +22,12 @@ type History = Arc<Mutex<VecDeque<ResourceSample>>>;
 struct Tracked {
     task: tokio::task::JoinHandle<()>,
     history: History,
+    /// Identity of the adapter the task was started with.
+    adapter_ptr: usize,
 }
 
 #[derive(Default)]
 struct Inner {
-    /// Identity of the adapter the tasks were started with.
-    adapter_ptr: Option<usize>,
     tracked: HashMap<String, Tracked>,
 }
 
@@ -70,35 +70,46 @@ impl StatsHub {
     }
 
     /// Start tracking new running containers, stop tracking gone ones, and
-    /// restart tasks whose stream ended. A different adapter drops everything.
-    pub fn sync(&self, adapter: &Arc<dyn RuntimeAdapter>, running_ids: &[String]) {
+    /// restart tasks whose stream ended. Each container is tied to the adapter
+    /// that listed it; a container that moved to another adapter is restarted.
+    /// Adapters without stats support are skipped.
+    pub fn sync(&self, sets: &[(Arc<dyn RuntimeAdapter>, Vec<String>)]) {
         let mut inner = self.inner.lock().expect("stats hub poisoned");
-        let ptr = ptr_of(adapter);
-        if inner.adapter_ptr != Some(ptr) {
-            for (_, t) in inner.tracked.drain() {
-                t.task.abort();
-            }
-            inner.adapter_ptr = Some(ptr);
-        }
+        let wanted: Vec<(usize, &Arc<dyn RuntimeAdapter>, &String)> = sets
+            .iter()
+            .filter(|(adapter, _)| adapter.capabilities().stats)
+            .flat_map(|(adapter, ids)| ids.iter().map(move |id| (ptr_of(adapter), adapter, id)))
+            .collect();
         inner.tracked.retain(|id, t| {
-            let keep = running_ids.iter().any(|r| r == id);
+            let keep = wanted
+                .iter()
+                .any(|(ptr, _, wanted_id)| *wanted_id == id && *ptr == t.adapter_ptr)
+                && !t.task.is_finished();
             if !keep {
                 t.task.abort();
             }
             keep
         });
-        for id in running_ids {
-            let restart = inner.tracked.get(id).is_some_and(|t| t.task.is_finished());
-            if restart {
-                inner.tracked.remove(id);
-            }
+        for (ptr, adapter, id) in wanted {
             if inner.tracked.contains_key(id) {
                 continue;
             }
             let history: History = Arc::default();
             let task = tokio::spawn(collect(adapter.clone(), id.clone(), history.clone()));
-            inner.tracked.insert(id.clone(), Tracked { task, history });
+            inner.tracked.insert(
+                id.clone(),
+                Tracked {
+                    task,
+                    history,
+                    adapter_ptr: ptr,
+                },
+            );
         }
+    }
+
+    /// Convenience for a single adapter.
+    pub fn sync_one(&self, adapter: &Arc<dyn RuntimeAdapter>, running_ids: &[String]) {
+        self.sync(&[(adapter.clone(), running_ids.to_vec())]);
     }
 
     /// Stop all tracking, e.g. when the runtime went away.
@@ -107,7 +118,6 @@ impl StatsHub {
         for (_, t) in inner.tracked.drain() {
             t.task.abort();
         }
-        inner.adapter_ptr = None;
     }
 
     /// Current history per container id, oldest first.
@@ -133,7 +143,7 @@ mod tests {
     async fn tracks_running_containers_and_drops_gone_ones() {
         let adapter: Arc<dyn RuntimeAdapter> = Arc::new(MockAdapter::demo());
         let hub = StatsHub::new();
-        hub.sync(
+        hub.sync_one(
             &adapter,
             &["sandbox-web-shop".into(), "sandbox-web-shop-2".into()],
         );
@@ -145,11 +155,19 @@ mod tests {
             "first sample arrives immediately"
         );
 
-        hub.sync(&adapter, &["sandbox-web-shop".into()]);
+        hub.sync_one(&adapter, &["sandbox-web-shop".into()]);
         assert_eq!(hub.snapshot().len(), 1);
 
         let other: Arc<dyn RuntimeAdapter> = Arc::new(MockAdapter::empty());
-        hub.sync(&other, &[]);
-        assert!(hub.snapshot().is_empty(), "new adapter drops old tasks");
+        hub.sync_one(&other, &["sandbox-web-shop".into()]);
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let snap = hub.snapshot();
+        assert_eq!(snap.len(), 1);
+        assert!(
+            snap["sandbox-web-shop"].is_empty(),
+            "container moved to another adapter: fresh history"
+        );
+        hub.sync(&[]);
+        assert!(hub.snapshot().is_empty());
     }
 }

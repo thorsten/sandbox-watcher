@@ -14,6 +14,7 @@ function container(partial: Partial<SandboxContainer> & { id: string }): Sandbox
     started_at: null,
     config_hash: null,
     labels: {},
+    runtime: "docker",
     readiness: "unknown",
     sessions: [],
     ...partial,

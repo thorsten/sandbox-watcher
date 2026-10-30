@@ -31,6 +31,8 @@ export interface SandboxContainer {
   started_at: string | null;
   config_hash: string | null;
   labels: Record<string, string>;
+  /** Which runtime listed this container. */
+  runtime: RuntimeKind;
   /** Only meaningful for running containers. */
   readiness: Readiness;
   sessions: Session[];
@@ -59,11 +61,33 @@ export interface DetectedRuntime {
   source: string;
 }
 
+export interface Capabilities {
+  exec: boolean;
+  stats: boolean;
+  logs: boolean;
+  events: boolean;
+  stop: boolean;
+}
+
+export type ConnectedRuntime = RuntimeInfo & { capabilities: Capabilities };
+
+export interface RuntimeFailure {
+  kind: RuntimeKind;
+  endpoint: string;
+  reason: string;
+}
+
 export type RuntimeStatus =
   | { status: "not-detected" }
   | { status: "detected-only"; candidates: DetectedRuntime[] }
-  | { status: "connected"; info: RuntimeInfo }
+  | { status: "connected"; runtimes: ConnectedRuntime[]; failures: RuntimeFailure[] }
   | { status: "unavailable"; candidates: DetectedRuntime[]; reason: string };
+
+export const RUNTIME_LABELS: Record<RuntimeKind, string> = {
+  docker: "Docker",
+  podman: "Podman",
+  "apple-container": "Apple container",
+};
 
 export type DataSource = "mock" | "live";
 
@@ -116,6 +140,8 @@ export interface Mount {
   read_only: boolean;
   type: string;
   role: MountRole;
+  /** Host spelling of `source` for bind mounts, e.g. a Windows path for a WSL mount. */
+  host_path: string | null;
 }
 
 export interface PortBinding {

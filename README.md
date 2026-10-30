@@ -9,7 +9,7 @@ A cross-platform desktop app that shows what is happening in your running
 which projects have a sandbox up, which agents run inside, what they reach
 on the network, and what they consume.
 
-Status: milestone M4 (resources, logs and mounts). See [`docs/MILESTONES.md`](docs/MILESTONES.md)
+Status: milestone M5 (multi-runtime and platform parity). See [`docs/MILESTONES.md`](docs/MILESTONES.md)
 for the plan and [`docs/adr/`](docs/adr/) for decisions.
 
 ## Layout
@@ -42,6 +42,31 @@ cargo test -p sandbox-core
 SANDBOX_WATCHER_DOCKER_TESTS=1 cargo test -p sandbox-core --test conformance
 cargo clippy --all-targets -- -D warnings
 pnpm lint && pnpm format:check && pnpm test && pnpm build
+```
+
+## Runtimes
+
+Sandbox Watcher talks to the same runtimes sandbox does and finds them the
+same way: `DOCKER_HOST`, then the usual sockets, then the binary on `PATH`.
+When sandbox's user config sets `runtime`, only that runtime is used; set
+`SANDBOX_WATCHER_RUNTIME` to override. Otherwise every runtime that answers
+is shown, with a runtime chip on each container when there is more than one.
+
+| Runtime           | How it is reached                                                                                                               | Notes                                                                                       |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Docker            | Engine API over the socket, named pipe or `DOCKER_HOST`; the active `docker context` when only the binary is found              | Full support: events, stats, logs                                                           |
+| Podman            | Docker-compatible API over the rootless or system socket, `CONTAINER_HOST`, or the machine socket from `podman machine inspect` | Full support                                                                                |
+| Apple `container` | The `container` CLI (`list`, `inspect`, `exec`, `logs`, `stop`)                                                                 | No event stream and no stats; the Resources tab is hidden and the list refreshes by polling |
+
+Conformance against real Docker and Podman runs in CI on Linux. Apple
+`container` can only be verified on an Apple silicon Mac running macOS 26:
+
+```sh
+container run -d --name sandbox-watcher-test \
+  --label sandbox.project=watcher-test --label sandbox.hash=abcdef123456 \
+  alpine:3 sh -c 'mkdir -p /tmp/sandbox-sessions && touch /tmp/.sandbox-ready && sleep 600'
+SANDBOX_WATCHER_DOCKER_TESTS=1 SANDBOX_WATCHER_RUNTIME=apple-container \
+  cargo test -p sandbox-core --test conformance -- --nocapture
 ```
 
 ## Builds and releases

@@ -62,7 +62,7 @@ export function MountsPanel({ containerId }: { containerId: string }) {
                     volume <code>{m.source}</code>
                   </span>
                 ) : (
-                  <code>{m.source}</code>
+                  <code>{m.host_path ?? m.source}</code>
                 )}
               </td>
               <td className="path">

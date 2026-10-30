@@ -1,13 +1,13 @@
-//! The top-level state the UI renders: which runtime, which containers, who
+//! The top-level state the UI renders: which runtimes, which containers, who
 //! is inside them.
 
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::adapter::{ContainerFilter, RuntimeAdapter};
+use crate::adapter::{Capabilities, ContainerFilter, RuntimeAdapter};
 use crate::detect::DetectedRuntime;
-use crate::model::{Readiness, RuntimeInfo, SandboxContainer, Session};
+use crate::model::{Readiness, RuntimeInfo, RuntimeKind, SandboxContainer, Session};
 use crate::sandbox::TESTED_SANDBOX_VERSION;
 use crate::sessions::probe_container;
 
@@ -19,16 +19,36 @@ pub enum DataSource {
     Live,
 }
 
+/// A runtime that was detected but could not be used this round.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuntimeFailure {
+    pub kind: RuntimeKind,
+    pub endpoint: String,
+    pub reason: String,
+}
+
+/// A runtime that answered, with what it can do.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConnectedRuntime {
+    #[serde(flatten)]
+    pub info: RuntimeInfo,
+    pub capabilities: Capabilities,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case", tag = "status")]
 pub enum RuntimeStatus {
     /// No Docker, Podman or Apple `container` found.
     NotDetected,
-    /// Runtime binaries or sockets exist, but no adapter is wired yet (M5).
+    /// Runtime binaries or sockets exist, but none could be connected.
     DetectedOnly { candidates: Vec<DetectedRuntime> },
-    /// Adapter connected and answering.
-    Connected { info: RuntimeInfo },
-    /// Adapter exists but the runtime refused the connection.
+    /// At least one runtime answers. `failures` lists detected runtimes that
+    /// did not, so the UI can say why a second runtime is missing.
+    Connected {
+        runtimes: Vec<ConnectedRuntime>,
+        failures: Vec<RuntimeFailure>,
+    },
+    /// Adapters exist but every runtime refused the connection.
     Unavailable {
         candidates: Vec<DetectedRuntime>,
         reason: String,
@@ -36,11 +56,13 @@ pub enum RuntimeStatus {
 }
 
 /// A container plus what the probe found inside it. Serialises flat, so the
-/// UI sees one object with the container fields, `readiness` and `sessions`.
+/// UI sees one object with the container fields, `runtime`, `readiness` and
+/// `sessions`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ContainerOverview {
     #[serde(flatten)]
     pub container: SandboxContainer,
+    pub runtime: RuntimeKind,
     pub readiness: Readiness,
     pub sessions: Vec<Session>,
 }
@@ -78,42 +100,39 @@ impl Overview {
             vec![],
         )
     }
+
+    /// Runtime kinds that answered this round.
+    pub fn connected_kinds(&self) -> Vec<RuntimeKind> {
+        match &self.runtime {
+            RuntimeStatus::Connected { runtimes, .. } => {
+                runtimes.iter().map(|r| r.info.kind).collect()
+            }
+            _ => vec![],
+        }
+    }
 }
 
-/// Load the overview through an adapter. Lists running and stopped
-/// containers so the UI can show recently exited sandboxes greyed out, and
-/// probes every running one for readiness and sessions.
-pub async fn load(
+struct RuntimeLoad {
+    runtime: ConnectedRuntime,
+    containers: Vec<ContainerOverview>,
+}
+
+async fn load_one(
     adapter: Arc<dyn RuntimeAdapter>,
-    source: DataSource,
-    candidates: Vec<DetectedRuntime>,
-) -> Overview {
-    let info = match adapter.ping().await {
-        Ok(info) => info,
-        Err(e) => {
-            let status = RuntimeStatus::Unavailable {
-                candidates,
-                reason: e.to_string(),
-            };
-            return Overview::with(source, status, vec![]);
-        }
+) -> std::result::Result<RuntimeLoad, RuntimeFailure> {
+    let failure = |endpoint: String, reason: String| RuntimeFailure {
+        kind: adapter.kind(),
+        endpoint,
+        reason,
     };
-    let mut containers = match adapter.list_containers(&ContainerFilter::all()).await {
-        Ok(containers) => containers,
-        Err(e) => {
-            let status = RuntimeStatus::Unavailable {
-                candidates,
-                reason: e.to_string(),
-            };
-            return Overview::with(source, status, vec![]);
-        }
-    };
-    containers.sort_by(|a, b| {
-        b.state
-            .is_running()
-            .cmp(&a.state.is_running())
-            .then_with(|| a.name.cmp(&b.name))
-    });
+    let info = adapter
+        .ping()
+        .await
+        .map_err(|e| failure(String::new(), e.to_string()))?;
+    let containers = adapter
+        .list_containers(&ContainerFilter::all())
+        .await
+        .map_err(|e| failure(info.endpoint.clone(), e.to_string()))?;
 
     let probes = containers.iter().map(|c| {
         let adapter = adapter.clone();
@@ -128,17 +147,81 @@ pub async fn load(
         }
     });
     let probes = futures::future::join_all(probes).await;
-
+    let kind = adapter.kind();
     let containers = containers
         .into_iter()
         .zip(probes)
         .map(|(container, probe)| ContainerOverview {
             container,
+            runtime: kind,
             readiness: probe.readiness,
             sessions: probe.sessions,
         })
         .collect();
-    Overview::with(source, RuntimeStatus::Connected { info }, containers)
+    Ok(RuntimeLoad {
+        runtime: ConnectedRuntime {
+            info,
+            capabilities: adapter.capabilities(),
+        },
+        containers,
+    })
+}
+
+/// Load the overview across several runtimes at once. Running containers
+/// sort first, then by runtime order, then by name. Every running container
+/// is probed for readiness and sessions.
+pub async fn load_many(
+    adapters: &[Arc<dyn RuntimeAdapter>],
+    source: DataSource,
+    candidates: Vec<DetectedRuntime>,
+) -> Overview {
+    let results = futures::future::join_all(adapters.iter().cloned().map(load_one)).await;
+    let mut runtimes = Vec::new();
+    let mut failures = Vec::new();
+    let mut containers = Vec::new();
+    for result in results {
+        match result {
+            Ok(load) => {
+                runtimes.push(load.runtime);
+                containers.extend(load.containers);
+            }
+            Err(failure) => failures.push(failure),
+        }
+    }
+    if runtimes.is_empty() {
+        let reason = failures
+            .iter()
+            .map(|f| format!("{}: {}", f.kind, f.reason))
+            .collect::<Vec<_>>()
+            .join("; ");
+        return Overview::with(
+            source,
+            RuntimeStatus::Unavailable { candidates, reason },
+            vec![],
+        );
+    }
+    containers.sort_by(|a, b| {
+        b.container
+            .state
+            .is_running()
+            .cmp(&a.container.state.is_running())
+            .then_with(|| a.runtime.as_str().cmp(b.runtime.as_str()))
+            .then_with(|| a.container.name.cmp(&b.container.name))
+    });
+    Overview::with(
+        source,
+        RuntimeStatus::Connected { runtimes, failures },
+        containers,
+    )
+}
+
+/// Single-runtime convenience over [`load_many`].
+pub async fn load(
+    adapter: Arc<dyn RuntimeAdapter>,
+    source: DataSource,
+    candidates: Vec<DetectedRuntime>,
+) -> Overview {
+    load_many(&[adapter], source, candidates).await
 }
 
 #[cfg(test)]
@@ -178,12 +261,41 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn merges_several_runtimes() {
+        let docker: Arc<dyn RuntimeAdapter> = Arc::new(MockAdapter::demo());
+        let podman: Arc<dyn RuntimeAdapter> =
+            Arc::new(MockAdapter::demo().with_kind(RuntimeKind::Podman));
+        let overview = load_many(&[docker, podman], DataSource::Mock, vec![]).await;
+        assert_eq!(
+            overview.connected_kinds(),
+            vec![RuntimeKind::Docker, RuntimeKind::Podman]
+        );
+        assert_eq!(overview.containers.len(), 8);
+        let running: Vec<_> = overview
+            .containers
+            .iter()
+            .take(6)
+            .map(|c| (c.runtime, c.container.name.as_str()))
+            .collect();
+        assert_eq!(
+            running[0],
+            (RuntimeKind::Docker, "sandbox-billing-api-live")
+        );
+        assert_eq!(
+            running[3],
+            (RuntimeKind::Podman, "sandbox-billing-api-live")
+        );
+    }
+
+    #[tokio::test]
     async fn serialises_flat_for_the_ui() {
         let overview = load(Arc::new(MockAdapter::demo()), DataSource::Mock, vec![]).await;
         let json = serde_json::to_value(&overview).unwrap();
         assert_eq!(json["runtime"]["status"], "connected");
+        assert_eq!(json["runtime"]["runtimes"][0]["kind"], "docker");
         let first = &json["containers"][0];
         assert!(first["name"].is_string(), "container fields are flattened");
+        assert_eq!(first["runtime"], "docker");
         assert_eq!(first["readiness"], "ready");
         assert_eq!(first["sessions"][0]["agent"], "claude-code");
     }
