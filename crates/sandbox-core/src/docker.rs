@@ -106,7 +106,16 @@ fn connect(endpoint: &str) -> std::result::Result<Docker, bollard::errors::Error
         return Docker::connect_with_http(endpoint, CLIENT_TIMEOUT_SECS, API_DEFAULT_VERSION);
     }
     if lower.starts_with("unix://") || endpoint.starts_with('/') {
-        return Docker::connect_with_unix(endpoint, CLIENT_TIMEOUT_SECS, API_DEFAULT_VERSION);
+        #[cfg(unix)]
+        {
+            return Docker::connect_with_unix(endpoint, CLIENT_TIMEOUT_SECS, API_DEFAULT_VERSION);
+        }
+        #[cfg(not(unix))]
+        {
+            return Err(bollard::errors::Error::IOError {
+                err: std::io::Error::other("unix sockets are not supported on this platform"),
+            });
+        }
     }
     if lower.starts_with("npipe://") || endpoint.starts_with(r"\\.\pipe") {
         #[cfg(windows)]
