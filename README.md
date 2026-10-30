@@ -9,8 +9,27 @@ A cross-platform desktop app that shows what is happening in your running
 which projects have a sandbox up, which agents run inside, what they reach
 on the network, and what they consume.
 
-Status: milestone M6 (actions). See [`docs/MILESTONES.md`](docs/MILESTONES.md)
+Status: 1.0 (all milestones implemented, unsigned builds). See [`docs/MILESTONES.md`](docs/MILESTONES.md)
 for the plan and [`docs/adr/`](docs/adr/) for decisions.
+
+## Install
+
+Download the latest build from the
+[releases page](https://github.com/thorsten/sandbox-watcher/releases/latest)
+or the [project site](https://thorsten.github.io/sandbox-watcher/). Builds are
+not signed yet:
+
+- **macOS:** open the `.dmg`, drag the app to Applications, then run
+  `xattr -dr com.apple.quarantine "/Applications/Sandbox Watcher.app"` once,
+  or right-click the app and choose _Open_.
+- **Windows:** run the `.msi` or `-setup.exe`; on the SmartScreen prompt choose
+  _More info_, then _Run anyway_.
+- **Linux:** install the `.deb` or `.rpm`, or `chmod +x` the `.AppImage`.
+
+The app lives in the tray or menu bar. Closing the window keeps it running;
+quit from the tray menu. Settings (refresh interval, runtime, terminal,
+notifications, launch at login, theme) are in the window's Settings panel and
+stored as `settings.json` in the app's config directory.
 
 ## Layout
 
@@ -74,9 +93,10 @@ SANDBOX_WATCHER_DOCKER_TESTS=1 SANDBOX_WATCHER_RUNTIME=apple-container \
 GitHub Actions builds everything. `CI` runs on every push and pull request:
 Rust tests on macOS, Linux and Windows, the Docker conformance test on
 Linux, web lint, tests and build, and an unsigned Tauri debug build per OS.
-`Release` runs on tags `v*` (or manually) and attaches installers for macOS
-(Apple silicon and Intel), Linux and Windows to a draft release. Bundles are
-unsigned until milestone M7.
+`Release` runs on tags `v*` (or manually) and publishes installers for macOS
+(Apple silicon and Intel), Linux and Windows. Bundles are unsigned; signing
+and notarisation are a follow-up. `Pages` deploys the `site/` folder to
+GitHub Pages.
 
 ## Commits
 
