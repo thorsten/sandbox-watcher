@@ -8,6 +8,7 @@ import {
   onNetworkUpdated,
   onOpenSettings,
   onOverviewUpdated,
+  onSelectContainer,
   onSettingsUpdated,
   refreshNow,
 } from "./api";
@@ -69,6 +70,11 @@ export function App() {
       onNetworkUpdated((n) => !cancelled && setNetwork(n)),
       onSettingsUpdated((s) => !cancelled && acceptSettings(s)),
       onOpenSettings(() => !cancelled && setShowSettings(true)),
+      onSelectContainer((id) => {
+        if (cancelled) return;
+        setSelectedId(id);
+        setShowSettings(false);
+      }),
     ];
     return () => {
       cancelled = true;

@@ -10,6 +10,10 @@ pub const MENU_SHOW: &str = "tray-show";
 pub const MENU_STOP_ALL: &str = "tray-stop-all";
 pub const MENU_SETTINGS: &str = "tray-settings";
 pub const MENU_QUIT: &str = "tray-quit";
+/// Prefix of per-project items; the rest of the id is a container id.
+pub const MENU_SELECT_PREFIX: &str = "tray-select:";
+/// Emitted with a container id when the user picks a project in the tray.
+pub const SELECT_CONTAINER_EVENT: &str = "select-container";
 /// Emitted to the webview when the user picks "Settings" in the tray.
 pub const OPEN_SETTINGS_EVENT: &str = "open-settings";
 
@@ -32,7 +36,8 @@ fn build_menu<R: Runtime>(
 
     let mut running = 0usize;
     if let Some(overview) = overview {
-        let mut projects: Vec<(String, usize, usize)> = Vec::new();
+        // slug, containers, sessions, id of the first container (click target)
+        let mut projects: Vec<(String, usize, usize, String)> = Vec::new();
         for c in &overview.containers {
             if !c.container.state.is_running() {
                 continue;
@@ -40,13 +45,18 @@ fn build_menu<R: Runtime>(
             running += 1;
             match projects
                 .iter_mut()
-                .find(|(slug, _, _)| *slug == c.container.project_slug)
+                .find(|(slug, ..)| *slug == c.container.project_slug)
             {
                 Some(entry) => {
                     entry.1 += 1;
                     entry.2 += c.sessions.len();
                 }
-                None => projects.push((c.container.project_slug.clone(), 1, c.sessions.len())),
+                None => projects.push((
+                    c.container.project_slug.clone(),
+                    1,
+                    c.sessions.len(),
+                    c.container.id.clone(),
+                )),
             }
         }
         if projects.is_empty() {
@@ -56,7 +66,7 @@ fn build_menu<R: Runtime>(
                     .build(app)?,
             );
         }
-        for (i, (slug, containers, sessions)) in projects.iter().enumerate() {
+        for (slug, containers, sessions, id) in &projects {
             let label = match (containers, sessions) {
                 (1, 0) => format!("{slug}: idle"),
                 (1, n) => format!("{slug}: {n} session{}", if *n == 1 { "" } else { "s" }),
@@ -66,9 +76,7 @@ fn build_menu<R: Runtime>(
                 ),
             };
             builder = builder.item(
-                &MenuItemBuilder::with_id(format!("tray-project-{i}"), label)
-                    .enabled(false)
-                    .build(app)?,
+                &MenuItemBuilder::with_id(format!("{MENU_SELECT_PREFIX}{id}"), label).build(app)?,
             );
         }
         builder = builder.separator();
@@ -160,6 +168,11 @@ pub fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, id: &str) -> bool {
         }
         MENU_QUIT => {
             app.exit(0);
+            true
+        }
+        id if id.starts_with(MENU_SELECT_PREFIX) => {
+            show_main_window(app);
+            let _ = app.emit(SELECT_CONTAINER_EVENT, &id[MENU_SELECT_PREFIX.len()..]);
             true
         }
         _ => false,
