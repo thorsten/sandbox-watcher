@@ -148,20 +148,30 @@ impl LiveRuntime {
         };
         let weak = Arc::downgrade(self);
         let task = tokio::spawn(async move {
+            // An error from the stream means this runtime cannot deliver
+            // events (e.g. rootless Podman without an events backend). Keep
+            // the adapter; the UI's poll covers it. Only a clean end of the
+            // stream means the daemon went away, in which case the adapter is
+            // forgotten so the next refresh reconnects and resubscribes.
+            let mut reconnect = false;
             if let Ok(mut stream) = adapter.events().await {
+                reconnect = true;
                 while let Some(item) = stream.next().await {
                     match item {
                         Ok(event) if is_relevant(&event) => listener(event),
                         Ok(_) => {}
-                        Err(_) => break,
+                        Err(_) => {
+                            reconnect = false;
+                            break;
+                        }
                     }
                 }
             }
-            // The stream ended: the daemon went away or restarted. Forget this
-            // adapter so the next refresh reconnects and resubscribes.
             if let Some(live) = weak.upgrade() {
                 let mut state = live.state.lock().expect("live state poisoned");
-                state.adapters.remove(&kind);
+                if reconnect {
+                    state.adapters.remove(&kind);
+                }
                 state.event_tasks.remove(&kind);
             }
         });

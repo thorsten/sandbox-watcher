@@ -162,13 +162,15 @@ pub fn map_event(message: &EventMessage) -> Option<RuntimeEvent> {
     let container_id = actor.id.clone()?;
     let action = message.action.as_deref().unwrap_or("");
     let (verb, detail) = action.split_once(':').unwrap_or((action, ""));
+    // Docker names first, Podman's libpod names second: Podman's compat
+    // endpoint does not rename every status.
     let kind = match verb.trim() {
         "create" => RuntimeEventKind::Created,
         "start" => RuntimeEventKind::Started,
         "stop" => RuntimeEventKind::Stopped,
-        "die" => RuntimeEventKind::Died,
-        "exec_create" => RuntimeEventKind::ExecCreated(detail.trim().to_string()),
-        "destroy" => RuntimeEventKind::Removed,
+        "die" | "died" => RuntimeEventKind::Died,
+        "exec_create" | "exec" => RuntimeEventKind::ExecCreated(detail.trim().to_string()),
+        "destroy" | "remove" => RuntimeEventKind::Removed,
         other => RuntimeEventKind::Other(other.to_string()),
     };
     let at = message
@@ -525,6 +527,11 @@ mod tests {
         ))
         .unwrap();
         assert_eq!(e.kind, RuntimeEventKind::ExecCreated("sh -c ls".into()));
+
+        let e = map_event(&event(EventMessageTypeEnum::CONTAINER, "died")).unwrap();
+        assert_eq!(e.kind, RuntimeEventKind::Died, "podman spelling");
+        let e = map_event(&event(EventMessageTypeEnum::CONTAINER, "remove")).unwrap();
+        assert_eq!(e.kind, RuntimeEventKind::Removed, "podman spelling");
 
         let e = map_event(&event(EventMessageTypeEnum::CONTAINER, "rename")).unwrap();
         assert_eq!(e.kind, RuntimeEventKind::Other("rename".into()));

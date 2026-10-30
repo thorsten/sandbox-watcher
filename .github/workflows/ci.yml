@@ -54,6 +54,10 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           podman --version
+          # Rootless Podman defaults to journald for events, which runners may lack.
+          mkdir -p ~/.config/containers
+          printf '[engine]\nevents_logger = "file"\n' > ~/.config/containers/containers.conf
+          podman info --format 'events logger: {{.Host.EventLogger}}, cgroups: {{.Host.CgroupsVersion}}'
           nohup podman system service --time=0 unix:///tmp/podman.sock >/tmp/podman-service.log 2>&1 &
           for i in $(seq 1 30); do [ -S /tmp/podman.sock ] && break || sleep 0.5; done
           podman run -d --name sandbox-watcher-podman \
@@ -72,7 +76,9 @@ jobs:
         run: cargo test -p sandbox-core --test conformance -- --nocapture
       - name: Remove the Podman test container
         if: always() && runner.os == 'Linux'
-        run: podman rm -f sandbox-watcher-podman || true
+        run: |
+          podman rm -f sandbox-watcher-podman || true
+          echo "--- podman service log"; cat /tmp/podman-service.log || true
 
   web:
     name: Web UI

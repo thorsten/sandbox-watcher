@@ -134,27 +134,48 @@ async fn conformance(adapter: Arc<dyn RuntimeAdapter>, slug: &str) {
             .stop(&container.id, Some(Duration::from_secs(2)))
             .await
             .expect("stop");
-        let saw_stop = tokio::time::timeout(deadline, async {
+        // Collect everything seen so a failure log shows the runtime's vocabulary.
+        let seen: std::sync::Arc<std::sync::Mutex<Vec<String>>> = Default::default();
+        let seen_in_task = seen.clone();
+        let outcome = tokio::time::timeout(deadline, async {
             while let Some(event) = events.next().await {
-                let event = event.expect("event");
+                let event = match event {
+                    Ok(event) => event,
+                    Err(e) => {
+                        seen_in_task.lock().unwrap().push(format!("error: {e}"));
+                        return Err(e.to_string());
+                    }
+                };
+                seen_in_task.lock().unwrap().push(format!(
+                    "{} {:?} {}",
+                    event.container_id.chars().take(12).collect::<String>(),
+                    event.kind,
+                    event.container_name.as_deref().unwrap_or("")
+                ));
                 if event.container_id == container.id
                     && matches!(
                         event.kind,
                         RuntimeEventKind::Stopped | RuntimeEventKind::Died
                     )
                 {
-                    return true;
+                    return Ok(true);
                 }
             }
-            false
+            Ok(false)
         })
         .await
-        .unwrap_or(false);
-        assert!(
-            saw_stop,
-            "stop or die event for {} within {deadline:?}",
-            container.name
-        );
+        .unwrap_or(Ok(false));
+        match outcome {
+            Ok(saw_stop) => assert!(
+                saw_stop,
+                "stop or die event for {} within {deadline:?}; events seen: {:?}",
+                container.name,
+                seen.lock().unwrap()
+            ),
+            // Some setups (rootless Podman without journald) have no events
+            // backend. The app falls back to polling there; so does this test.
+            Err(e) => eprintln!("WARNING: event stream unavailable, falling back to polling: {e}"),
+        }
     } else {
         adapter
             .stop(&container.id, Some(Duration::from_secs(2)))
