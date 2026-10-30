@@ -210,6 +210,35 @@ pub fn terminal_launches(
     }
 }
 
+/// A user-supplied terminal command with `{dir}` replaced by the quoted
+/// project directory, run through the platform shell.
+pub fn custom_terminal_launch(os: &str, template: &str, dir: &str) -> TerminalLaunch {
+    if os == "windows" {
+        let command = template.replace("{dir}", &format!("\"{dir}\""));
+        TerminalLaunch {
+            program: "cmd.exe".into(),
+            args: vec![
+                "/c".into(),
+                "start".into(),
+                String::new(),
+                "cmd.exe".into(),
+                "/c".into(),
+                command,
+            ],
+            cwd: Some(dir.into()),
+            wait: false,
+        }
+    } else {
+        let command = template.replace("{dir}", &shell_single_quote(dir));
+        TerminalLaunch {
+            program: "sh".into(),
+            args: vec!["-c".into(), command],
+            cwd: Some(dir.into()),
+            wait: false,
+        }
+    }
+}
+
 /// Command line to copy for inspecting network logs of a project.
 pub fn network_logs_command(project_dir: Option<&str>) -> String {
     match project_dir {
@@ -285,6 +314,22 @@ mod tests {
         let launches = terminal_launches("windows", r"C:\work\p", None, &[]);
         assert_eq!(launches[0].program, "wt.exe");
         assert_eq!(launches[1].cwd.as_deref(), Some(r"C:\work\p"));
+    }
+
+    #[test]
+    fn custom_terminal_substitutes_quoted_dir() {
+        let l = custom_terminal_launch(
+            "macos",
+            "open -na Ghostty --args --working-directory={dir}",
+            "/a b",
+        );
+        assert_eq!(l.program, "sh");
+        assert_eq!(
+            l.args[1],
+            "open -na Ghostty --args --working-directory='/a b'"
+        );
+        let w = custom_terminal_launch("windows", "wt -d {dir}", r"C:\work");
+        assert_eq!(w.args.last().unwrap(), "wt -d \"C:\\work\"");
     }
 
     #[test]

@@ -34,6 +34,8 @@ struct Connections {
 pub struct LiveRuntime {
     state: Mutex<Connections>,
     listener: Mutex<Option<Listener>>,
+    /// Runtime pinned by the user's settings; wins over env and sandbox config.
+    preferred_override: Mutex<Option<RuntimeKind>>,
 }
 
 /// Events worth a UI refresh. Our own probe and diagnostic execs and the
@@ -100,6 +102,18 @@ impl LiveRuntime {
     /// Register the event sink. Takes effect on the next (re)connect.
     pub fn set_listener(&self, listener: Listener) {
         *self.listener.lock().expect("listener poisoned") = Some(listener);
+    }
+
+    /// Pin a runtime from settings. `None` falls back to env and sandbox config.
+    pub fn set_preferred(&self, kind: Option<RuntimeKind>) {
+        *self.preferred_override.lock().expect("preferred poisoned") = kind;
+    }
+
+    fn preferred(&self) -> Option<RuntimeKind> {
+        self.preferred_override
+            .lock()
+            .expect("preferred poisoned")
+            .or_else(preferred_runtime)
     }
 
     /// All adapters that answered in the last refresh.
@@ -188,7 +202,7 @@ impl LiveRuntime {
             self.clear();
             return Overview::not_detected(DataSource::Live);
         }
-        let selected = select_candidates(candidates.clone(), preferred_runtime());
+        let selected = select_candidates(candidates.clone(), self.preferred());
 
         // Drop adapters for runtimes that are no longer selected.
         let stale: Vec<RuntimeKind> = {

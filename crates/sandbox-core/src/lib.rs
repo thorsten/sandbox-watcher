@@ -19,10 +19,12 @@ pub mod mock;
 pub mod model;
 pub mod mounts;
 pub mod network;
+pub mod notify;
 pub mod overview;
 pub mod paths;
 pub mod sandbox;
 pub mod sessions;
+pub mod settings;
 pub mod stats_hub;
 
 pub use adapter::RuntimeAdapter;
