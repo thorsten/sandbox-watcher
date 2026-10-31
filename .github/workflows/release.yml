@@ -2,7 +2,8 @@ name: Release
 
 # Builds installers for every platform and attaches them to a draft GitHub
 # release. Triggered by pushing a tag like v0.2.0, or manually.
-# Bundles are unsigned until M7 adds signing and notarisation.
+# macOS bundles are signed and notarised once the APPLE_* secrets exist (see
+# "macOS signing" in the README); until then, and on Windows, they are unsigned.
 
 on:
   push:
@@ -11,6 +12,11 @@ on:
 
 permissions:
   contents: write
+
+env:
+  # Secrets cannot be tested in step conditions, so expose only whether the
+  # signing certificate is configured.
+  APPLE_SIGNING: ${{ secrets.APPLE_CERTIFICATE != '' }}
 
 jobs:
   notes:
@@ -33,7 +39,12 @@ jobs:
           else
             node scripts/changelog.mjs --unreleased > notes.md
           fi
-          printf '\nUnsigned builds for macOS (Apple silicon), Windows and Linux. Install notes: https://thorsten.github.io/sandbox-watcher/\n' >> notes.md
+          if [ "$APPLE_SIGNING" = "true" ]; then
+            builds='Signed and notarised build for macOS (Apple silicon); unsigned builds for Windows and Linux.'
+          else
+            builds='Unsigned builds for macOS (Apple silicon), Windows and Linux.'
+          fi
+          printf '\n%s Install notes: https://thorsten.github.io/sandbox-watcher/\n' "$builds" >> notes.md
           {
             echo 'body<<NOTES_EOF'
             cat notes.md
@@ -77,6 +88,44 @@ jobs:
         with:
           workspaces: ". -> target"
       - run: pnpm install --frozen-lockfile
+      # Hands the Apple secrets to the Tauri bundler, which imports the
+      # certificate into a temporary keychain, signs and notarises. Only set
+      # variables are exported: an empty APPLE_CERTIFICATE would fail the build.
+      # Notarisation uses an App Store Connect API key if one is configured,
+      # else the Apple ID with an app-specific password.
+      - name: Prepare macOS signing
+        if: runner.os == 'macOS' && env.APPLE_SIGNING == 'true'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+        run: |
+          put() {
+            if [ -n "$2" ]; then
+              printf '%s<<__APPLE_EOF__\n%s\n__APPLE_EOF__\n' "$1" "$2" >> "$GITHUB_ENV"
+            fi
+          }
+          put APPLE_CERTIFICATE "$APPLE_CERTIFICATE"
+          put APPLE_CERTIFICATE_PASSWORD "$APPLE_CERTIFICATE_PASSWORD"
+          put APPLE_SIGNING_IDENTITY "$APPLE_SIGNING_IDENTITY"
+          if [ -n "$APPLE_API_PRIVATE_KEY" ]; then
+            key_path="$RUNNER_TEMP/AuthKey_$APPLE_API_KEY.p8"
+            printf '%s\n' "$APPLE_API_PRIVATE_KEY" > "$key_path"
+            put APPLE_API_ISSUER "$APPLE_API_ISSUER"
+            put APPLE_API_KEY "$APPLE_API_KEY"
+            put APPLE_API_KEY_PATH "$key_path"
+          else
+            put APPLE_ID "$APPLE_ID"
+            put APPLE_PASSWORD "$APPLE_PASSWORD"
+            put APPLE_TEAM_ID "$APPLE_TEAM_ID"
+          fi
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -145,9 +145,29 @@ GitHub Actions builds everything. `CI` runs on every push and pull request:
 Rust tests on macOS, Linux and Windows, the Docker conformance test on
 Linux, web lint, tests and build, and an unsigned Tauri debug build per OS.
 `Release` runs on tags `v*` (or manually) and publishes installers for macOS
-(Apple silicon), Linux and Windows. Bundles are unsigned; signing
-and notarisation are a follow-up. `Pages` deploys the `site/` folder to
-GitHub Pages.
+(Apple silicon), Linux and Windows. macOS bundles are signed and notarised
+once the secrets below exist; Windows and Linux bundles are unsigned. `Pages`
+deploys the `site/` folder to GitHub Pages.
+
+### macOS signing
+
+Needs a paid Apple Developer Program membership and a **Developer ID
+Application** certificate, exported from Keychain Access as `.p12`. Add these
+repository secrets; signing turns on as soon as `APPLE_CERTIFICATE` is set:
+
+| Secret                       | Value                                                |
+| ---------------------------- | ---------------------------------------------------- |
+| `APPLE_CERTIFICATE`          | `base64 -i certificate.p12`                          |
+| `APPLE_CERTIFICATE_PASSWORD` | Password of the `.p12` export                        |
+| `APPLE_SIGNING_IDENTITY`     | `Developer ID Application: Your Name (TEAMID)`       |
+| `APPLE_ID`                   | Apple ID used for notarisation                       |
+| `APPLE_PASSWORD`             | App-specific password from appleid.apple.com         |
+| `APPLE_TEAM_ID`              | Team ID from the developer account's Membership page |
+
+Instead of `APPLE_ID`, `APPLE_PASSWORD` and `APPLE_TEAM_ID`, notarisation can
+use an App Store Connect API key: `APPLE_API_ISSUER` (issuer ID),
+`APPLE_API_KEY` (key ID) and `APPLE_API_PRIVATE_KEY` (contents of the `.p8`
+file). The key wins when both are set.
 
 ## Changelog
 
