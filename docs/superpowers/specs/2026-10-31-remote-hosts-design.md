@@ -171,8 +171,8 @@ Unit tests in `sandbox-core`:
 - `shell_quote`, alias validation, and the argument lists built for master, `run`,
   `-O forward` and `-O exit`.
 - Host state machine and backoff, driven by a fake `CommandRunner`; no real SSH.
-- `endpoints.rs` and `AppleContainerAdapter` against the fake runner with recorded remote
-  output in `fixtures/remote/` (README states how it was recorded).
+- `endpoints.rs` and `AppleContainerAdapter` against the fake runner with hand-written
+  canned remote output inline in the tests (Ruling R5).
 - Identity: overview merge with the same container ID on two hosts; history keys; existing
   local history files still load.
 - Remote guard: every host-side command refuses a remote host.

@@ -191,6 +191,9 @@ jobs:
           workspaces: ". -> target"
       - run: pnpm install --frozen-lockfile
       - run: cargo clippy -p sandbox-watcher --all-targets -- -D warnings
+      # Shell unit tests (remote-key guards, tray), which need the system
+      # libraries above on Linux.
+      - run: cargo test -p sandbox-watcher
       # Unsigned debug build without installers: proves the shell compiles on
       # every OS. Signed bundles are an M7 deliverable.
       - run: pnpm tauri build --debug --no-bundle
