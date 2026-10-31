@@ -12,9 +12,11 @@ use crate::detect::DetectedRuntime;
 use crate::host::{Host, container_key};
 use crate::model::{Readiness, RuntimeInfo, RuntimeKind, SandboxContainer, Session};
 use crate::remote::HostStatus;
-use crate::remote_hosts::REMOTE_TIMEOUT;
 use crate::sandbox::TESTED_SANDBOX_VERSION;
 use crate::sessions::probe_container;
+
+/// How long one remote host may take to connect or to answer a refresh.
+pub const REMOTE_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Where the data on screen comes from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

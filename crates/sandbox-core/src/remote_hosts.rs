@@ -5,7 +5,6 @@
 //! [`LiveRuntime`](crate::live::LiveRuntime) owns one [`RemoteHosts`] and
 //! installs the adapters of connected hosts next to the local ones.
 
-use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -13,16 +12,15 @@ use std::time::{Duration, Instant};
 
 use chrono::{DateTime, Utc};
 use futures::future::BoxFuture;
-use tokio::task::JoinHandle;
+use tokio::task::{AbortHandle, JoinHandle};
 
 use crate::host::{Host, validate_alias};
 use crate::model::RuntimeKind;
-use crate::overview::{ContainerOverview, HostedAdapter, Overview, RuntimeFailure};
+use crate::overview::{ContainerOverview, HostedAdapter, Overview, RuntimeFailure, RuntimeStatus};
+
+pub use crate::overview::REMOTE_TIMEOUT;
 use crate::remote::{Backoff, HostState, HostStatus, RemoteDetection};
 use crate::settings::RemoteHost;
-
-/// How long one remote host may take to connect or to answer a refresh.
-pub const REMOTE_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// The reason every configured host shows where SSH hosts cannot work.
 pub const NOT_SUPPORTED: &str = "Remote hosts are not supported on Windows";
@@ -159,8 +157,22 @@ fn kinds(adapters: &[HostedAdapter]) -> Vec<RuntimeKind> {
     adapters.iter().map(|a| a.adapter.kind()).collect()
 }
 
-fn close_in_background(session: Arc<dyn RemoteSession>) {
-    tokio::spawn(async move { session.close().await });
+/// Sessions that are open or still closing, shared with connect and close
+/// tasks so shutdown can reach every one of them.
+type Registry = Arc<Mutex<Vec<Arc<dyn RemoteSession>>>>;
+
+fn register(registry: &Registry, session: &Arc<dyn RemoteSession>) {
+    registry
+        .lock()
+        .expect("remote sessions poisoned")
+        .push(session.clone());
+}
+
+fn unregister(registry: &Registry, session: &Arc<dyn RemoteSession>) {
+    registry
+        .lock()
+        .expect("remote sessions poisoned")
+        .retain(|s| !Arc::ptr_eq(s, session));
 }
 
 struct RemoteConnection {
@@ -227,9 +239,11 @@ pub struct RemoteHosts {
     /// Hosts from settings, applied at the start of the next round.
     pending: Mutex<Option<Vec<RemoteHost>>>,
     reset_requested: AtomicBool,
-    /// Open sessions by alias, so shutdown never waits for a running round.
-    open: Mutex<HashMap<String, Arc<dyn RemoteSession>>>,
-    shut_down: Arc<AtomicBool>,
+    /// Every session not yet closed, so shutdown never waits for a round.
+    sessions: Registry,
+    /// Running connection attempts, aborted on shutdown.
+    connects: Mutex<Vec<AbortHandle>>,
+    shut_down: AtomicBool,
     connector: Option<Connector>,
     poll_interval: Mutex<Duration>,
     /// Wall clock, so time spent asleep counts (monotonic clocks may pause).
@@ -249,8 +263,9 @@ impl RemoteHosts {
             connections: tokio::sync::Mutex::new(Vec::new()),
             pending: Mutex::new(None),
             reset_requested: AtomicBool::new(false),
-            open: Mutex::new(HashMap::new()),
-            shut_down: Arc::new(AtomicBool::new(false)),
+            sessions: Arc::new(Mutex::new(Vec::new())),
+            connects: Mutex::new(Vec::new()),
+            shut_down: AtomicBool::new(false),
             connector,
             poll_interval: Mutex::new(Duration::from_secs(10)),
             last_refresh: Mutex::new(None),
@@ -272,24 +287,41 @@ impl RemoteHosts {
         *self.poll_interval.lock().expect("poll interval poisoned") = interval;
     }
 
-    /// Close every open session; no new connections are made afterwards.
+    /// Abort running connection attempts and close every session, including
+    /// ones connected but not yet collected and ones still closing. No new
+    /// connections are made afterwards.
     pub async fn shutdown(&self) {
         self.shut_down.store(true, Ordering::SeqCst);
+        let connects: Vec<AbortHandle> = self
+            .connects
+            .lock()
+            .expect("remote connects poisoned")
+            .drain(..)
+            .collect();
+        for handle in &connects {
+            handle.abort();
+        }
+        // An attempt registers its session before it finishes, so once every
+        // task has ended the registry holds every session there is.
+        let deadline = Instant::now() + Duration::from_secs(1);
+        while connects.iter().any(|h| !h.is_finished()) && Instant::now() < deadline {
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
         let sessions: Vec<_> = self
-            .open
+            .sessions
             .lock()
             .expect("remote sessions poisoned")
-            .drain()
-            .map(|(_, session)| session)
+            .drain(..)
             .collect();
         futures::future::join_all(sessions.iter().map(|s| s.close())).await;
     }
 
-    /// One refresh round: apply settings, check or (re)connect hosts, call
-    /// `load` with the adapters of connected hosts, then mark hosts whose
-    /// runtimes all failed as unreachable, add greyed snapshots and the host
-    /// list to the overview. Returns the overview and the adapters of the
-    /// hosts still connected afterwards.
+    /// One refresh round: apply settings, collect or start connection
+    /// attempts, then check live sessions while `load` runs with the adapters
+    /// of connected hosts, each bounded by [`REMOTE_TIMEOUT`]. Hosts whose
+    /// session died or whose runtimes all failed become unreachable; greyed
+    /// snapshots and the host list are added to the overview. Returns the
+    /// overview and the adapters of the hosts still connected afterwards.
     pub async fn refresh<F, Fut>(
         &self,
         wake: Option<Wake>,
@@ -321,22 +353,61 @@ impl RemoteHosts {
         )
         .await;
 
-        let (mut overview, failures) = load(connected_adapters(&list)).await;
+        // Checks run next to the loads, so a round takes at most
+        // REMOTE_TIMEOUT longer than the local load.
+        let checks: Vec<(usize, Arc<dyn RemoteSession>)> = list
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.is_connected())
+            .filter_map(|(i, c)| c.session.clone().map(|s| (i, s)))
+            .collect();
+        let check_all = futures::future::join_all(checks.iter().map(|(_, session)| async move {
+            tokio::time::timeout(REMOTE_TIMEOUT, session.check())
+                .await
+                .unwrap_or(false)
+        }));
+        let (alive, (mut overview, failures)) =
+            futures::join!(check_all, load(connected_adapters(&list)));
+
+        for ((i, session), alive) in checks.iter().zip(alive) {
+            if alive {
+                continue;
+            }
+            let c = &mut list[*i];
+            let host = c.host();
+            overview.containers.retain(|x| x.host != host);
+            if let RuntimeStatus::Connected { runtimes, .. } = &mut overview.runtime {
+                runtimes.retain(|r| r.host != host);
+            }
+            let reason = match session.last_error() {
+                Some(line) => format!("connection lost: {line}"),
+                None => "connection lost".to_string(),
+            };
+            self.mark_unreachable(c, reason);
+        }
 
         for c in list.iter_mut().filter(|c| c.is_connected()) {
             let host = c.host();
             let failed: Vec<&RuntimeFailure> = failures.iter().filter(|f| f.host == host).collect();
-            let all_failed = !c.adapters.is_empty()
-                && c.adapters
-                    .iter()
-                    .all(|a| failed.iter().any(|f| f.kind == a.adapter.kind()));
-            if all_failed {
+            if failed.is_empty() {
+                continue;
+            }
+            let is_failed = |a: &HostedAdapter| failed.iter().any(|f| f.kind == a.adapter.kind());
+            if c.adapters.iter().all(is_failed) {
                 let reason = failed
                     .iter()
                     .map(|f| format!("{}: {}", f.kind, f.reason))
                     .collect::<Vec<_>>()
                     .join("; ");
                 self.mark_unreachable(c, reason);
+            } else {
+                // Keep the host; drop only the failed runtimes until the
+                // next connect detects them again.
+                c.adapters.retain(|a| !is_failed(a));
+                c.status.runtimes = kinds(&c.adapters);
+                c.status
+                    .probes
+                    .extend(failed.iter().map(|f| format!("{}: {}", f.kind, f.reason)));
             }
         }
 
@@ -407,23 +478,33 @@ impl RemoteHosts {
 
     fn discard(&self, c: RemoteConnection) {
         if let Some(handle) = c.connecting {
+            // An attempt that already connected still hands back a session.
             handle.abort();
+            let registry = self.sessions.clone();
+            tokio::spawn(async move {
+                if let Ok(Ok((session, _, _))) = handle.await {
+                    session.close().await;
+                    unregister(&registry, &session);
+                }
+            });
         }
         if let Some(session) = c.session {
-            self.forget_session(&c.config.alias);
-            close_in_background(session);
+            self.close_in_background(session);
         }
     }
 
-    fn forget_session(&self, alias: &str) {
-        self.open
-            .lock()
-            .expect("remote sessions poisoned")
-            .remove(alias);
+    /// Close a session without holding up the round. It stays in the
+    /// registry until closed, so shutdown can still close it.
+    fn close_in_background(&self, session: Arc<dyn RemoteSession>) {
+        let registry = self.sessions.clone();
+        tokio::spawn(async move {
+            session.close().await;
+            unregister(&registry, &session);
+        });
     }
 
     /// Move one enabled host forward: collect a finished connection attempt,
-    /// check a live session, or start a new attempt when the backoff allows.
+    /// or start a new one when the host has no session and the backoff allows.
     async fn advance(&self, c: &mut RemoteConnection, wake: Option<Wake>) {
         if let Some(handle) = c.connecting.take() {
             if !handle.is_finished() {
@@ -440,17 +521,9 @@ impl RemoteHosts {
             }
             return;
         }
-        if let Some(session) = c.session.clone() {
-            if !session.check().await {
-                let reason = match session.last_error() {
-                    Some(line) => format!("connection lost: {line}"),
-                    None => "connection lost".to_string(),
-                };
-                self.mark_unreachable(c, reason);
-            }
-            return;
-        }
-        if self.shut_down.load(Ordering::SeqCst) || c.retry_at.is_some_and(|at| Instant::now() < at)
+        if c.session.is_some()
+            || self.shut_down.load(Ordering::SeqCst)
+            || c.retry_at.is_some_and(|at| Instant::now() < at)
         {
             return;
         }
@@ -468,20 +541,24 @@ impl RemoteHosts {
             c.status.state = HostState::Connecting;
         }
         let alias = c.config.alias.clone();
-        let shut_down = self.shut_down.clone();
-        c.connecting = Some(tokio::spawn(async move {
-            let result = match connect_with_timeout(&connector, alias).await {
-                Ok((session, _, _)) if shut_down.load(Ordering::SeqCst) => {
-                    session.close().await;
-                    Err(("shutting down".to_string(), vec![]))
-                }
-                other => other,
-            };
+        let registry = self.sessions.clone();
+        let handle = tokio::spawn(async move {
+            let result = connect_with_timeout(&connector, alias).await;
+            // Registered before the task ends, with no await in between, so
+            // shutdown finds it even if nobody collects this result.
+            if let Ok((session, _, _)) = &result {
+                register(&registry, session);
+            }
             if let Some(wake) = wake {
                 wake();
             }
             result
-        }));
+        });
+        let mut connects = self.connects.lock().expect("remote connects poisoned");
+        connects.retain(|h| !h.is_finished());
+        connects.push(handle.abort_handle());
+        drop(connects);
+        c.connecting = Some(handle);
     }
 
     fn mark_connected(
@@ -494,13 +571,9 @@ impl RemoteHosts {
         ),
     ) {
         if self.shut_down.load(Ordering::SeqCst) {
-            close_in_background(session);
+            self.close_in_background(session);
             return;
         }
-        self.open
-            .lock()
-            .expect("remote sessions poisoned")
-            .insert(c.config.alias.clone(), session.clone());
         c.session = Some(session);
         c.status.runtimes = kinds(&adapters);
         c.adapters = adapters;
@@ -513,8 +586,7 @@ impl RemoteHosts {
     /// Close the session, drop the adapters and schedule the next attempt.
     fn mark_unreachable(&self, c: &mut RemoteConnection, reason: String) {
         if let Some(session) = c.session.take() {
-            self.forget_session(&c.config.alias);
-            close_in_background(session);
+            self.close_in_background(session);
         }
         c.adapters.clear();
         c.status.runtimes.clear();
@@ -548,6 +620,11 @@ impl RemoteHosts {
         let mut last = self.last_refresh.lock().unwrap();
         *last = last.map(|t| t - by);
     }
+
+    #[cfg(test)]
+    fn open_sessions(&self) -> usize {
+        self.sessions.lock().unwrap().len()
+    }
 }
 
 fn connected_adapters(list: &[RemoteConnection]) -> Vec<HostedAdapter> {
@@ -570,6 +647,8 @@ mod tests {
     #[derive(Default)]
     struct FakeSession {
         dead: AtomicBool,
+        /// `check` never answers.
+        slow: AtomicBool,
         closed: AtomicBool,
         last: StdMutex<Option<String>>,
     }
@@ -577,7 +656,13 @@ mod tests {
     impl RemoteSession for FakeSession {
         fn check(&self) -> BoxFuture<'_, bool> {
             let alive = !self.dead.load(Ordering::SeqCst);
-            Box::pin(async move { alive })
+            let slow = self.slow.load(Ordering::SeqCst);
+            Box::pin(async move {
+                if slow {
+                    std::future::pending::<()>().await;
+                }
+                alive
+            })
         }
         fn close(&self) -> BoxFuture<'_, ()> {
             self.closed.store(true, Ordering::SeqCst);
@@ -590,6 +675,10 @@ mod tests {
 
     #[derive(Default)]
     struct Script {
+        /// Connection attempts wait for this before they finish.
+        gate: StdMutex<Option<Arc<tokio::sync::Notify>>>,
+        /// Hand out Docker and Podman instead of Docker only.
+        two_runtimes: AtomicBool,
         fail: StdMutex<Option<String>>,
         calls: AtomicUsize,
         sessions: StdMutex<Vec<Arc<FakeSession>>>,
@@ -602,15 +691,25 @@ mod tests {
                 let script = script.clone();
                 Box::pin(async move {
                     script.calls.fetch_add(1, Ordering::SeqCst);
+                    let gate = script.gate.lock().unwrap().clone();
+                    if let Some(gate) = gate {
+                        gate.notified().await;
+                    }
                     if let Some(reason) = script.fail.lock().unwrap().clone() {
                         return Err((reason, vec!["docker: not found on PATH".into()]));
                     }
                     let session = Arc::new(FakeSession::default());
                     script.sessions.lock().unwrap().push(session.clone());
-                    let adapters = vec![HostedAdapter {
-                        host: Host::Remote(alias),
+                    let mut adapters = vec![HostedAdapter {
+                        host: Host::Remote(alias.clone()),
                         adapter: Arc::new(MockAdapter::demo()) as Arc<dyn RuntimeAdapter>,
                     }];
+                    if script.two_runtimes.load(Ordering::SeqCst) {
+                        adapters.push(HostedAdapter {
+                            host: Host::Remote(alias),
+                            adapter: Arc::new(MockAdapter::demo().with_kind(RuntimeKind::Podman)),
+                        });
+                    }
                     let detection = RemoteDetection {
                         probes: vec!["docker: unix:///var/run/docker.sock".into()],
                         ..Default::default()
@@ -752,12 +851,13 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
-        assert!(
-            session.closed.load(Ordering::SeqCst) || {
-                remotes.settle().await;
-                tokio::task::yield_now().await;
-                session.closed.load(Ordering::SeqCst)
-            }
+        remotes.settle().await;
+        tokio::task::yield_now().await;
+        assert!(session.closed.load(Ordering::SeqCst));
+        assert_eq!(
+            remotes.open_sessions(),
+            0,
+            "closed sessions leave the registry"
         );
         assert_eq!(lost.containers.len(), seen);
         assert!(lost.containers.iter().all(|c| c.last_seen_at.is_some()));
@@ -853,5 +953,105 @@ mod tests {
             other => panic!("{other:?}"),
         }
         assert_eq!(NOT_SUPPORTED, "Remote hosts are not supported on Windows");
+    }
+
+    #[tokio::test]
+    async fn shutdown_aborts_a_connect_in_flight() {
+        let (script, remotes) = setup();
+        let gate = Arc::new(tokio::sync::Notify::new());
+        *script.gate.lock().unwrap() = Some(gate.clone());
+        remotes.set_hosts(vec![host("devbox")]);
+        round(&remotes).await;
+        tokio::task::yield_now().await;
+        assert_eq!(script.calls(), 1, "attempt is running");
+        remotes.shutdown().await;
+        gate.notify_waiters();
+        tokio::task::yield_now().await;
+        assert!(
+            script.sessions.lock().unwrap().is_empty(),
+            "the aborted attempt never opened a session"
+        );
+        assert_eq!(remotes.open_sessions(), 0);
+        // No new attempt after shutdown.
+        round(&remotes).await;
+        assert_eq!(script.calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn shutdown_closes_a_connected_but_uncollected_session() {
+        let (script, remotes) = setup();
+        remotes.set_hosts(vec![host("devbox")]);
+        round(&remotes).await;
+        remotes.settle().await; // connected, but no round collected it yet
+        assert_eq!(remotes.open_sessions(), 1);
+        remotes.shutdown().await;
+        assert!(script.last_session().closed.load(Ordering::SeqCst));
+        assert_eq!(remotes.open_sessions(), 0);
+    }
+
+    #[tokio::test]
+    async fn partially_failing_host_drops_only_the_failed_runtime() {
+        let (script, remotes) = setup();
+        script.two_runtimes.store(true, Ordering::SeqCst);
+        remotes.set_hosts(vec![host("devbox")]);
+        round(&remotes).await;
+        remotes.settle().await;
+        let (_, adapters) = round(&remotes).await;
+        assert_eq!(adapters.len(), 2);
+
+        let (overview, adapters) = remotes
+            .refresh(None, |adapters| async move {
+                let (overview, _) =
+                    load_many_with_failures(&adapters, DataSource::Mock, vec![]).await;
+                let failures = vec![RuntimeFailure {
+                    host: Host::Remote("devbox".into()),
+                    kind: RuntimeKind::Docker,
+                    endpoint: String::new(),
+                    reason: "boom".into(),
+                }];
+                (overview, failures)
+            })
+            .await;
+        assert_eq!(state(&overview, "devbox"), HostState::Connected);
+        assert_eq!(overview.hosts[0].runtimes, vec![RuntimeKind::Podman]);
+        assert!(
+            overview.hosts[0]
+                .probes
+                .contains(&"docker: boom".to_string())
+        );
+        let kinds: Vec<_> = adapters.iter().map(|a| a.adapter.kind()).collect();
+        assert_eq!(
+            kinds,
+            vec![RuntimeKind::Podman],
+            "docker is not reinstalled"
+        );
+
+        let (_, adapters) = round(&remotes).await;
+        assert_eq!(adapters.len(), 1, "stays dropped until the next connect");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn session_checks_run_alongside_the_load() {
+        let (script, remotes) = setup();
+        remotes.set_hosts(vec![host("devbox")]);
+        round(&remotes).await;
+        remotes.settle().await;
+        round(&remotes).await;
+        script.last_session().slow.store(true, Ordering::SeqCst);
+        let started = tokio::time::Instant::now();
+        let (overview, adapters) = remotes
+            .refresh(None, |adapters| async move {
+                tokio::time::sleep(REMOTE_TIMEOUT).await;
+                load_many_with_failures(&adapters, DataSource::Mock, vec![]).await
+            })
+            .await;
+        assert!(
+            started.elapsed() <= REMOTE_TIMEOUT + Duration::from_millis(50),
+            "check and load share one budget: {:?}",
+            started.elapsed()
+        );
+        assert!(adapters.is_empty(), "a check without answer counts as lost");
+        assert!(!overview.containers.is_empty());
+        assert!(overview.containers.iter().all(|c| c.last_seen_at.is_some()));
     }
 }

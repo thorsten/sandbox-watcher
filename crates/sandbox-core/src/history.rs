@@ -2,13 +2,14 @@
 //! consecutive overviews. Stored as one JSON file; sizes stay small because
 //! records are pruned after a retention period.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::files::FileTouch;
+use crate::host::{Host, parse_container_key};
 use crate::model::{AgentKind, RuntimeKind};
 use crate::overview::Overview;
 use crate::usage::Usage;
@@ -112,11 +113,20 @@ impl History {
         let mut changed = false;
         let mut seen_sessions: HashMap<(String, u32), ()> = HashMap::new();
         let mut seen_containers: HashMap<String, ()> = HashMap::new();
+        // Hosts shown from their last snapshot: nothing is known about them
+        // this round, so their open records stay open and unbumped.
+        let unreachable: HashSet<Host> = overview
+            .containers
+            .iter()
+            .filter(|c| c.last_seen_at.is_some())
+            .map(|c| c.host.clone())
+            .collect();
+        let on_unreachable = |key: &str| unreachable.contains(&parse_container_key(key).0);
 
         for c in overview
             .containers
             .iter()
-            .filter(|c| c.container.state.is_running())
+            .filter(|c| c.container.state.is_running() && c.last_seen_at.is_none())
         {
             let id = c.key.clone();
             seen_containers.insert(id.clone(), ());
@@ -170,13 +180,15 @@ impl History {
         }
 
         for s in self.sessions.iter_mut().filter(|s| s.ended_at.is_none()) {
-            if !seen_sessions.contains_key(&(s.container_id.clone(), s.pid)) {
+            if !seen_sessions.contains_key(&(s.container_id.clone(), s.pid))
+                && !on_unreachable(&s.container_id)
+            {
                 s.ended_at = Some(now);
                 changed = true;
             }
         }
         for c in self.containers.iter_mut().filter(|c| c.ended_at.is_none()) {
-            if !seen_containers.contains_key(&c.container_id) {
+            if !seen_containers.contains_key(&c.container_id) && !on_unreachable(&c.container_id) {
                 c.ended_at = Some(now);
                 changed = true;
             }
@@ -502,5 +514,39 @@ mod tests {
         let old = r#"{"version":1,"containers":[{"container_id":"abc","name":"sandbox-x","project_slug":"x","runtime":"docker","started_at":"2026-10-30T09:00:00Z","ended_at":null,"last_seen_at":"2026-10-30T10:00:00Z"}],"sessions":[]}"#;
         let history: History = serde_json::from_str(old).expect("0.5 history loads");
         assert_eq!(history.containers[0].container_id, "abc");
+    }
+
+    #[tokio::test]
+    async fn unreachable_host_keeps_history_open_and_unbumped() {
+        let mut live = snapshot(&MockAdapter::demo()).await;
+        live.containers.retain(|c| !c.sessions.is_empty());
+        live.containers.truncate(1);
+        let host = crate::host::Host::Remote("devbox".into());
+        for c in &mut live.containers {
+            c.key = crate::host::container_key(&host, &c.container.id);
+            c.host = host.clone();
+        }
+        let pids: Vec<u32> = live.containers[0].sessions.iter().map(|s| s.pid).collect();
+        let t0 = Utc.with_ymd_and_hms(2026, 10, 30, 10, 0, 0).unwrap();
+        let mut h = History::default();
+        h.observe(&live, t0);
+
+        let mut greyed = live.clone();
+        greyed.containers = crate::remote_hosts::stale_snapshot(&live.containers, t0);
+        let t1 = t0 + Duration::seconds(60);
+        assert!(!h.observe(&greyed, t1), "an outage changes nothing");
+        assert_eq!(
+            h.containers[0].last_seen_at, t0,
+            "not bumped while unreachable"
+        );
+        assert!(h.containers[0].ended_at.is_none());
+        assert!(h.sessions.iter().all(|s| s.ended_at.is_none()));
+
+        let t2 = t1 + Duration::seconds(60);
+        h.observe(&live, t2);
+        assert_eq!(h.sessions.len(), pids.len(), "one record per session");
+        assert!(h.sessions.iter().all(|s| s.ended_at.is_none()));
+        assert_eq!(h.containers.len(), 1);
+        assert_eq!(h.containers[0].last_seen_at, t2);
     }
 }
