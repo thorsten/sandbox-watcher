@@ -25,3 +25,6 @@ Thumbs.db
 
 # pnpm store created inside the project by the Linux sandbox
 .pnpm-store/
+
+# Personal Claude Code overrides
+.claude/settings.local.json
