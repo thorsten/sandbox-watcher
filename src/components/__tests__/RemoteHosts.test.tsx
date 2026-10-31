@@ -1,12 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import { connected, container, NOW } from "../../test/fixtures";
-import { render } from "../../test/render";
+import { count, render } from "../../test/render";
 import { ContainerActions } from "../ContainerActions";
+import { DockerContextsList, contextsToAdd } from "../DockerContextsList";
 import { RemoteHostsSection, validAlias } from "../RemoteHostsSection";
 import { RuntimeBanner } from "../RuntimeBanner";
 import { Sidebar } from "../Sidebar";
 import { StopAllButton } from "../StopAllButton";
-import type { HostStatus } from "../../types";
+import type { HostStatus, RemoteHost, SshContext } from "../../types";
 
 const noop = vi.fn<() => void>();
 
@@ -118,5 +119,50 @@ describe("remote hosts in the UI", () => {
       <StopAllButton running={[remote, container({ id: "a" })]} hosts={[]} onChanged={noop} />,
     );
     expect(text).toContain("Stop all (2)");
+  });
+});
+
+const ctx = (name: string, endpoint: string, alias: string | null): SshContext => ({
+  name,
+  endpoint,
+  alias,
+  reason: alias ? null : "uses port 2222",
+  snippet: alias ? null : `Host ${name}\n  HostName ${name}\n  Port 2222\n`,
+});
+const host = (alias: string): RemoteHost => ({ alias, display_name: null, enabled: true });
+
+describe("docker ssh contexts", () => {
+  const staging = ctx("staging", "ssh://dev@staging", "dev@staging");
+  const vm = ctx("vm", "ssh://me@vm:2222", null);
+
+  it("renders importable, added and unsupported rows", () => {
+    const added = ctx("box", "ssh://box", "box");
+    const { html, text } = render(
+      <DockerContextsList contexts={[staging, added, vm]} hosts={[host("box")]} onAdd={noop} />,
+    );
+    expect(text).toContain("From Docker contexts");
+    expect(text).toContain("staging");
+    expect(text).toContain("ssh://dev@staging");
+    expect(text).toContain("added");
+    expect(text).toContain("uses port 2222");
+    expect(text).toContain("Copy ~/.ssh/config entry");
+    expect(count(html, 'type="checkbox"')).toBe(1);
+    expect(text).toContain("Add selected");
+  });
+
+  it("renders nothing without contexts", () => {
+    const { html } = render(<DockerContextsList contexts={[]} hosts={[]} onAdd={noop} />);
+    expect(html).toBe("");
+  });
+
+  it("adds selected contexts once, named after the context", () => {
+    const twin = ctx("staging-2", "ssh://dev@staging", "dev@staging");
+    expect(contextsToAdd([staging, twin, vm], ["staging", "staging-2", "vm"], [])).toEqual([
+      { alias: "dev@staging", display_name: "staging", enabled: true },
+    ]);
+  });
+
+  it("skips aliases already in the host list", () => {
+    expect(contextsToAdd([staging], ["staging"], [host("dev@staging")])).toEqual([]);
   });
 });

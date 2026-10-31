@@ -1,6 +1,7 @@
-import { useState } from "react";
-import { testRemoteHost } from "../api";
-import type { HostStatus, RemoteHost } from "../types";
+import { useEffect, useState } from "react";
+import { listDockerSshContexts, testRemoteHost } from "../api";
+import type { HostStatus, RemoteHost, SshContext } from "../types";
+import { DockerContextsList } from "./DockerContextsList";
 
 interface Props {
   hosts: RemoteHost[];
@@ -20,6 +21,14 @@ export function RemoteHostsSection({ hosts, statuses, onChange }: Props) {
   const [testError, setTestError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
   const isWindows = navigator.userAgent.includes("Windows");
+  const [contexts, setContexts] = useState<SshContext[]>([]);
+
+  useEffect(() => {
+    if (isWindows) return;
+    listDockerSshContexts()
+      .then(setContexts)
+      .catch(() => setContexts([]));
+  }, [isWindows]);
 
   const add = () => {
     const alias = draft.trim();
@@ -104,6 +113,11 @@ export function RemoteHostsSection({ hosts, statuses, onChange }: Props) {
               Test connection
             </button>
           </div>
+          <DockerContextsList
+            contexts={contexts}
+            hosts={hosts}
+            onAdd={(added) => onChange([...hosts, ...added])}
+          />
           {testError && <div className="notice notice-err">{testError}</div>}
           {result && (
             <div
