@@ -43,6 +43,8 @@ edit("Cargo.toml", (s) =>
 for (const file of ["package.json", "src-tauri/tauri.conf.json"]) {
   edit(file, (s) => s.replace(/("version":\s*")[^"]+(")/, `$1${version}$2`));
 }
+// Status line at the top of the README.
+edit("README.md", (s) => s.replace(/(\nStatus: )\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?/, `$1${version}`));
 // Keep Cargo.lock in step for the two workspace crates.
 edit("Cargo.lock", (s) =>
   s.replace(/(name = "sandbox-(?:core|watcher)"\nversion = ")[^"]+(")/g, `$1${version}$2`),
@@ -62,6 +64,7 @@ const files = [
   "Cargo.lock",
   "package.json",
   "src-tauri/tauri.conf.json",
+  "README.md",
   "CHANGELOG.md",
 ];
 run("git", ["add", ...files]);
