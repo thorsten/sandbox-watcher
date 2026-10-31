@@ -26,6 +26,10 @@ decisions are in `docs/adr/`. Read both before changing architecture.
   documented in `crates/sandbox-core/src/sandbox.rs` with the source file they
   were read from. When you touch them, bump `TESTED_SANDBOX_VERSION` and
   re-check the upstream file. Nothing of this is a public API of sandbox.
+  The files the watcher depends on are listed with their hashes in
+  `scripts/sandbox-upstream.json`; a weekly workflow compares them with the
+  latest release. After bumping, run `pnpm check:upstream --update`, and add
+  any newly cited upstream file to the list.
 - **Never read environment variable values** from containers, only names.
   Never send data anywhere. The app only talks to the local runtime.
 - **Features talk to the `RuntimeAdapter` trait only.** New runtime support

@@ -1,0 +1,42 @@
+name: Sandbox upstream
+
+# Compares the sandbox files the watcher depends on (scripts/sandbox-upstream.json)
+# with the latest published @maibornwolff/sandbox. A failed run lists the files
+# to re-check before bumping TESTED_SANDBOX_VERSION.
+
+on:
+  schedule:
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "sandbox version to compare (default: latest)"
+        required: false
+  push:
+    branches: [main]
+    paths:
+      - scripts/check-sandbox-upstream.mjs
+      - scripts/sandbox-upstream.json
+      - crates/sandbox-core/src/sandbox.rs
+  pull_request:
+    paths:
+      - scripts/check-sandbox-upstream.mjs
+      - scripts/sandbox-upstream.json
+      - crates/sandbox-core/src/sandbox.rs
+
+permissions:
+  contents: read
+
+jobs:
+  drift:
+    name: Watched files unchanged
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Compare with the latest sandbox release
+        env:
+          VERSION: ${{ inputs.version }}
+        run: node scripts/check-sandbox-upstream.mjs ${VERSION:+"$VERSION"}
