@@ -47,6 +47,23 @@ jobs:
           SANDBOX_WATCHER_DOCKER_TESTS: "1"
           SANDBOX_WATCHER_TEST_SLUG: watcher-test
         run: cargo test -p sandbox-core --test conformance -- --nocapture
+      - name: Prepare SSH to localhost
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update && sudo apt-get install -y openssh-server
+          sudo systemctl start ssh
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519 -q
+          cat ~/.ssh/id_ed25519.pub >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys
+          ssh-keyscan -H localhost >> ~/.ssh/known_hosts 2>/dev/null
+          ssh -o BatchMode=yes localhost docker version --format '{{.Server.Version}}'
+      - name: Docker conformance over SSH
+        if: runner.os == 'Linux'
+        env:
+          SANDBOX_WATCHER_DOCKER_TESTS: "1"
+          SANDBOX_WATCHER_TEST_SLUG: watcher-test
+          SANDBOX_WATCHER_SSH_HOST: localhost
+        run: cargo test -p sandbox-core --test conformance -- --nocapture
       - name: Remove the test container
         if: always() && runner.os == 'Linux'
         run: docker rm -f sandbox-watcher-test || true
@@ -58,8 +75,12 @@ jobs:
           mkdir -p ~/.config/containers
           printf '[engine]\nevents_logger = "file"\n' > ~/.config/containers/containers.conf
           podman info --format 'events logger: {{.Host.EventLogger}}, cgroups: {{.Host.CgroupsVersion}}'
-          nohup podman system service --time=0 unix:///tmp/podman.sock >/tmp/podman-service.log 2>&1 &
-          for i in $(seq 1 30); do [ -S /tmp/podman.sock ] && break || sleep 0.5; done
+          # Remote detection over SSH reads the rootless default socket from `podman info`.
+          SOCK="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/podman/podman.sock"
+          mkdir -p "$(dirname "$SOCK")"
+          echo "PODMAN_SOCK=$SOCK" >> "$GITHUB_ENV"
+          nohup podman system service --time=0 "unix://$SOCK" >/tmp/podman-service.log 2>&1 &
+          for i in $(seq 1 30); do [ -S "$SOCK" ] && break || sleep 0.5; done
           podman run -d --name sandbox-watcher-podman \
             --label sandbox.project=watcher-podman --label sandbox.hash=abcdef123456 \
             docker.io/library/alpine:3 sh -c 'mkdir -p /tmp/sandbox-sessions && touch /tmp/.sandbox-ready && echo ready && sleep 600'
@@ -72,7 +93,15 @@ jobs:
           SANDBOX_WATCHER_DOCKER_TESTS: "1"
           SANDBOX_WATCHER_RUNTIME: podman
           SANDBOX_WATCHER_TEST_SLUG: watcher-podman
-          DOCKER_HOST: unix:///tmp/podman.sock
+          DOCKER_HOST: unix://${{ env.PODMAN_SOCK }}
+        run: cargo test -p sandbox-core --test conformance -- --nocapture
+      - name: Podman conformance over SSH
+        if: runner.os == 'Linux'
+        env:
+          SANDBOX_WATCHER_DOCKER_TESTS: "1"
+          SANDBOX_WATCHER_RUNTIME: podman
+          SANDBOX_WATCHER_TEST_SLUG: watcher-podman
+          SANDBOX_WATCHER_SSH_HOST: localhost
         run: cargo test -p sandbox-core --test conformance -- --nocapture
       - name: Podman diagnostics
         if: failure() && runner.os == 'Linux'
@@ -81,7 +110,7 @@ jobs:
           echo "--- podman version"; podman version
           echo "--- podman info (host)"; podman info --format '{{json .Host}}' | head -c 2000; echo
           API=http://d/v1.47
-          S=/tmp/podman.sock
+          S="$PODMAN_SOCK"
           echo "--- compat /version"; curl -s --unix-socket $S $API/version | head -c 600; echo
           echo "--- compat containers (label filter)"; curl -s --unix-socket $S "$API/containers/json?all=true&filters=%7B%22label%22%3A%5B%22sandbox.project%3Dwatcher-podman%22%5D%7D" | head -c 3000; echo
           ID=$(podman ps -aq --filter name=sandbox-watcher-podman | head -1)

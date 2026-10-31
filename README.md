@@ -126,6 +126,25 @@ SANDBOX_WATCHER_DOCKER_TESTS=1 SANDBOX_WATCHER_RUNTIME=apple-container \
   cargo test -p sandbox-core --test conformance -- --nocapture
 ```
 
+## Remote hosts
+
+Watch containers on another machine over SSH.
+
+- Add an SSH alias from `~/.ssh/config` under Settings, then Remote hosts.
+  Use key or agent authentication only; the app cannot prompt for passwords.
+- Accept the host key once in a terminal with `ssh <alias>`. The app never
+  accepts host keys.
+- Docker, Podman and Apple `container` are supported on the remote machine.
+  Only Unix-socket endpoints are forwarded; TCP Docker contexts are not.
+- Remote containers can be watched and stopped. Terminal, folder, editor,
+  reveal and the allow list are not available for them.
+- Windows is not supported.
+
+Conformance over SSH runs in CI on Linux against `localhost`
+(`SANDBOX_WATCHER_SSH_HOST=localhost`). Remote Apple `container` is checked by
+hand against a second Mac; record the date and macOS version here when you
+repeat it: not yet verified.
+
 ## Updates
 
 The app checks GitHub Releases on start and every six hours, shows the new
@@ -198,8 +217,8 @@ MIT, see [`LICENSE`](LICENSE).
 
 ## Privacy
 
-The app talks to the local container runtime and to nothing else, with one
-exception: the update check asks GitHub Releases for a new version on start
+The app talks to the local container runtime and to remote hosts you add,
+only through your own `ssh`, and to nothing else, with one exception: the update check asks GitHub Releases for a new version on start
 and every six hours, which sends your IP address to GitHub. It can be turned
 off in Settings. The app never reads environment variable values from
 containers, only their names, and it sends no container, session or usage

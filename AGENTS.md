@@ -31,7 +31,10 @@ decisions are in `docs/adr/`. Read both before changing architecture.
   latest release. After bumping, run `pnpm check:upstream --update`, and add
   any newly cited upstream file to the list.
 - **Never read environment variable values** from containers, only names.
-  Never send data anywhere. The app only talks to the local runtime.
+  Never send data anywhere. The app only talks to the local runtime and to
+  remote hosts the user added, through the user's own `ssh`.
+- **Remote command arguments always go through `ssh::shell_quote`;**
+  host-side commands call `require_local` first.
 - **Features talk to the `RuntimeAdapter` trait only.** New runtime support
   means a new adapter plus the conformance suite in
   `crates/sandbox-core/tests/conformance.rs`, not special cases elsewhere.

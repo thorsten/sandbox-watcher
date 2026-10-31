@@ -5,7 +5,8 @@
 //! `.github/workflows/ci.yml`): labelled `sandbox.project=<slug>` and
 //! `sandbox.hash=...`, running, with `/tmp/.sandbox-ready` present.
 //! `SANDBOX_WATCHER_RUNTIME` picks `docker` (default), `podman` or
-//! `apple-container`; `DOCKER_HOST` the socket for the first two.
+//! `apple-container`; `DOCKER_HOST` the socket for the first two. With `SANDBOX_WATCHER_SSH_HOST=<alias>`
+//! (Unix only) the runtime is reached through that SSH host instead.
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -231,6 +232,29 @@ async fn real_runtime_adapter_conforms() {
     }
     let slug = std::env::var("SANDBOX_WATCHER_TEST_SLUG").unwrap_or_else(|_| "watcher-test".into());
     let runtime = std::env::var("SANDBOX_WATCHER_RUNTIME").unwrap_or_else(|_| "docker".into());
+    #[cfg(unix)]
+    if let Ok(alias) = std::env::var("SANDBOX_WATCHER_SSH_HOST") {
+        let (session, adapters, _) =
+            sandbox_core::remote::connect_host(&alias, Duration::from_secs(20))
+                .await
+                .expect("connect over ssh");
+        let hosted = adapters
+            .into_iter()
+            .find(|a| a.adapter.kind().as_str() == runtime)
+            .expect("runtime detected over ssh");
+        conformance(hosted.adapter.clone(), &slug).await;
+
+        // Reconnect after the master goes away.
+        session.close().await;
+        assert!(!session.check().await, "master is gone after close");
+        let (again, adapters, _) =
+            sandbox_core::remote::connect_host(&alias, Duration::from_secs(20))
+                .await
+                .expect("reconnect over ssh");
+        assert!(!adapters.is_empty());
+        again.close().await;
+        return;
+    }
     let adapter: Arc<dyn RuntimeAdapter> = match runtime.as_str() {
         "apple-container" => Arc::new(AppleContainerAdapter::new("container")),
         "podman" | "docker" => {

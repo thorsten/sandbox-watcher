@@ -103,6 +103,24 @@ $env:CONTAINER_HOST = "npipe:////./pipe/podman-mymachine"
 - The `container` binary must be on the app's `PATH`; see
   [Environment variables are ignored](#environment-variables-are-ignored).
 
+## Remote hosts
+
+- **`Host key verification failed`:** add the host to `known_hosts` first.
+  Run `ssh <alias>` once in a terminal and accept the key.
+- **`Permission denied (publickey…)`:** key or agent authentication is
+  required; the watcher cannot prompt for passwords. Check that `ssh <alias>`
+  works without a prompt.
+- **No runtime found:** the message lists every probe that ran and its
+  result. Check that Docker, Podman or `container` is installed for the remote
+  user and reachable by non-interactive `ssh <alias> command -v docker`.
+- **Timeout:** the host did not answer in time. The containers stay visible,
+  greyed out, with the time they were last seen. The watcher retries with a
+  growing delay; Test connection in Settings retries at once.
+- **Remote Docker socket denied:** add the remote user to the `docker` group,
+  or use rootless Docker.
+- **Socket path too long:** this should not happen. Please report a bug with
+  your OS and alias length.
+
 ## Containers appear, but no sessions or network activity
 
 Sessions and network activity are read by running commands inside the
