@@ -45,6 +45,10 @@ pub struct MockAdapter {
     kind: RuntimeKind,
     state: Arc<Mutex<State>>,
     events: broadcast::Sender<RuntimeEvent>,
+    /// Never answer, like a runtime behind a stalled SSH connection.
+    stalled: bool,
+    /// Answer everything except `stop`.
+    stall_stops: bool,
 }
 
 impl MockAdapter {
@@ -54,12 +58,33 @@ impl MockAdapter {
             kind: RuntimeKind::Docker,
             state: Arc::default(),
             events,
+            stalled: false,
+            stall_stops: false,
         }
     }
 
     pub fn with_kind(mut self, kind: RuntimeKind) -> Self {
         self.kind = kind;
         self
+    }
+
+    /// Make every call that talks to the runtime hang forever. For testing
+    /// time budgets.
+    pub fn stalled(mut self) -> Self {
+        self.stalled = true;
+        self
+    }
+
+    /// Hang only in `stop`, after the containers were listed.
+    pub fn stalled_stops(mut self) -> Self {
+        self.stall_stops = true;
+        self
+    }
+
+    async fn stall(&self) {
+        if self.stalled {
+            std::future::pending::<()>().await;
+        }
     }
 
     /// Two projects, one of them with two containers, as a realistic demo.
@@ -210,6 +235,7 @@ impl RuntimeAdapter for MockAdapter {
     }
 
     async fn ping(&self) -> Result<RuntimeInfo> {
+        self.stall().await;
         Ok(RuntimeInfo {
             kind: self.kind,
             version: Some("mock".into()),
@@ -218,6 +244,7 @@ impl RuntimeAdapter for MockAdapter {
     }
 
     async fn list_containers(&self, filter: &ContainerFilter) -> Result<Vec<SandboxContainer>> {
+        self.stall().await;
         let state = self.state.lock().expect("mock state poisoned");
         Ok(state
             .containers
@@ -240,10 +267,12 @@ impl RuntimeAdapter for MockAdapter {
     }
 
     async fn inspect(&self, id: &str) -> Result<Option<ContainerDetails>> {
+        self.stall().await;
         Ok(self.find(id).map(|c| c.details))
     }
 
     async fn exec(&self, id: &str, request: ExecRequest) -> Result<ExecOutput> {
+        self.stall().await;
         let container = self
             .find(id)
             .ok_or_else(|| Error::ContainerNotFound(id.into()))?;
@@ -379,6 +408,10 @@ P|4300|1|420000|1500|zsh -l\n");
     }
 
     async fn stop(&self, id: &str, _timeout: Option<Duration>) -> Result<()> {
+        self.stall().await;
+        if self.stall_stops {
+            std::future::pending::<()>().await;
+        }
         let mut state = self.state.lock().expect("mock state poisoned");
         let Some(c) = state
             .containers

@@ -10,7 +10,7 @@ use crate::adapter::{ContainerFilter, RuntimeAdapter};
 use crate::host::container_key;
 use crate::model::MountRole;
 use crate::mounts::classify;
-use crate::overview::HostedAdapter;
+use crate::overview::{HostedAdapter, REMOTE_TIMEOUT, within_budget};
 use crate::paths::annotate_host_paths;
 
 /// Outcome of stopping one container.
@@ -27,30 +27,58 @@ pub struct StopResult {
 pub const STOP_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Stop every running sandbox container of every adapter. Results carry the
-/// container key, so equal ids on two hosts stay apart.
+/// container key, so equal ids on two hosts stay apart. Adapters run at the
+/// same time. On a remote host the listing gets [`REMOTE_TIMEOUT`] and each
+/// stop the grace period plus [`REMOTE_TIMEOUT`]; running out of time is a
+/// failed result, so a stalled host cannot hold up the others.
 pub async fn stop_all(adapters: &[HostedAdapter], timeout: Duration) -> Vec<StopResult> {
-    let mut results = Vec::new();
-    for hosted in adapters {
-        let adapter = &hosted.adapter;
-        let host = &hosted.host;
-        let Ok(containers) = adapter.list_containers(&ContainerFilter::running()).await else {
-            continue;
-        };
-        let stops = containers.iter().map(|c| {
-            let adapter = adapter.clone();
-            async move {
-                let outcome = adapter.stop(&c.id, Some(timeout)).await;
-                StopResult {
-                    container_id: container_key(host, &c.id),
-                    name: c.name.clone(),
-                    ok: outcome.is_ok(),
-                    error: outcome.err().map(|e| e.to_string()),
+    let per_adapter = adapters.iter().map(|hosted| stop_adapter(hosted, timeout));
+    futures::future::join_all(per_adapter)
+        .await
+        .into_iter()
+        .flatten()
+        .collect()
+}
+
+async fn stop_adapter(hosted: &HostedAdapter, timeout: Duration) -> Vec<StopResult> {
+    let adapter = &hosted.adapter;
+    let host = &hosted.host;
+    let no_answer = |limit: Duration| format!("no answer from {host} within {}s", limit.as_secs());
+    let listing = within_budget(host, adapter.list_containers(&ContainerFilter::running())).await;
+    let containers = match listing {
+        Some(Ok(containers)) => containers,
+        Some(Err(_)) => return vec![],
+        None => {
+            return vec![StopResult {
+                container_id: container_key(host, ""),
+                name: format!("{} containers", adapter.kind()),
+                ok: false,
+                error: Some(no_answer(REMOTE_TIMEOUT)),
+            }];
+        }
+    };
+    let limit = timeout + REMOTE_TIMEOUT;
+    let stops = containers.iter().map(|c| {
+        let adapter = adapter.clone();
+        async move {
+            let stop = adapter.stop(&c.id, Some(timeout));
+            let outcome = if host.is_local() {
+                stop.await.map_err(|e| e.to_string())
+            } else {
+                match tokio::time::timeout(limit, stop).await {
+                    Ok(result) => result.map_err(|e| e.to_string()),
+                    Err(_) => Err(no_answer(limit)),
                 }
+            };
+            StopResult {
+                container_id: container_key(host, &c.id),
+                name: c.name.clone(),
+                ok: outcome.is_ok(),
+                error: outcome.err(),
             }
-        });
-        results.extend(futures::future::join_all(stops).await);
-    }
-    results
+        }
+    });
+    futures::future::join_all(stops).await
 }
 
 /// Host path of the container's project directory, spelled for this OS.
@@ -376,6 +404,68 @@ mod tests {
             results
                 .iter()
                 .all(|r| r.container_id.starts_with("devbox/")),
+            "{results:?}"
+        );
+    }
+
+    fn remote(adapter: MockAdapter) -> HostedAdapter {
+        HostedAdapter {
+            host: Host::Remote("devbox".into()),
+            adapter: Arc::new(adapter),
+        }
+    }
+
+    /// Fails instead of hanging when `stop_all` has no budget.
+    async fn bounded_stop_all(adapters: &[HostedAdapter]) -> Vec<StopResult> {
+        tokio::time::timeout(Duration::from_secs(600), stop_all(adapters, STOP_TIMEOUT))
+            .await
+            .expect("stop_all must not wait for a stalled host")
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn stalled_remote_listing_does_not_hold_up_stop_all() {
+        let local = MockAdapter::demo();
+        let adapters = vec![
+            remote(MockAdapter::demo().stalled()),
+            HostedAdapter::local(Arc::new(local.clone())),
+        ];
+        let started = tokio::time::Instant::now();
+        let results = bounded_stop_all(&adapters).await;
+        assert!(
+            started.elapsed() <= REMOTE_TIMEOUT + Duration::from_millis(50),
+            "{:?}",
+            started.elapsed()
+        );
+        let running = local
+            .list_containers(&ContainerFilter::running())
+            .await
+            .unwrap();
+        assert!(running.is_empty(), "local containers are still stopped");
+        let failed: Vec<_> = results.iter().filter(|r| !r.ok).collect();
+        assert_eq!(failed.len(), 1, "{results:?}");
+        assert!(failed[0].container_id.starts_with("devbox/"));
+        assert_eq!(
+            failed[0].error.as_deref(),
+            Some("no answer from devbox within 10s")
+        );
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn stalled_remote_stop_fails_after_the_grace_period_and_budget() {
+        let adapters = vec![remote(MockAdapter::demo().stalled_stops())];
+        let started = tokio::time::Instant::now();
+        let results = bounded_stop_all(&adapters).await;
+        assert!(
+            started.elapsed() <= STOP_TIMEOUT + REMOTE_TIMEOUT + Duration::from_millis(50),
+            "{:?}",
+            started.elapsed()
+        );
+        assert_eq!(results.len(), 3);
+        assert!(results.iter().all(|r| !r.ok), "{results:?}");
+        assert!(
+            results
+                .iter()
+                .all(|r| r.error.as_deref() == Some("no answer from devbox within 20s")),
             "{results:?}"
         );
     }

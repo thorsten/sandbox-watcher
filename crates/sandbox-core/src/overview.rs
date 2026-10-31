@@ -154,6 +154,17 @@ struct RuntimeLoad {
     containers: Vec<ContainerOverview>,
 }
 
+/// Run one round trip to `host`. On a remote host it gets
+/// [`REMOTE_TIMEOUT`], so a stalled connection cannot hold up the caller;
+/// `None` means it ran out of time. Local round trips run to completion.
+pub async fn within_budget<F: std::future::Future>(host: &Host, fut: F) -> Option<F::Output> {
+    if host.is_local() {
+        Some(fut.await)
+    } else {
+        tokio::time::timeout(REMOTE_TIMEOUT, fut).await.ok()
+    }
+}
+
 /// Load one runtime, giving up after `timeout` if one is set.
 async fn load_one(
     hosted: HostedAdapter,
@@ -454,6 +465,47 @@ mod tests {
         assert_eq!(first["key"], first["id"]);
         assert!(first["last_seen_at"].is_null());
         assert_eq!(json["runtime"]["runtimes"][0]["host"], "local");
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn stalled_remote_runtime_fails_after_the_remote_timeout() {
+        let local = HostedAdapter::local(Arc::new(MockAdapter::demo()));
+        let remote = HostedAdapter {
+            host: Host::Remote("devbox".into()),
+            adapter: Arc::new(MockAdapter::demo().stalled()),
+        };
+        let started = tokio::time::Instant::now();
+        let (overview, failures) = tokio::time::timeout(
+            Duration::from_secs(600),
+            load_many_with_failures(&[local, remote], DataSource::Mock, vec![]),
+        )
+        .await
+        .expect("a stalled remote runtime must not hold up the overview");
+        assert!(
+            started.elapsed() <= REMOTE_TIMEOUT + Duration::from_millis(50),
+            "{:?}",
+            started.elapsed()
+        );
+        assert_eq!(failures.len(), 1);
+        assert_eq!(failures[0].host, Host::Remote("devbox".into()));
+        assert_eq!(failures[0].reason, "no answer within 10s");
+        assert_eq!(overview.containers.len(), 4, "local containers still load");
+        assert!(overview.containers.iter().all(|c| c.host.is_local()));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn within_budget_bounds_remote_hosts_only() {
+        let remote = Host::Remote("devbox".into());
+        let slow = tokio::time::sleep(REMOTE_TIMEOUT * 2);
+        assert_eq!(within_budget(&remote, slow).await, None);
+        let started = tokio::time::Instant::now();
+        let local = within_budget(&Host::Local, async {
+            tokio::time::sleep(REMOTE_TIMEOUT * 2).await;
+            1
+        })
+        .await;
+        assert_eq!(local, Some(1), "local round trips keep their own limits");
+        assert!(started.elapsed() >= REMOTE_TIMEOUT * 2);
     }
 
     #[tokio::test]

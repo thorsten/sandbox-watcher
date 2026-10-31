@@ -18,7 +18,7 @@ use sandbox_core::mock::MockAdapter;
 use sandbox_core::model::RuntimeKind;
 use sandbox_core::network::{NetworkReport, collect_all};
 use sandbox_core::notify::{Notification, blocked_bursts, diff, recent_blocked};
-use sandbox_core::overview::{DataSource, HostedAdapter, Overview, load_many};
+use sandbox_core::overview::{DataSource, HostedAdapter, Overview, load_many, within_budget};
 use sandbox_core::remote::{HostState, HostStatus};
 use sandbox_core::settings::Settings;
 use sandbox_core::stats_hub::{StatsHub, StatsSet};
@@ -289,17 +289,29 @@ impl Watcher {
                 let changed = history.observe(&overview, now);
                 history.prune(settings.history_retention_days, now) || changed
             };
-            for c in overview
+            // Containers run at the same time; on a remote host each gets
+            // REMOTE_TIMEOUT, so a host that stalls after its overview loaded
+            // cannot delay notifications or the next round.
+            let insights = overview
                 .containers
                 .iter()
                 .filter(|c| c.container.state.is_running() && !c.sessions.is_empty())
-            {
-                let Ok((adapter, id)) = self.adapter_for(&c.key) else {
-                    continue;
-                };
-                for insight in collect_insights(&adapter, &id, &c.sessions, &settings.prices).await
-                {
-                    let mut history = self.history.lock().expect("history poisoned");
+                .filter_map(|c| {
+                    let (adapter, id) = self.adapter_for(&c.key).ok()?;
+                    let prices = &settings.prices;
+                    Some(async move {
+                        let insights = within_budget(
+                            &c.host,
+                            collect_insights(&adapter, &id, &c.sessions, prices),
+                        )
+                        .await
+                        .unwrap_or_default();
+                        (c, insights)
+                    })
+                });
+            for (c, insights) in futures::future::join_all(insights).await {
+                let mut history = self.history.lock().expect("history poisoned");
+                for insight in insights {
                     if let Some(usage) = &insight.usage {
                         changed = history.record_usage(&c.key, usage) || changed;
                     }
@@ -311,16 +323,28 @@ impl Watcher {
         }
 
         // Network logs: one more round trip, published separately.
-        let mut reports = Vec::new();
-        for hosted in self.adapters() {
-            let adapter = hosted.adapter;
-            if let Ok(containers) = adapter.list_containers(&ContainerFilter::running()).await {
-                for mut report in collect_all(&adapter, &containers, Utc::now()).await {
-                    report.container_id = container_key(&hosted.host, &report.container_id);
-                    reports.push(report);
+        // Adapters run at the same time, remote ones within REMOTE_TIMEOUT.
+        let collections = self.adapters().into_iter().map(|hosted| async move {
+            let collect = async {
+                let adapter = &hosted.adapter;
+                match adapter.list_containers(&ContainerFilter::running()).await {
+                    Ok(containers) => collect_all(adapter, &containers, Utc::now()).await,
+                    Err(_) => Vec::new(),
                 }
+            };
+            let mut reports = within_budget(&hosted.host, collect)
+                .await
+                .unwrap_or_default();
+            for report in &mut reports {
+                report.container_id = container_key(&hosted.host, &report.container_id);
             }
-        }
+            reports
+        });
+        let reports: Vec<NetworkReport> = futures::future::join_all(collections)
+            .await
+            .into_iter()
+            .flatten()
+            .collect();
         let counts = recent_blocked(&reports, Utc::now(), settings.blocked_burst_window_secs);
         {
             let mut previous_counts = self.blocked_counts.lock().expect("blocked counts poisoned");
