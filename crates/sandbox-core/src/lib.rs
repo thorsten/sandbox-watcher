@@ -30,6 +30,7 @@ pub mod paths;
 pub mod sandbox;
 pub mod sessions;
 pub mod settings;
+pub mod shell_env;
 pub mod stats_hub;
 pub mod turns;
 pub mod usage;

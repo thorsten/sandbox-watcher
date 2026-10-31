@@ -19,16 +19,18 @@ finding a socket, or finding one it is not allowed to use.
 ## Environment variables are ignored
 
 Apps started from the Dock, Finder, the Start menu or a desktop launcher do
-not see variables set in `.zshrc` or `.bashrc`, and on macOS they get a
-minimal `PATH` (`/usr/bin:/bin:/usr/sbin:/sbin`). Binaries installed by
-Homebrew or in `/usr/local/bin` may then not be found.
+not see variables set in `.zprofile`, `.zshrc` or `.bashrc`, and on macOS
+they get a minimal `PATH` (`/usr/bin:/bin:/usr/sbin:/sbin`).
 
-- Start the app once from a terminal to confirm: `open -a "Sandbox Watcher"`
-  on macOS inherits the shell's environment.
-- On macOS, `launchctl setenv DOCKER_HOST unix:///path/to/docker.sock` makes a
-  variable visible to apps started afterwards (until the next login).
-- On Linux, set the variable in `~/.config/environment.d/*.conf` (systemd
+- **macOS:** when started outside a terminal, the app asks your login shell
+  (`$SHELL -ilc`) once for `PATH`, `DOCKER_HOST` and `CONTAINER_HOST` and uses
+  those. If your shell start-up takes longer than three seconds, or prints a
+  lot of output, this is skipped. To compare, start the app from a terminal,
+  where it inherits the shell's environment directly:
+  `"/Applications/Sandbox Watcher.app/Contents/MacOS/"*`.
+- **Linux:** set the variable in `~/.config/environment.d/*.conf` (systemd
   sessions) or in the launcher's `Exec=env DOCKER_HOST=… sandbox-watcher` line.
+- **Windows:** set it as a user environment variable and sign in again.
 
 ## Docker on Linux: permission denied on the socket
 
