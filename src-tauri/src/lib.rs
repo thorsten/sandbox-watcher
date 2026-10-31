@@ -12,6 +12,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use chrono::Utc;
+use sandbox_core::RuntimeAdapter;
 use sandbox_core::actions::{
     MacTerminal, STOP_TIMEOUT, StopResult, TerminalLaunch, custom_terminal_launch,
     terminal_launches,
@@ -101,7 +102,7 @@ async fn get_activity(
     state: State<'_, App>,
     container_id: String,
 ) -> Result<ContainerActivity, String> {
-    let adapter = state.adapter_for(&container_id)?;
+    let (adapter, container_id) = state.adapter_for(&container_id)?;
     let sessions = state
         .overview()
         .and_then(|o| {
@@ -127,7 +128,7 @@ async fn get_turns(
     container_id: String,
     agent: AgentKind,
 ) -> Result<Option<TurnReport>, String> {
-    let adapter = state.adapter_for(&container_id)?;
+    let (adapter, container_id) = state.adapter_for(&container_id)?;
     let prices = state.settings().prices;
     sandbox_core::activity::read_turns(&adapter, &container_id, agent, &prices)
         .await
@@ -141,7 +142,7 @@ async fn get_container_details(
     state: State<'_, App>,
     container_id: String,
 ) -> Result<Option<ContainerDetails>, String> {
-    let adapter = state.adapter_for(&container_id)?;
+    let (adapter, container_id) = state.adapter_for(&container_id)?;
     let mut details = adapter
         .inspect(&container_id)
         .await
@@ -160,7 +161,7 @@ async fn get_logs(
     container_id: String,
     tail: Option<usize>,
 ) -> Result<String, String> {
-    let adapter = state.adapter_for(&container_id)?;
+    let (adapter, container_id) = state.adapter_for(&container_id)?;
     adapter
         .logs(
             &container_id,
@@ -183,7 +184,7 @@ async fn reveal_mount(
     container_id: String,
     path: String,
 ) -> Result<(), String> {
-    let adapter = state.adapter_for(&container_id)?;
+    let (adapter, container_id) = state.adapter_for(&container_id)?;
     let mut details = adapter
         .inspect(&container_id)
         .await
@@ -205,7 +206,7 @@ async fn reveal_mount(
 /// Stop one container. The UI asks for confirmation first.
 #[tauri::command]
 async fn stop_container(state: State<'_, App>, container_id: String) -> Result<(), String> {
-    let adapter = state.adapter_for(&container_id)?;
+    let (adapter, container_id) = state.adapter_for(&container_id)?;
     adapter
         .stop(&container_id, Some(STOP_TIMEOUT))
         .await
@@ -214,10 +215,20 @@ async fn stop_container(state: State<'_, App>, container_id: String) -> Result<(
     Ok(())
 }
 
+/// Adapters of this machine; stop-all only covers local containers.
+fn local_adapters(state: &App) -> Vec<Arc<dyn RuntimeAdapter>> {
+    state
+        .adapters()
+        .into_iter()
+        .filter(|h| h.host.is_local())
+        .map(|h| h.adapter)
+        .collect()
+}
+
 /// Stop every running sandbox container across runtimes.
 #[tauri::command]
 async fn stop_all(state: State<'_, App>) -> Result<Vec<StopResult>, String> {
-    let results = sandbox_core::actions::stop_all(&state.adapters(), STOP_TIMEOUT).await;
+    let results = sandbox_core::actions::stop_all(&local_adapters(&state), STOP_TIMEOUT).await;
     state.poke();
     Ok(results)
 }
@@ -228,7 +239,7 @@ async fn get_project_path(
     state: State<'_, App>,
     container_id: String,
 ) -> Result<Option<String>, String> {
-    let adapter = state.adapter_for(&container_id)?;
+    let (adapter, container_id) = state.adapter_for(&container_id)?;
     sandbox_core::actions::project_path(&adapter, &container_id, cfg!(windows))
         .await
         .map_err(|e| e.to_string())
@@ -241,7 +252,7 @@ async fn open_project(
     state: State<'_, App>,
     container_id: String,
 ) -> Result<(), String> {
-    let adapter = state.adapter_for(&container_id)?;
+    let (adapter, container_id) = state.adapter_for(&container_id)?;
     let dir = sandbox_core::actions::project_path(&adapter, &container_id, cfg!(windows))
         .await
         .map_err(|e| e.to_string())?
@@ -313,7 +324,7 @@ async fn open_in_editor(
     container_id: String,
     path: Option<String>,
 ) -> Result<String, String> {
-    let adapter = state.adapter_for(&container_id)?;
+    let (adapter, container_id) = state.adapter_for(&container_id)?;
     let root = sandbox_core::actions::project_path(&adapter, &container_id, cfg!(windows))
         .await
         .map_err(|e| e.to_string())?
@@ -362,7 +373,7 @@ fn mac_terminals(choice: &TerminalChoice) -> Vec<MacTerminal> {
 /// platform's usual terminals in order until one succeeds.
 #[tauri::command]
 async fn open_terminal(state: State<'_, App>, container_id: String) -> Result<String, String> {
-    let adapter = state.adapter_for(&container_id)?;
+    let (adapter, container_id) = state.adapter_for(&container_id)?;
     let dir = sandbox_core::actions::project_path(&adapter, &container_id, cfg!(windows))
         .await
         .map_err(|e| e.to_string())?
@@ -443,9 +454,9 @@ async fn project_root_of(
     state: &State<'_, App>,
     container_id: &str,
 ) -> Result<Option<std::path::PathBuf>, String> {
-    let adapter = state.adapter_for(container_id)?;
+    let (adapter, container_id) = state.adapter_for(container_id)?;
     Ok(
-        sandbox_core::actions::project_path(&adapter, container_id, cfg!(windows))
+        sandbox_core::actions::project_path(&adapter, &container_id, cfg!(windows))
             .await
             .map_err(|e| e.to_string())?
             .map(std::path::PathBuf::from),
@@ -549,7 +560,7 @@ fn on_menu_event(app: &AppHandle, event: MenuEvent) {
     if id == tray::MENU_STOP_ALL {
         let watcher = app.state::<App>().inner().clone();
         tauri::async_runtime::spawn(async move {
-            let _ = sandbox_core::actions::stop_all(&watcher.adapters(), STOP_TIMEOUT).await;
+            let _ = sandbox_core::actions::stop_all(&local_adapters(&watcher), STOP_TIMEOUT).await;
             watcher.poke();
         });
     }

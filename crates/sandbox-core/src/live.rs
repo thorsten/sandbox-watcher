@@ -15,9 +15,10 @@ use crate::apple::AppleContainerAdapter;
 use crate::detect::{DetectedRuntime, Environment, detect};
 use crate::docker::DockerAdapter;
 use crate::endpoints;
+use crate::host::{Host, RuntimeId, parse_container_key};
 use crate::model::{RuntimeEvent, RuntimeEventKind, RuntimeKind};
 use crate::network::DIAGNOSTIC_COMMAND_PREFIX;
-use crate::overview::{DataSource, Overview, RuntimeStatus, load_many};
+use crate::overview::{DataSource, HostedAdapter, Overview, RuntimeStatus, load_many};
 use crate::sandbox::PROBE_SENTINEL;
 
 /// Receives relevant runtime events, see [`is_relevant`].
@@ -25,9 +26,10 @@ pub type Listener = Arc<dyn Fn(RuntimeEvent) + Send + Sync>;
 
 #[derive(Default)]
 struct Connections {
-    adapters: HashMap<RuntimeKind, Arc<dyn RuntimeAdapter>>,
-    by_container: HashMap<String, Arc<dyn RuntimeAdapter>>,
-    event_tasks: HashMap<RuntimeKind, tokio::task::JoinHandle<()>>,
+    adapters: HashMap<RuntimeId, Arc<dyn RuntimeAdapter>>,
+    /// Container key to its adapter and raw container id.
+    by_container: HashMap<String, (Arc<dyn RuntimeAdapter>, String)>,
+    event_tasks: HashMap<RuntimeId, tokio::task::JoinHandle<()>>,
 }
 
 #[derive(Default)]
@@ -118,44 +120,55 @@ impl LiveRuntime {
             .or_else(preferred_runtime)
     }
 
-    /// All adapters that answered in the last refresh.
-    pub fn adapters(&self) -> Vec<Arc<dyn RuntimeAdapter>> {
+    /// All adapters that answered in the last refresh, local first.
+    pub fn adapters(&self) -> Vec<HostedAdapter> {
         let state = self.state.lock().expect("live state poisoned");
         let mut list: Vec<_> = state.adapters.iter().collect();
-        list.sort_by_key(|(k, _)| k.as_str());
-        list.into_iter().map(|(_, a)| a.clone()).collect()
+        list.sort_by_key(|(id, _)| (*id).clone());
+        list.into_iter()
+            .map(|(id, adapter)| HostedAdapter {
+                host: id.host.clone(),
+                adapter: adapter.clone(),
+            })
+            .collect()
     }
 
-    /// The adapter that listed this container in the last refresh.
-    pub fn adapter_for(&self, container_id: &str) -> Option<Arc<dyn RuntimeAdapter>> {
+    /// The adapter that listed this container in the last refresh, with the
+    /// raw container id. A unique-prefix of the id works within the same host.
+    pub fn adapter_for(&self, key: &str) -> Option<(Arc<dyn RuntimeAdapter>, String)> {
         let state = self.state.lock().expect("live state poisoned");
-        state.by_container.get(container_id).cloned().or_else(|| {
-            state
-                .by_container
-                .iter()
-                .find(|(id, _)| id.starts_with(container_id))
-                .map(|(_, a)| a.clone())
-        })
+        if let Some(found) = state.by_container.get(key) {
+            return Some(found.clone());
+        }
+        let (host, id) = parse_container_key(key);
+        state
+            .by_container
+            .iter()
+            .find(|(known, (_, raw))| parse_container_key(known).0 == host && raw.starts_with(&id))
+            .map(|(_, found)| found.clone())
     }
 
     /// Install a specific adapter instead of detecting. For tests and demos.
-    pub fn with_adapter(self: &Arc<Self>, adapter: Arc<dyn RuntimeAdapter>) {
-        let kind = adapter.kind();
+    pub fn with_adapter(self: &Arc<Self>, host: Host, adapter: Arc<dyn RuntimeAdapter>) {
+        let id = RuntimeId {
+            host,
+            kind: adapter.kind(),
+        };
         let mut state = self.state.lock().expect("live state poisoned");
-        state.adapters.insert(kind, adapter.clone());
+        state.adapters.insert(id.clone(), adapter.clone());
         drop(state);
-        self.start_events(kind, adapter);
+        self.start_events(id, adapter);
     }
 
-    fn drop_adapter(&self, kind: RuntimeKind) {
+    fn drop_adapter(&self, id: &RuntimeId) {
         let mut state = self.state.lock().expect("live state poisoned");
-        state.adapters.remove(&kind);
-        if let Some(task) = state.event_tasks.remove(&kind) {
+        state.adapters.remove(id);
+        if let Some(task) = state.event_tasks.remove(id) {
             task.abort();
         }
     }
 
-    fn start_events(self: &Arc<Self>, kind: RuntimeKind, adapter: Arc<dyn RuntimeAdapter>) {
+    fn start_events(self: &Arc<Self>, id: RuntimeId, adapter: Arc<dyn RuntimeAdapter>) {
         if !adapter.capabilities().events {
             return;
         }
@@ -163,6 +176,7 @@ impl LiveRuntime {
             return;
         };
         let weak = Arc::downgrade(self);
+        let task_id = id.clone();
         let task = tokio::spawn(async move {
             // An error from the stream means this runtime cannot deliver
             // events (e.g. rootless Podman without an events backend). Keep
@@ -186,13 +200,13 @@ impl LiveRuntime {
             if let Some(live) = weak.upgrade() {
                 let mut state = live.state.lock().expect("live state poisoned");
                 if reconnect {
-                    state.adapters.remove(&kind);
+                    state.adapters.remove(&task_id);
                 }
-                state.event_tasks.remove(&kind);
+                state.event_tasks.remove(&task_id);
             }
         });
         let mut state = self.state.lock().expect("live state poisoned");
-        if let Some(old) = state.event_tasks.insert(kind, task) {
+        if let Some(old) = state.event_tasks.insert(id, task) {
             old.abort();
         }
     }
@@ -207,17 +221,17 @@ impl LiveRuntime {
         let selected = select_candidates(candidates.clone(), self.preferred());
 
         // Drop adapters for runtimes that are no longer selected.
-        let stale: Vec<RuntimeKind> = {
+        let stale: Vec<RuntimeId> = {
             let state = self.state.lock().expect("live state poisoned");
             state
                 .adapters
                 .keys()
-                .filter(|k| !selected.iter().any(|c| c.kind == **k))
-                .copied()
+                .filter(|id| id.host.is_local() && !selected.iter().any(|c| c.kind == id.kind))
+                .cloned()
                 .collect()
         };
-        for kind in stale {
-            self.drop_adapter(kind);
+        for id in stale {
+            self.drop_adapter(&id);
         }
 
         // Connect the missing ones.
@@ -227,15 +241,24 @@ impl LiveRuntime {
                 .lock()
                 .expect("live state poisoned")
                 .adapters
-                .contains_key(&candidate.kind);
+                .contains_key(&RuntimeId {
+                    host: Host::Local,
+                    kind: candidate.kind,
+                });
             if present {
                 continue;
             }
             if let Some(adapter) = connect(candidate).await {
-                self.with_adapter(adapter);
+                self.with_adapter(Host::Local, adapter);
             }
         }
 
+        self.load_connected(candidates).await
+    }
+
+    /// Load the overview from the connected adapters, forget the ones that
+    /// failed, and remember which adapter owns which container.
+    pub async fn load_connected(self: &Arc<Self>, candidates: Vec<DetectedRuntime>) -> Overview {
         let adapters = self.adapters();
         if adapters.is_empty() {
             return Overview::detected_only(candidates);
@@ -247,13 +270,22 @@ impl LiveRuntime {
         match &overview.runtime {
             RuntimeStatus::Connected { failures, .. } => {
                 for failure in failures {
-                    self.drop_adapter(failure.kind);
+                    self.drop_adapter(&RuntimeId {
+                        host: failure.host.clone(),
+                        kind: failure.kind,
+                    });
                 }
                 let mut state = self.state.lock().expect("live state poisoned");
                 state.by_container.clear();
                 for c in &overview.containers {
-                    if let Some(adapter) = state.adapters.get(&c.runtime).cloned() {
-                        state.by_container.insert(c.container.id.clone(), adapter);
+                    let id = RuntimeId {
+                        host: c.host.clone(),
+                        kind: c.runtime,
+                    };
+                    if let Some(adapter) = state.adapters.get(&id).cloned() {
+                        state
+                            .by_container
+                            .insert(c.key.clone(), (adapter, c.container.id.clone()));
                     }
                 }
             }
@@ -340,7 +372,7 @@ mod tests {
             let _ = tx.send(event);
         }));
         let mock = MockAdapter::demo();
-        live.with_adapter(Arc::new(mock.clone()));
+        live.with_adapter(Host::Local, Arc::new(mock.clone()));
         // The forwarding task subscribes asynchronously; keep emitting until it listens.
         let received = tokio::time::timeout(Duration::from_secs(5), async {
             loop {
@@ -364,9 +396,23 @@ mod tests {
     #[tokio::test]
     async fn adapters_are_listed_in_stable_order() {
         let live = Arc::new(LiveRuntime::new());
-        live.with_adapter(Arc::new(MockAdapter::demo().with_kind(RuntimeKind::Podman)));
-        live.with_adapter(Arc::new(MockAdapter::demo()));
-        let kinds: Vec<_> = live.adapters().iter().map(|a| a.kind()).collect();
+        live.with_adapter(
+            Host::Local,
+            Arc::new(MockAdapter::demo().with_kind(RuntimeKind::Podman)),
+        );
+        live.with_adapter(Host::Local, Arc::new(MockAdapter::demo()));
+        let kinds: Vec<_> = live.adapters().iter().map(|a| a.adapter.kind()).collect();
         assert_eq!(kinds, vec![RuntimeKind::Docker, RuntimeKind::Podman]);
+    }
+
+    #[tokio::test]
+    async fn adapter_for_resolves_container_keys() {
+        let live = Arc::new(LiveRuntime::new());
+        live.with_adapter(Host::Local, Arc::new(MockAdapter::demo()));
+        let overview = live.load_connected(vec![]).await;
+        let first = &overview.containers[0];
+        let (_, id) = live.adapter_for(&first.key).expect("known key");
+        assert_eq!(id, first.container.id);
+        assert!(live.adapter_for("devbox/unknown").is_none());
     }
 }

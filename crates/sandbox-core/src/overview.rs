@@ -3,10 +3,12 @@
 
 use std::sync::Arc;
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::adapter::{Capabilities, ContainerFilter, RuntimeAdapter};
 use crate::detect::DetectedRuntime;
+use crate::host::{Host, container_key};
 use crate::model::{Readiness, RuntimeInfo, RuntimeKind, SandboxContainer, Session};
 use crate::sandbox::TESTED_SANDBOX_VERSION;
 use crate::sessions::probe_container;
@@ -22,6 +24,8 @@ pub enum DataSource {
 /// A runtime that was detected but could not be used this round.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RuntimeFailure {
+    #[serde(default)]
+    pub host: Host,
     pub kind: RuntimeKind,
     pub endpoint: String,
     pub reason: String,
@@ -30,6 +34,8 @@ pub struct RuntimeFailure {
 /// A runtime that answered, with what it can do.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConnectedRuntime {
+    #[serde(default)]
+    pub host: Host,
     #[serde(flatten)]
     pub info: RuntimeInfo,
     pub capabilities: Capabilities,
@@ -62,9 +68,15 @@ pub enum RuntimeStatus {
 pub struct ContainerOverview {
     #[serde(flatten)]
     pub container: SandboxContainer,
+    pub host: Host,
+    /// Unique across hosts: the raw id locally, `alias/id` on a remote host.
+    pub key: String,
     pub runtime: RuntimeKind,
     pub readiness: Readiness,
     pub sessions: Vec<Session>,
+    /// Set only for containers of an unreachable host, shown from cache.
+    #[serde(default)]
+    pub last_seen_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -112,15 +124,31 @@ impl Overview {
     }
 }
 
+/// An adapter plus the machine it talks to.
+#[derive(Clone)]
+pub struct HostedAdapter {
+    pub host: Host,
+    pub adapter: Arc<dyn RuntimeAdapter>,
+}
+
+impl HostedAdapter {
+    pub fn local(adapter: Arc<dyn RuntimeAdapter>) -> Self {
+        Self {
+            host: Host::Local,
+            adapter,
+        }
+    }
+}
+
 struct RuntimeLoad {
     runtime: ConnectedRuntime,
     containers: Vec<ContainerOverview>,
 }
 
-async fn load_one(
-    adapter: Arc<dyn RuntimeAdapter>,
-) -> std::result::Result<RuntimeLoad, RuntimeFailure> {
+async fn load_one(hosted: HostedAdapter) -> std::result::Result<RuntimeLoad, RuntimeFailure> {
+    let HostedAdapter { host, adapter } = hosted;
     let failure = |endpoint: String, reason: String| RuntimeFailure {
+        host: host.clone(),
         kind: adapter.kind(),
         endpoint,
         reason,
@@ -152,14 +180,18 @@ async fn load_one(
         .into_iter()
         .zip(probes)
         .map(|(container, probe)| ContainerOverview {
+            key: container_key(&host, &container.id),
+            host: host.clone(),
             container,
             runtime: kind,
             readiness: probe.readiness,
             sessions: probe.sessions,
+            last_seen_at: None,
         })
         .collect();
     Ok(RuntimeLoad {
         runtime: ConnectedRuntime {
+            host: host.clone(),
             info,
             capabilities: adapter.capabilities(),
         },
@@ -168,10 +200,10 @@ async fn load_one(
 }
 
 /// Load the overview across several runtimes at once. Running containers
-/// sort first, then by runtime order, then by name. Every running container
+/// sort first, then by host (local first), runtime order, then name. Every running container
 /// is probed for readiness and sessions.
 pub async fn load_many(
-    adapters: &[Arc<dyn RuntimeAdapter>],
+    adapters: &[HostedAdapter],
     source: DataSource,
     candidates: Vec<DetectedRuntime>,
 ) -> Overview {
@@ -191,7 +223,14 @@ pub async fn load_many(
     if runtimes.is_empty() {
         let reason = failures
             .iter()
-            .map(|f| format!("{}: {}", f.kind, f.reason))
+            .map(|f| {
+                let label = if f.host.is_local() {
+                    f.kind.to_string()
+                } else {
+                    format!("{} on {}", f.kind, f.host)
+                };
+                format!("{label}: {}", f.reason)
+            })
             .collect::<Vec<_>>()
             .join("; ");
         return Overview::with(
@@ -205,6 +244,7 @@ pub async fn load_many(
             .state
             .is_running()
             .cmp(&a.container.state.is_running())
+            .then_with(|| a.host.cmp(&b.host))
             .then_with(|| a.runtime.as_str().cmp(b.runtime.as_str()))
             .then_with(|| a.container.name.cmp(&b.container.name))
     });
@@ -221,7 +261,7 @@ pub async fn load(
     source: DataSource,
     candidates: Vec<DetectedRuntime>,
 ) -> Overview {
-    load_many(&[adapter], source, candidates).await
+    load_many(&[HostedAdapter::local(adapter)], source, candidates).await
 }
 
 #[cfg(test)]
@@ -262,9 +302,9 @@ mod tests {
 
     #[tokio::test]
     async fn merges_several_runtimes() {
-        let docker: Arc<dyn RuntimeAdapter> = Arc::new(MockAdapter::demo());
-        let podman: Arc<dyn RuntimeAdapter> =
-            Arc::new(MockAdapter::demo().with_kind(RuntimeKind::Podman));
+        let docker = HostedAdapter::local(Arc::new(MockAdapter::demo()));
+        let podman =
+            HostedAdapter::local(Arc::new(MockAdapter::demo().with_kind(RuntimeKind::Podman)));
         let overview = load_many(&[docker, podman], DataSource::Mock, vec![]).await;
         assert_eq!(
             overview.connected_kinds(),
@@ -298,6 +338,42 @@ mod tests {
         assert_eq!(first["runtime"], "docker");
         assert_eq!(first["readiness"], "ready");
         assert_eq!(first["sessions"][0]["agent"], "claude-code");
+    }
+
+    #[tokio::test]
+    async fn same_container_id_on_two_hosts_stays_apart() {
+        let local = HostedAdapter::local(Arc::new(MockAdapter::demo()));
+        let remote = HostedAdapter {
+            host: Host::Remote("devbox".into()),
+            adapter: Arc::new(MockAdapter::demo()),
+        };
+        let overview = load_many(&[local, remote], DataSource::Mock, vec![]).await;
+        assert_eq!(overview.containers.len(), 8);
+        let keys: std::collections::HashSet<_> =
+            overview.containers.iter().map(|c| c.key.clone()).collect();
+        assert_eq!(keys.len(), 8, "keys are unique across hosts");
+        let first_remote = overview
+            .containers
+            .iter()
+            .find(|c| !c.host.is_local())
+            .unwrap();
+        assert_eq!(
+            first_remote.key,
+            format!("devbox/{}", first_remote.container.id)
+        );
+        // Local first within running containers.
+        assert!(overview.containers[0].host.is_local());
+    }
+
+    #[tokio::test]
+    async fn serialises_host_and_key() {
+        let overview = load(Arc::new(MockAdapter::demo()), DataSource::Mock, vec![]).await;
+        let json = serde_json::to_value(&overview).unwrap();
+        let first = &json["containers"][0];
+        assert_eq!(first["host"], "local");
+        assert_eq!(first["key"], first["id"]);
+        assert!(first["last_seen_at"].is_null());
+        assert_eq!(json["runtime"]["runtimes"][0]["host"], "local");
     }
 
     #[tokio::test]

@@ -12,11 +12,12 @@ use sandbox_core::RuntimeAdapter;
 use sandbox_core::activity::collect_insights;
 use sandbox_core::adapter::ContainerFilter;
 use sandbox_core::history::{History, HistoryQuery, HistoryView};
+use sandbox_core::host::parse_container_key;
 use sandbox_core::live::LiveRuntime;
 use sandbox_core::mock::MockAdapter;
 use sandbox_core::network::{NetworkReport, collect_all};
 use sandbox_core::notify::{Notification, blocked_bursts, diff, recent_blocked};
-use sandbox_core::overview::{DataSource, Overview, load};
+use sandbox_core::overview::{DataSource, HostedAdapter, Overview, load};
 use sandbox_core::settings::Settings;
 use sandbox_core::stats_hub::StatsHub;
 use tauri::{AppHandle, Emitter};
@@ -112,19 +113,23 @@ impl Watcher {
         self.network.read().expect("network poisoned").clone()
     }
 
-    pub fn adapters(&self) -> Vec<Arc<dyn RuntimeAdapter>> {
+    pub fn adapters(&self) -> Vec<HostedAdapter> {
         match &self.mode {
-            Mode::Mock(adapter) => vec![adapter.clone()],
+            Mode::Mock(adapter) => vec![HostedAdapter::local(adapter.clone())],
             Mode::Live(live) => live.adapters(),
         }
     }
 
-    pub fn adapter_for(&self, container_id: &str) -> Result<Arc<dyn RuntimeAdapter>, String> {
+    /// The adapter for a container key and the container's raw id.
+    pub fn adapter_for(&self, key: &str) -> Result<(Arc<dyn RuntimeAdapter>, String), String> {
         match &self.mode {
-            Mode::Mock(adapter) => Some(adapter.clone()),
-            Mode::Live(live) => live.adapter_for(container_id),
+            Mode::Mock(adapter) => {
+                let (_, id) = parse_container_key(key);
+                Some((adapter.clone(), id))
+            }
+            Mode::Live(live) => live.adapter_for(key),
         }
-        .ok_or_else(|| format!("no runtime known for container {container_id}"))
+        .ok_or_else(|| format!("no runtime known for container {key}"))
     }
 
     pub fn history_view(&self, query: &HistoryQuery) -> HistoryView {
@@ -209,15 +214,17 @@ impl Watcher {
         let sets: Vec<(Arc<dyn RuntimeAdapter>, Vec<String>)> = self
             .adapters()
             .into_iter()
-            .map(|adapter| {
-                let kind = adapter.kind();
+            .map(|hosted| {
+                let kind = hosted.adapter.kind();
                 let ids = overview
                     .containers
                     .iter()
-                    .filter(|c| c.runtime == kind && c.container.state.is_running())
+                    .filter(|c| {
+                        c.host == hosted.host && c.runtime == kind && c.container.state.is_running()
+                    })
                     .map(|c| c.container.id.clone())
                     .collect();
-                (adapter, ids)
+                (hosted.adapter, ids)
             })
             .collect();
         self.stats.sync(&sets);
@@ -246,11 +253,10 @@ impl Watcher {
                 .iter()
                 .filter(|c| c.container.state.is_running() && !c.sessions.is_empty())
             {
-                let Ok(adapter) = self.adapter_for(&c.container.id) else {
+                let Ok((adapter, id)) = self.adapter_for(&c.key) else {
                     continue;
                 };
-                for insight in
-                    collect_insights(&adapter, &c.container.id, &c.sessions, &settings.prices).await
+                for insight in collect_insights(&adapter, &id, &c.sessions, &settings.prices).await
                 {
                     let mut history = self.history.lock().expect("history poisoned");
                     if let Some(usage) = &insight.usage {
@@ -265,7 +271,8 @@ impl Watcher {
 
         // Network logs: one more round trip, published separately.
         let mut reports = Vec::new();
-        for adapter in self.adapters() {
+        for hosted in self.adapters() {
+            let adapter = hosted.adapter;
             if let Ok(containers) = adapter.list_containers(&ContainerFilter::running()).await {
                 reports.extend(collect_all(&adapter, &containers, Utc::now()).await);
             }
