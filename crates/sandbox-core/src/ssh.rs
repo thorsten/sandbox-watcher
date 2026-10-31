@@ -10,9 +10,11 @@ use std::path::PathBuf;
 #[cfg(unix)]
 use std::process::Stdio;
 #[cfg(unix)]
+use std::sync::Arc;
+#[cfg(unix)]
 use std::sync::Mutex;
 #[cfg(unix)]
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 #[cfg(unix)]
 use std::time::{Duration, Instant};
 
@@ -54,7 +56,7 @@ pub fn ssh_hint(stderr: &str, alias: &str) -> String {
     if text.contains("Host key verification failed") {
         format!("Add the host to known_hosts first: run `ssh {alias}` once in a terminal.")
     } else if text.contains("Permission denied") {
-        "Authentication needs a key or agent; the watcher cannot prompt for passwords.".into()
+        "Key or agent authentication is required; the watcher cannot prompt for passwords.".into()
     } else if text.is_empty() {
         format!("ssh to {alias} failed without an error message.")
     } else {
@@ -131,19 +133,39 @@ pub fn forward_args(control: &Path, alias: &str, local: &Path, remote: &str) -> 
     ]
 }
 
+/// A forwarded remote socket must be an absolute path; ':' would be parsed
+/// as a `-L` field separator or turn the forward into a TCP one.
+pub fn validate_remote_socket(path: &str) -> std::result::Result<(), String> {
+    if !path.starts_with('/') {
+        return Err(format!("remote socket path must be absolute: {path}"));
+    }
+    if path.contains(':') {
+        return Err(format!("remote socket path must not contain ':': {path}"));
+    }
+    Ok(())
+}
+
 /// A short, private directory: Unix socket paths are limited to 104 bytes on macOS.
 #[cfg(unix)]
 fn private_dir() -> Result<PathBuf> {
-    let base = if cfg!(target_os = "macos") {
+    let name = format!(
+        "sw-{}-{}",
+        std::process::id(),
+        NEXT_DIR.fetch_add(1, Ordering::Relaxed)
+    );
+    let mut base = if cfg!(target_os = "macos") {
         PathBuf::from("/tmp")
     } else {
         std::env::temp_dir()
     };
-    let dir = base.join(format!(
-        "sw-{}-{}",
-        std::process::id(),
-        NEXT_DIR.fetch_add(1, Ordering::Relaxed)
-    ));
+    let text = base.to_string_lossy();
+    // ssh expands '%' and '~' in socket paths and ':' breaks `-L`; the
+    // longest forward socket must also fit sockaddr_un on macOS.
+    if text.contains(['%', '~', ':']) || base.join(&name).join("f99.sock").as_os_str().len() >= 100
+    {
+        base = PathBuf::from("/tmp");
+    }
+    let dir = base.join(name);
     let mut builder = std::fs::DirBuilder::new();
     #[cfg(unix)]
     {
@@ -166,6 +188,8 @@ pub struct SshSession {
     control: PathBuf,
     master: Mutex<Option<tokio::process::Child>>,
     forwards: AtomicUsize,
+    closed: AtomicBool,
+    last_stderr: Arc<Mutex<Option<String>>>,
 }
 
 #[cfg(unix)]
@@ -197,6 +221,8 @@ impl SshSession {
             control,
             master: Mutex::new(None),
             forwards: AtomicUsize::new(0),
+            closed: AtomicBool::new(false),
+            last_stderr: Arc::new(Mutex::new(None)),
         };
         let deadline = Instant::now() + timeout;
         loop {
@@ -212,6 +238,20 @@ impl SshSession {
                 });
             }
             if session.check().await {
+                // A long-lived master keeps writing to stderr; an undrained
+                // pipe would block ssh once it fills.
+                if let Some(pipe) = child.stderr.take() {
+                    let last = Arc::clone(&session.last_stderr);
+                    tokio::spawn(async move {
+                        use tokio::io::AsyncBufReadExt;
+                        let mut lines = tokio::io::BufReader::new(pipe).lines();
+                        while let Ok(Some(line)) = lines.next_line().await {
+                            if !line.trim().is_empty() {
+                                *last.lock().expect("ssh stderr poisoned") = Some(line);
+                            }
+                        }
+                    });
+                }
                 *session.master.lock().expect("ssh master poisoned") = Some(child);
                 return Ok(session);
             }
@@ -228,6 +268,14 @@ impl SshSession {
 
     pub fn alias(&self) -> &str {
         &self.alias
+    }
+
+    /// The last line the master wrote to stderr, for diagnostics.
+    pub fn last_error(&self) -> Option<String> {
+        self.last_stderr
+            .lock()
+            .expect("ssh stderr poisoned")
+            .clone()
     }
 
     /// Whether the master connection is still up.
@@ -251,6 +299,10 @@ impl SshSession {
 
     /// Forward a remote Unix socket to a new local one and return its path.
     pub async fn forward(&self, remote_socket: &str) -> Result<PathBuf> {
+        validate_remote_socket(remote_socket).map_err(|reason| Error::RuntimeUnavailable {
+            runtime: format!("ssh {}", self.alias),
+            reason,
+        })?;
         let n = self.forwards.fetch_add(1, Ordering::Relaxed);
         let local = self.dir.join(format!("f{n}.sock"));
         let out = ssh(
@@ -271,6 +323,7 @@ impl SshSession {
     }
 
     pub async fn close(&self) {
+        self.closed.store(true, Ordering::Relaxed);
         let _ = ssh(
             &control_args(&self.control, &self.alias, "exit"),
             Duration::from_secs(5),
@@ -296,12 +349,14 @@ impl std::fmt::Debug for SshSession {
 #[cfg(unix)]
 impl Drop for SshSession {
     fn drop(&mut self) {
-        let _ = std::process::Command::new("ssh")
-            .args(control_args(&self.control, &self.alias, "exit"))
-            .stdin(Stdio::null())
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .status();
+        if !self.closed.load(Ordering::Relaxed) && self.control.exists() {
+            let _ = std::process::Command::new("ssh")
+                .args(control_args(&self.control, &self.alias, "exit"))
+                .stdin(Stdio::null())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .status();
+        }
         let _ = std::fs::remove_dir_all(&self.dir);
     }
 }
@@ -414,12 +469,23 @@ mod tests {
     }
 
     #[test]
+    fn rejects_unsafe_remote_sockets() {
+        assert!(validate_remote_socket("/var/run/docker.sock").is_ok());
+        assert!(validate_remote_socket("docker.sock").is_err());
+        assert!(validate_remote_socket("").is_err());
+        assert!(validate_remote_socket("/a:b").is_err());
+        assert!(validate_remote_socket("/a:8080").is_err());
+    }
+
+    #[test]
     fn maps_ssh_errors_to_hints() {
         assert!(
             ssh_hint("Host key verification failed.", "devbox").contains("run `ssh devbox` once")
         );
         assert!(
-            ssh_hint("devbox: Permission denied (publickey).", "devbox").contains("key or agent")
+            ssh_hint("devbox: Permission denied (publickey).", "devbox")
+                .to_lowercase()
+                .contains("key or agent")
         );
         assert!(
             ssh_hint("ssh: Could not resolve hostname devbox", "devbox")
