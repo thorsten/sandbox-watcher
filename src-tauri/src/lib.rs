@@ -215,20 +215,19 @@ async fn stop_container(state: State<'_, App>, container_id: String) -> Result<(
     Ok(())
 }
 
-/// Adapters of this machine; stop-all only covers local containers.
-fn local_adapters(state: &App) -> Vec<Arc<dyn RuntimeAdapter>> {
+/// Adapters of every host, the shape `stop_all` takes.
+fn all_adapters(state: &App) -> Vec<Arc<dyn RuntimeAdapter>> {
     state
         .adapters()
         .into_iter()
-        .filter(|h| h.host.is_local())
-        .map(|h| h.adapter)
+        .map(|hosted| hosted.adapter)
         .collect()
 }
 
 /// Stop every running sandbox container across runtimes.
 #[tauri::command]
 async fn stop_all(state: State<'_, App>) -> Result<Vec<StopResult>, String> {
-    let results = sandbox_core::actions::stop_all(&local_adapters(&state), STOP_TIMEOUT).await;
+    let results = sandbox_core::actions::stop_all(&all_adapters(&state), STOP_TIMEOUT).await;
     state.poke();
     Ok(results)
 }
@@ -560,7 +559,7 @@ fn on_menu_event(app: &AppHandle, event: MenuEvent) {
     if id == tray::MENU_STOP_ALL {
         let watcher = app.state::<App>().inner().clone();
         tauri::async_runtime::spawn(async move {
-            let _ = sandbox_core::actions::stop_all(&local_adapters(&watcher), STOP_TIMEOUT).await;
+            let _ = sandbox_core::actions::stop_all(&all_adapters(&watcher), STOP_TIMEOUT).await;
             watcher.poke();
         });
     }

@@ -200,8 +200,8 @@ async fn load_one(hosted: HostedAdapter) -> std::result::Result<RuntimeLoad, Run
 }
 
 /// Load the overview across several runtimes at once. Running containers
-/// sort first, then by host (local first), runtime order, then name. Every running container
-/// is probed for readiness and sessions.
+/// sort first, then by host (local first), runtime order, then name. Every
+/// running container is probed for readiness and sessions.
 pub async fn load_many(
     adapters: &[HostedAdapter],
     source: DataSource,
@@ -363,6 +363,23 @@ mod tests {
         );
         // Local first within running containers.
         assert!(overview.containers[0].host.is_local());
+    }
+
+    #[tokio::test]
+    async fn local_sorts_before_remote_whatever_the_input_order() {
+        let remote = HostedAdapter {
+            host: Host::Remote("devbox".into()),
+            adapter: Arc::new(MockAdapter::demo()),
+        };
+        let local = HostedAdapter::local(Arc::new(MockAdapter::demo()));
+        let overview = load_many(&[remote, local], DataSource::Mock, vec![]).await;
+        let hosts: Vec<_> = overview
+            .containers
+            .iter()
+            .take(6)
+            .map(|c| c.host.is_local())
+            .collect();
+        assert_eq!(hosts, vec![true, true, true, false, false, false]);
     }
 
     #[tokio::test]

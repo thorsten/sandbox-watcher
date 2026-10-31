@@ -414,5 +414,11 @@ mod tests {
         let (_, id) = live.adapter_for(&first.key).expect("known key");
         assert_eq!(id, first.container.id);
         assert!(live.adapter_for("devbox/unknown").is_none());
+
+        // A unique id prefix resolves, but only within the same host.
+        let prefix: String = first.container.id.chars().take(4).collect();
+        let (_, id) = live.adapter_for(&prefix).expect("prefix on same host");
+        assert!(id.starts_with(&prefix));
+        assert!(live.adapter_for(&format!("devbox/{prefix}")).is_none());
     }
 }
