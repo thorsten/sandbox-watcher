@@ -47,7 +47,7 @@ impl CommandRunner {
                     .await
             }
             #[cfg(test)]
-            CommandRunner::Fake(fake) => Ok(fake.answer(binary, args)),
+            CommandRunner::Fake(fake) => fake.answer(binary, args),
         }
     }
 }
@@ -82,6 +82,8 @@ pub(crate) async fn run_local(
 #[cfg(test)]
 pub struct FakeRunner {
     responses: Vec<(String, CommandOutput)>,
+    /// Commands that fail to run at all, as a dead ssh session would.
+    errors: Vec<(String, String)>,
     calls: Mutex<Vec<String>>,
 }
 
@@ -93,21 +95,32 @@ impl FakeRunner {
                 .into_iter()
                 .map(|(k, v)| (k.to_string(), v))
                 .collect(),
+            errors: Vec::new(),
             calls: Mutex::default(),
         }
+    }
+
+    /// Make `key` fail with a runner error instead of an exit code.
+    pub fn with_error(mut self, key: &str, message: &str) -> Self {
+        self.errors.push((key.to_string(), message.to_string()));
+        self
     }
 
     pub fn calls(&self) -> Vec<String> {
         self.calls.lock().unwrap().clone()
     }
 
-    fn answer(&self, binary: &str, args: &[String]) -> CommandOutput {
+    fn answer(&self, binary: &str, args: &[String]) -> Result<CommandOutput> {
         let key = std::iter::once(binary.to_string())
             .chain(args.iter().cloned())
             .collect::<Vec<_>>()
             .join(" ");
         self.calls.lock().unwrap().push(key.clone());
-        self.responses
+        if let Some((_, message)) = self.errors.iter().find(|(k, _)| *k == key) {
+            return Err(Error::Protocol(message.clone()));
+        }
+        Ok(self
+            .responses
             .iter()
             .find(|(k, _)| *k == key)
             .map(|(_, v)| v.clone())
@@ -115,7 +128,7 @@ impl FakeRunner {
                 exit_code: 127,
                 stdout: String::new(),
                 stderr: format!("{binary}: not found"),
-            })
+            }))
     }
 }
 

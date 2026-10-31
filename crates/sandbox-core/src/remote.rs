@@ -32,21 +32,29 @@ pub struct RemoteDetection {
     pub probes: Vec<String>,
 }
 
-async fn sh(runner: &CommandRunner, script: &str) -> String {
+/// Stdout of a remote script. `Err` when it could not run at all (ssh
+/// failure or timeout), which says nothing about what is installed.
+async fn sh(runner: &CommandRunner, script: &str) -> crate::Result<String> {
     runner
         .run("sh", &["-c".into(), script.into()], PROBE_TIMEOUT)
         .await
         .map(|o| o.stdout)
-        .unwrap_or_default()
 }
 
 pub async fn detect_remote(runner: &CommandRunner) -> RemoteDetection {
     let mut detection = RemoteDetection::default();
-    let found = sh(
+    let found = match sh(
         runner,
         "command -v docker; command -v podman; command -v container; true",
     )
-    .await;
+    .await
+    {
+        Ok(found) => found,
+        Err(e) => {
+            detection.probes.push(format!("probe failed: {e}"));
+            return detection;
+        }
+    };
     let present: Vec<&str> = found
         .lines()
         .filter_map(|l| l.trim().rsplit('/').next())
@@ -55,7 +63,11 @@ pub async fn detect_remote(runner: &CommandRunner) -> RemoteDetection {
         runner,
         "cat \"${XDG_CONFIG_HOME:-$HOME/.config}/sandbox/config.toml\" 2>/dev/null; true",
     )
-    .await;
+    .await
+    .unwrap_or_else(|e| {
+        detection.probes.push(format!("probe failed: {e}"));
+        String::new()
+    });
     detection.preferred = crate::config::parse_runtime(&config);
     if let Some(kind) = detection.preferred {
         detection
@@ -177,9 +189,16 @@ pub async fn connect_host(
                 } else {
                     match session.forward(remote).await {
                         Ok(local) => {
-                            DockerAdapter::connect(candidate.kind, &local.display().to_string())
-                                .ok()
-                                .map(|a| Arc::new(a) as Arc<dyn RuntimeAdapter>)
+                            match DockerAdapter::connect(
+                                candidate.kind,
+                                &local.display().to_string(),
+                            ) {
+                                Ok(a) => Some(Arc::new(a) as Arc<dyn RuntimeAdapter>),
+                                Err(e) => {
+                                    detection.probes.push(format!("{}: {e}", candidate.kind));
+                                    None
+                                }
+                            }
                         }
                         Err(e) => {
                             detection.probes.push(format!("{}: {e}", candidate.kind));
@@ -289,6 +308,27 @@ mod tests {
         );
         assert!(d.probes.iter().any(|p| p.contains("podman: not found")));
         assert!(d.probes.iter().any(|p| p.contains("container: not found")));
+    }
+
+    #[tokio::test]
+    async fn failed_probe_is_not_reported_as_missing_binaries() {
+        let fake = Arc::new(
+            FakeRunner::new(vec![(CONFIG, ok(""))]).with_error(WHICH, "ssh -O check timed out"),
+        );
+        let d = detect_remote(&CommandRunner::Fake(fake)).await;
+        assert!(d.candidates.is_empty());
+        assert!(
+            d.probes
+                .iter()
+                .any(|p| p.starts_with("probe failed: ") && p.ends_with("timed out")),
+            "{:?}",
+            d.probes
+        );
+        assert!(
+            !d.probes.iter().any(|p| p.contains("not found on PATH")),
+            "{:?}",
+            d.probes
+        );
     }
 
     #[test]

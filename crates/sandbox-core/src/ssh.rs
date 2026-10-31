@@ -2,7 +2,8 @@
 //!
 //! Authentication, users, ports and jump hosts come from the user's
 //! `~/.ssh/config` and agent. The app never prompts and never accepts host
-//! keys (`BatchMode=yes`). Sockets live in a private `0700` directory.
+//! keys (`BatchMode=yes`, `StrictHostKeyChecking=yes`). Sockets live in a
+//! private `0700` directory.
 
 use std::path::Path;
 #[cfg(unix)]
@@ -64,20 +65,37 @@ pub fn ssh_hint(stderr: &str, alias: &str) -> String {
     }
 }
 
+/// Options every invocation carries: never prompt, never accept a host key.
+fn strict_options() -> Vec<String> {
+    ["-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=yes"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect()
+}
+
+/// Commands that go through the master must never become one themselves,
+/// whatever `ControlMaster` the user's ssh config sets.
+fn client_options() -> Vec<String> {
+    let mut options = strict_options();
+    options.extend(["-o".into(), "ControlMaster=no".into()]);
+    options
+}
+
 fn common_options() -> Vec<String> {
-    [
-        "-o",
-        "BatchMode=yes",
-        "-o",
-        "ConnectTimeout=10",
-        "-o",
-        "ServerAliveInterval=15",
-        "-o",
-        "ServerAliveCountMax=2",
-    ]
-    .iter()
-    .map(|s| s.to_string())
-    .collect()
+    let mut options = strict_options();
+    options.extend(
+        [
+            "-o",
+            "ConnectTimeout=10",
+            "-o",
+            "ServerAliveInterval=15",
+            "-o",
+            "ServerAliveCountMax=2",
+        ]
+        .iter()
+        .map(|s| s.to_string()),
+    );
+    options
 }
 
 pub fn master_args(control: &Path, alias: &str) -> Vec<String> {
@@ -99,38 +117,32 @@ pub fn master_args(control: &Path, alias: &str) -> Vec<String> {
 }
 
 pub fn control_args(control: &Path, alias: &str, op: &str) -> Vec<String> {
-    vec![
-        "-S".into(),
-        control.display().to_string(),
-        "-o".into(),
-        "BatchMode=yes".into(),
-        "-O".into(),
-        op.into(),
-        "--".into(),
-        alias.into(),
-    ]
+    let mut args = vec!["-S".into(), control.display().to_string()];
+    args.extend(client_options());
+    args.extend(["-O".into(), op.into(), "--".into(), alias.into()]);
+    args
 }
 
 pub fn run_args(control: &Path, alias: &str, remote: &str) -> Vec<String> {
     let mut args = vec!["-S".into(), control.display().to_string()];
     args.extend(common_options());
+    args.extend(["-o".into(), "ControlMaster=no".into()]);
     args.extend(["--".into(), alias.into(), remote.into()]);
     args
 }
 
 pub fn forward_args(control: &Path, alias: &str, local: &Path, remote: &str) -> Vec<String> {
-    vec![
-        "-S".into(),
-        control.display().to_string(),
-        "-o".into(),
-        "BatchMode=yes".into(),
+    let mut args = vec!["-S".into(), control.display().to_string()];
+    args.extend(client_options());
+    args.extend([
         "-O".into(),
         "forward".into(),
         "-L".into(),
         format!("{}:{remote}", local.display()),
         "--".into(),
         alias.into(),
-    ]
+    ]);
+    args
 }
 
 /// A forwarded remote socket must be an absolute path; ':' would be parsed
@@ -451,6 +463,23 @@ mod tests {
         let exit = control_args(control, "devbox", "exit");
         assert!(exit.windows(2).any(|w| w == ["-O", "exit"]));
         assert_eq!(exit.last().unwrap(), "devbox");
+
+        // The app never accepts host keys, on any invocation (R14).
+        for args in [&master, &run, &fwd, &exit] {
+            assert!(
+                args.windows(2)
+                    .any(|w| w == ["-o", "StrictHostKeyChecking=yes"]),
+                "{args:?}"
+            );
+        }
+        // Only the master may create the control socket; a user's
+        // `ControlMaster auto` must not start a second one.
+        for args in [&run, &fwd, &exit] {
+            assert!(
+                args.windows(2).any(|w| w == ["-o", "ControlMaster=no"]),
+                "{args:?}"
+            );
+        }
     }
 
     #[cfg(unix)]
