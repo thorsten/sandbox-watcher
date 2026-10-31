@@ -469,6 +469,14 @@ const DEMO_TRANSCRIPT: &str = r#"{"type":"user","message":{"role":"user","conten
 {"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Now running the suite."},{"type":"tool_use","id":"toolu_03","name":"Bash","input":{"command":"npm test -- --run","description":"Run tests"}}]},"timestamp":"2026-10-30T10:00:00Z"}
 "#;
 
+/// Docker contexts for demo mode: one importable, one that needs an alias.
+pub fn demo_ssh_contexts() -> Vec<crate::endpoints::SshContext> {
+    vec![
+        crate::endpoints::ssh_context("staging", "ssh://dev@staging"),
+        crate::endpoints::ssh_context("build-vm", "ssh://me@build-vm:2222"),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -525,12 +533,4 @@ mod tests {
             Err(Error::ContainerNotFound(_))
         ));
     }
-}
-
-/// Docker contexts for demo mode: one importable, one that needs an alias.
-pub fn demo_ssh_contexts() -> Vec<crate::endpoints::SshContext> {
-    vec![
-        crate::endpoints::ssh_context("staging", "ssh://dev@staging"),
-        crate::endpoints::ssh_context("build-vm", "ssh://me@build-vm:2222"),
-    ]
 }
