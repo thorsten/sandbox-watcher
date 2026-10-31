@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AGENT_LABELS, formatUptime } from "../format";
+import { formatRelative } from "../network";
 import {
   type Capabilities,
   type NetworkReport,
@@ -33,12 +34,16 @@ interface Props {
 
 export function DetailPane({ container, runtime, report, now, onChanged }: Props) {
   const [tab, setTab] = useState<Tab>("activity");
-  const isRunning = container.state === "running";
+  // Greyed: the host is unreachable and this is its last snapshot.
+  const unreachable = container.last_seen_at !== null;
+  const isRunning = container.state === "running" && !unreachable;
   const capabilities: Capabilities | undefined =
     runtime.status === "connected"
-      ? runtime.runtimes.find((r) => r.kind === container.runtime)?.capabilities
+      ? runtime.runtimes.find((r) => r.host === container.host && r.kind === container.runtime)
+          ?.capabilities
       : undefined;
   const tabs = TABS.filter((t) => {
+    if (unreachable) return false;
     if (!isRunning) return t.id === "mounts" || t.id === "logs";
     if (t.id === "resources") return capabilities?.stats !== false;
     if (t.id === "logs") return capabilities?.logs !== false;
@@ -61,7 +66,13 @@ export function DetailPane({ container, runtime, report, now, onChanged }: Props
           <div className="detail-meta muted">
             <span>{container.project_slug}</span>
             <span>{RUNTIME_LABELS[container.runtime]}</span>
-            <span>{isRunning ? formatUptime(container.started_at, now) : container.state}</span>
+            <span>
+              {unreachable
+                ? `Host unreachable — last seen ${formatRelative(container.last_seen_at, now)}`
+                : isRunning
+                  ? formatUptime(container.started_at, now)
+                  : container.state}
+            </span>
             <span title="Image">{container.image}</span>
             {container.config_hash && <code title="sandbox.hash">{container.config_hash}</code>}
           </div>
@@ -85,37 +96,45 @@ export function DetailPane({ container, runtime, report, now, onChanged }: Props
         </div>
       )}
 
-      <nav className="tabs" aria-label="Container details">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            className={`tab ${active === t.id ? "active" : ""}`}
-            aria-pressed={active === t.id}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
-            {t.id === "network" && blocked > 0 && (
-              <span className="badge badge-err">{blocked}</span>
-            )}
-          </button>
-        ))}
-      </nav>
+      {unreachable && (
+        <p className="muted pad">Details come back when the host is reachable again.</p>
+      )}
 
-      <div className="detail-body">
-        {active === "activity" && <ActivityPanel containerKey={container.key} now={now} />}
-        {active === "network" && (
-          <NetworkPanel
-            containerKey={container.key}
-            report={report}
-            now={now}
-            onChanged={onChanged}
-          />
-        )}
-        {active === "resources" && <ResourcesPanel containerKey={container.key} />}
-        {active === "logs" && <LogsPanel containerKey={container.key} />}
-        {active === "mounts" && <MountsPanel containerKey={container.key} />}
-      </div>
+      {tabs.length > 0 && (
+        <nav className="tabs" aria-label="Container details">
+          {tabs.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className={`tab ${active === t.id ? "active" : ""}`}
+              aria-pressed={active === t.id}
+              onClick={() => setTab(t.id)}
+            >
+              {t.label}
+              {t.id === "network" && blocked > 0 && (
+                <span className="badge badge-err">{blocked}</span>
+              )}
+            </button>
+          ))}
+        </nav>
+      )}
+
+      {!unreachable && (
+        <div className="detail-body">
+          {active === "activity" && <ActivityPanel containerKey={container.key} now={now} />}
+          {active === "network" && (
+            <NetworkPanel
+              containerKey={container.key}
+              report={report}
+              now={now}
+              onChanged={onChanged}
+            />
+          )}
+          {active === "resources" && <ResourcesPanel containerKey={container.key} />}
+          {active === "logs" && <LogsPanel containerKey={container.key} />}
+          {active === "mounts" && <MountsPanel containerKey={container.key} />}
+        </div>
+      )}
     </section>
   );
 }

@@ -1,4 +1,11 @@
-import { RUNTIME_LABELS, type HostStatus, type RuntimeStatus } from "../types";
+import { hostLabel } from "../hosts";
+import { RUNTIME_LABELS, type HostStatus, type RuntimeKind, type RuntimeStatus } from "../types";
+
+/** "Docker" for this machine, "Docker on <host>" for a remote one. */
+function runtimeLabel(host: string, kind: RuntimeKind, hosts: HostStatus[]): string {
+  const label = RUNTIME_LABELS[kind];
+  return host === "local" ? label : `${label} on ${hostLabel(host, hosts)}`;
+}
 
 /** One warning per unreachable remote host, with the probe report folded away. */
 function HostWarnings({ hosts }: { hosts: HostStatus[] }) {
@@ -36,30 +43,39 @@ export function RuntimeBanner({
 }) {
   return (
     <>
-      <RuntimeStatusBanner runtime={runtime} compact={compact} />
+      <RuntimeStatusBanner runtime={runtime} hosts={hosts} compact={compact} />
       <HostWarnings hosts={hosts} />
     </>
   );
 }
 
-function RuntimeStatusBanner({ runtime, compact }: { runtime: RuntimeStatus; compact?: boolean }) {
+function RuntimeStatusBanner({
+  runtime,
+  hosts,
+  compact,
+}: {
+  runtime: RuntimeStatus;
+  hosts: HostStatus[];
+  compact?: boolean;
+}) {
   if (compact && runtime.status === "connected") {
     return (
       <div className="runtime-compact">
         {runtime.runtimes.map((r) => (
           <span
-            key={r.kind}
+            key={`${r.host}/${r.kind}`}
             className="runtime-item"
-            title={`${r.endpoint}${r.version ? `, ${r.version}` : ""}`}
+            // A remote endpoint is a local forward socket; the host says more.
+            title={`${r.host === "local" ? r.endpoint : hostLabel(r.host, hosts)}${r.version ? `, ${r.version}` : ""}`}
           >
             <span className="dot dot-ok" aria-hidden="true" />
-            {RUNTIME_LABELS[r.kind]}
+            {runtimeLabel(r.host, r.kind, hosts)}
           </span>
         ))}
         {runtime.failures.map((f) => (
-          <span key={f.kind} className="runtime-item muted" title={f.reason}>
+          <span key={`${f.host}/${f.kind}`} className="runtime-item muted" title={f.reason}>
             <span className="dot dot-off" aria-hidden="true" />
-            {RUNTIME_LABELS[f.kind]}
+            {runtimeLabel(f.host, f.kind, hosts)}
           </span>
         ))}
       </div>
@@ -110,19 +126,19 @@ function RuntimeStatusBanner({ runtime, compact }: { runtime: RuntimeStatus; com
         <section className="banner banner-ok">
           <div className="runtime-list">
             {runtime.runtimes.map((r) => (
-              <span key={r.kind} className="runtime-item">
+              <span key={`${r.host}/${r.kind}`} className="runtime-item">
                 <span className="dot dot-ok" aria-hidden="true" />
-                {RUNTIME_LABELS[r.kind]}
+                {runtimeLabel(r.host, r.kind, hosts)}
                 {r.version && <span className="muted"> {r.version}</span>}
-                <span className="muted"> via {r.endpoint}</span>
+                {r.host === "local" && <span className="muted"> via {r.endpoint}</span>}
               </span>
             ))}
           </div>
           {runtime.failures.length > 0 && (
             <ul className="runtime-failures muted">
               {runtime.failures.map((f) => (
-                <li key={f.kind}>
-                  {RUNTIME_LABELS[f.kind]} detected but not reachable: {f.reason}
+                <li key={`${f.host}/${f.kind}`}>
+                  {runtimeLabel(f.host, f.kind, hosts)} detected but not reachable: {f.reason}
                 </li>
               ))}
             </ul>

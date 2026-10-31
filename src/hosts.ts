@@ -13,6 +13,26 @@ export function filterByHost(cs: SandboxContainer[], host: string): SandboxConta
   return host === "all" ? cs : cs.filter((c) => c.host === host);
 }
 
+/**
+ * The container the detail pane shows: the selected one while it is
+ * visible, else the first running and then the first other container of a
+ * reachable host. Greyed containers of unreachable hosts are only picked
+ * automatically when nothing else is visible.
+ */
+export function pickSelected(
+  visible: SandboxContainer[],
+  selectedId: string | null,
+): SandboxContainer | null {
+  const live = visible.filter((c) => !c.last_seen_at);
+  return (
+    visible.find((c) => c.key === selectedId) ??
+    live.find((c) => c.state === "running") ??
+    live[0] ??
+    visible[0] ??
+    null
+  );
+}
+
 /** Hosts that have containers: local first, then aliases sorted. */
 export function hostsInUse(cs: SandboxContainer[]): string[] {
   const remote = [...new Set(cs.map((c) => c.host).filter((h) => h !== "local"))].toSorted();

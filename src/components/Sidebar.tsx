@@ -16,9 +16,9 @@ interface Props {
   containers: SandboxContainer[];
   runtime: RuntimeStatus;
   hosts: HostStatus[];
-  /** Host filter: `all`, `local` or an alias. Only shown with several hosts. */
   /** Hosts to offer in the filter; defaults to those of `containers`. Pass the unfiltered set. */
   hostChoices?: string[];
+  /** Host filter: `all`, `local` or an alias. Only shown with several hosts. */
   hostFilter?: string;
   onHostFilter?: (host: string) => void;
   network: NetworkReport[] | undefined;

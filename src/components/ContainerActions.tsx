@@ -16,7 +16,8 @@ export function ContainerActions({ container, onChanged }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [copyOpen, setCopyOpen] = useState(false);
-  const isRunning = container.state === "running";
+  // A greyed container of an unreachable host cannot be stopped.
+  const isRunning = container.state === "running" && !container.last_seen_at;
   const remote = isRemote(container);
 
   const flash = (kind: "ok" | "err", text: string) => {

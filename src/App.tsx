@@ -23,7 +23,7 @@ import { Sidebar } from "./components/Sidebar";
 import { StopAllButton } from "./components/StopAllButton";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { AGENT_LABELS, summarize } from "./format";
-import { filterByHost, hostsInUse } from "./hosts";
+import { filterByHost, hostsInUse, pickSelected } from "./hosts";
 import { recentBlockedCount } from "./network";
 import { applyTheme } from "./theme";
 import type { NetworkReport, Overview, SandboxContainer, Settings, UpdateInfo } from "./types";
@@ -88,6 +88,8 @@ export function App() {
       onSelectContainer((id) => {
         if (cancelled) return;
         setSelectedId(id);
+        // The tray may pick a container the host filter hides.
+        setHostFilter("all");
         setShowSettings(false);
         setShowHistory(false);
       }),
@@ -100,13 +102,10 @@ export function App() {
 
   const containers = state.phase === "ready" ? state.overview.containers : EMPTY;
 
-  // Keep the selection on the same container across refreshes; otherwise
-  // pick the first running one.
-  const selected =
-    containers.find((c) => c.key === selectedId) ??
-    containers.find((c) => c.state === "running") ??
-    containers[0] ??
-    null;
+  const visible = filterByHost(containers, hostFilter);
+  // Keep the selection on the same container across refreshes while the
+  // host filter shows it; otherwise pick a running one of a reachable host.
+  const selected = pickSelected(visible, selectedId);
 
   const refresh = async () => {
     setRefreshing(true);
@@ -119,7 +118,6 @@ export function App() {
     }
   };
 
-  const visible = filterByHost(containers, hostFilter);
   const summary = summarize(containers);
   const recentBlocked =
     network && state.phase === "ready" ? recentBlockedCount(network, state.refreshedAt) : 0;

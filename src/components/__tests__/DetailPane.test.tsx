@@ -99,4 +99,47 @@ describe("DetailPane", () => {
     );
     expect(text).toContain("No active sessions");
   });
+
+  it("shows a greyed container as unreachable, without live tabs or Stop", () => {
+    const { html, text } = render(
+      <DetailPane
+        container={container({
+          host: "devbox",
+          key: "devbox/c1",
+          last_seen_at: "2026-10-30T11:55:00Z",
+        })}
+        runtime={connected()}
+        report={undefined}
+        now={NOW}
+        onChanged={noop}
+      />,
+    );
+    expect(text).toContain("Host unreachable — last seen 5m ago");
+    expect(text).not.toContain("Up 2 hours");
+    expect(text).not.toContain("No active sessions");
+    expect(tabsOf(html)).toEqual([]);
+    expect(text).not.toContain("Stop");
+  });
+
+  it("takes capabilities from the runtime on the container's own host", () => {
+    const runtime = connected(["docker"]);
+    if (runtime.status !== "connected") throw new Error("fixture");
+    const local = runtime.runtimes[0];
+    if (!local) throw new Error("fixture");
+    runtime.runtimes.push({
+      ...local,
+      host: "devbox",
+      capabilities: { ...local.capabilities, stats: false },
+    });
+    const { html } = render(
+      <DetailPane
+        container={container({ host: "devbox", key: "devbox/c1" })}
+        runtime={runtime}
+        report={undefined}
+        now={NOW}
+        onChanged={noop}
+      />,
+    );
+    expect(tabsOf(html)).not.toContain("Resources");
+  });
 });
