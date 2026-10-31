@@ -728,6 +728,28 @@ details p {
   margin: 0.6rem 0 0;
 }
 
+/* Legal pages */
+.legal {
+  max-width: 46rem;
+  margin: 0 auto;
+  padding: 2rem clamp(1rem, 4vw, 3rem) 3rem;
+}
+.legal article + article {
+  margin-top: 3rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--border);
+}
+.legal article {
+  scroll-margin-top: 4rem;
+}
+.legal h2 {
+  font-size: 1.1rem;
+  margin: 1.8rem 0 0.4rem;
+}
+.legal p {
+  margin: 0 0 0.8rem;
+}
+
 /* Footer */
 .footer {
   border-top: 1px solid var(--border);
