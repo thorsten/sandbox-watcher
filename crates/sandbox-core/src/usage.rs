@@ -28,6 +28,8 @@ pub struct ModelPrice {
 pub type PriceTable = BTreeMap<String, ModelPrice>;
 
 /// Defaults for models we know prices for. Edit in settings for others.
+/// Anthropic list prices as of October 2026; cache writes are the 5-minute
+/// rate. Claude Haiku 5.5 uses its rate for prompts up to 100K tokens.
 pub fn default_prices() -> PriceTable {
     let p = |input, output, cache_read, cache_write| ModelPrice {
         input,
@@ -36,8 +38,19 @@ pub fn default_prices() -> PriceTable {
         cache_write,
     };
     BTreeMap::from([
+        ("claude-fable-5-1".into(), p(10.0, 50.0, 0.25, 12.5)),
+        ("claude-fable-5".into(), p(10.0, 50.0, 1.0, 12.5)),
+        ("claude-opus-5-5".into(), p(4.0, 20.0, 0.2, 5.0)),
+        ("claude-opus-5".into(), p(5.0, 25.0, 0.5, 6.25)),
+        ("claude-opus-4-8".into(), p(5.0, 25.0, 0.5, 6.25)),
+        ("claude-opus-4-7".into(), p(5.0, 25.0, 0.5, 6.25)),
+        ("claude-opus-4-6".into(), p(5.0, 25.0, 0.5, 6.25)),
+        ("claude-opus-4-5".into(), p(5.0, 25.0, 0.5, 6.25)),
+        // Opus 4 and 4.1.
         ("claude-opus-4".into(), p(15.0, 75.0, 1.5, 18.75)),
+        ("claude-sonnet-5".into(), p(2.0, 10.0, 0.2, 2.5)),
         ("claude-sonnet-4".into(), p(3.0, 15.0, 0.3, 3.75)),
+        ("claude-haiku-5-5".into(), p(0.1, 0.5, 0.01, 0.125)),
         ("claude-haiku-4".into(), p(1.0, 5.0, 0.1, 1.25)),
         ("claude-3-5-haiku".into(), p(0.8, 4.0, 0.08, 1.0)),
         ("gpt-5-mini".into(), p(0.25, 2.0, 0.025, 0.0)),
@@ -566,6 +579,21 @@ mod tests {
             15.0
         );
         assert!(price_for(&t, "mystery-model").is_none());
+    }
+
+    #[test]
+    fn claude_versions_resolve_to_their_own_prices() {
+        let t = default_prices();
+        let input = |model| price_for(&t, model).unwrap().input;
+        assert_eq!(input("claude-opus-5-5"), 4.0);
+        assert_eq!(input("claude-opus-5"), 5.0);
+        assert_eq!(input("claude-opus-4-5-20251101"), 5.0);
+        assert_eq!(input("claude-opus-4-1-20250805"), 15.0);
+        assert_eq!(input("claude-sonnet-5-5"), 2.0);
+        assert_eq!(input("claude-haiku-5-5"), 0.1);
+        assert_eq!(input("claude-haiku-4-5-20251001"), 1.0);
+        assert_eq!(price_for(&t, "claude-fable-5-1").unwrap().cache_read, 0.25);
+        assert_eq!(price_for(&t, "claude-fable-5").unwrap().cache_read, 1.0);
     }
 
     #[test]

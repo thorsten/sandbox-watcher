@@ -123,8 +123,10 @@ impl Settings {
         {
             self.editor = EditorChoice::System;
         }
-        if self.prices.is_empty() {
-            self.prices = default_prices();
+        // Saved tables predate newer models; add default entries they lack
+        // without touching prices the user set.
+        for (prefix, price) in default_prices() {
+            self.prices.entry(prefix).or_insert(price);
         }
         if let TerminalChoice::Custom(cmd) = &self.terminal
             && cmd.trim().is_empty()
@@ -220,5 +222,15 @@ mod tests {
         }
         .with_env_fallbacks(Some("podman"), None);
         assert_eq!(pinned.runtime_override, Some(RuntimeKind::Docker));
+    }
+
+    #[test]
+    fn saved_price_tables_gain_new_defaults_but_keep_user_prices() {
+        let s = Settings::from_json(
+            r#"{"prices": {"claude-opus-4": {"input": 1.0, "output": 2.0}, "my-model": {"input": 3.0, "output": 4.0}}}"#,
+        );
+        assert_eq!(s.prices["claude-opus-4"].input, 1.0, "user price kept");
+        assert_eq!(s.prices["my-model"].input, 3.0, "user entry kept");
+        assert_eq!(s.prices["claude-opus-5-5"].input, 4.0, "new default added");
     }
 }
