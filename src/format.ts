@@ -75,6 +75,8 @@ export function summarize(containers: SandboxContainer[]): Summary {
   let running = 0;
   for (const c of containers) {
     if (c.state === "running" && !c.last_seen_at) running++;
+    // Greyed containers (unreachable host) are cached, not live.
+    if (c.last_seen_at) continue;
     for (const s of c.sessions) {
       sessions++;
       byAgent.set(s.agent, (byAgent.get(s.agent) ?? 0) + 1);

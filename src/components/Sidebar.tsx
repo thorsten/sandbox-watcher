@@ -17,6 +17,8 @@ interface Props {
   runtime: RuntimeStatus;
   hosts: HostStatus[];
   /** Host filter: `all`, `local` or an alias. Only shown with several hosts. */
+  /** Hosts to offer in the filter; defaults to those of `containers`. Pass the unfiltered set. */
+  hostChoices?: string[];
   hostFilter?: string;
   onHostFilter?: (host: string) => void;
   network: NetworkReport[] | undefined;
@@ -29,6 +31,7 @@ export function Sidebar({
   containers,
   runtime,
   hosts,
+  hostChoices: allHosts,
   hostFilter = "all",
   onHostFilter,
   network,
@@ -42,7 +45,7 @@ export function Sidebar({
     network?.find((r) => r.container_id === id)?.entries.filter((e) => e.status === "blocked")
       .length ?? 0;
 
-  const hostChoices = hostsInUse(containers);
+  const hostChoices = allHosts ?? hostsInUse(containers);
   const groups = [...groupByProject(containers)];
   const running = groups.filter(([, g]) => g.some((c) => c.state === "running"));
   const stopped = groups.filter(([, g]) => g.every((c) => c.state !== "running"));

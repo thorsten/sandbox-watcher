@@ -87,6 +87,20 @@ describe("summarize", () => {
     expect(s.running).toBe(1);
     expect(s.stopped).toBe(0);
   });
+  it("does not count sessions of greyed containers", () => {
+    const s = summarize([
+      container({ id: "a", sessions: [session({ pid: 1 })] }),
+      container({
+        id: "b",
+        key: "x/b",
+        host: "x",
+        last_seen_at: "2026-10-30T11:00:00Z",
+        sessions: [session({ pid: 2 })],
+      }),
+    ]);
+    expect(s.sessions).toBe(1);
+    expect(s.byAgent.get("claude-code")).toBe(1);
+  });
   it("orders agents by count, ties by label", () => {
     const s = summarize([
       container({

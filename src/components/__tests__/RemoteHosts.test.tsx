@@ -64,6 +64,24 @@ describe("remote hosts in the UI", () => {
     expect(html).not.toContain("host-badge");
   });
 
+  it("keeps the host filter with All hosts while filtered to one host", () => {
+    const { html, text } = render(
+      <Sidebar
+        containers={[remote]}
+        hostChoices={["local", "devbox"]}
+        hostFilter="devbox"
+        runtime={connected()}
+        hosts={[]}
+        network={[]}
+        selectedId={null}
+        onSelect={noop}
+        now={NOW}
+      />,
+    );
+    expect(html).toContain("<select");
+    expect(text).toContain("All hosts");
+  });
+
   it("renders the settings section with an empty list", () => {
     const { html } = render(<RemoteHostsSection hosts={[]} statuses={[]} onChange={noop} />);
     expect(html).toContain("Remote hosts");
@@ -95,7 +113,7 @@ describe("remote hosts in the UI", () => {
     expect(text).toContain("docker.sock missing");
   });
 
-  it("groups stop-all sessions by host", () => {
+  it("renders the stop-all button with the running count", () => {
     const { text } = render(
       <StopAllButton running={[remote, container({ id: "a" })]} hosts={[]} onChanged={noop} />,
     );

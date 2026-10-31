@@ -23,7 +23,7 @@ import { Sidebar } from "./components/Sidebar";
 import { StopAllButton } from "./components/StopAllButton";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { AGENT_LABELS, summarize } from "./format";
-import { filterByHost } from "./hosts";
+import { filterByHost, hostsInUse } from "./hosts";
 import { recentBlockedCount } from "./network";
 import { applyTheme } from "./theme";
 import type { NetworkReport, Overview, SandboxContainer, Settings, UpdateInfo } from "./types";
@@ -211,6 +211,7 @@ export function App() {
             containers={visible}
             runtime={state.overview.runtime}
             hosts={state.overview.hosts}
+            hostChoices={hostsInUse(containers)}
             hostFilter={hostFilter}
             onHostFilter={setHostFilter}
             network={network}

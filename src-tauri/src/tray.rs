@@ -137,7 +137,7 @@ fn tooltip(overview: Option<&Overview>) -> String {
         None => "Sandbox Watcher".to_string(),
         Some(o) => {
             let running = running_containers(o).count();
-            let sessions: usize = o.containers.iter().map(|c| c.sessions.len()).sum();
+            let sessions: usize = running_containers(o).map(|c| c.sessions.len()).sum();
             format!(
                 "Sandbox Watcher: {running} running, {sessions} session{}",
                 if sessions == 1 { "" } else { "s" }
