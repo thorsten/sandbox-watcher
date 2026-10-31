@@ -168,6 +168,11 @@ Linux, web lint, tests and build, and an unsigned Tauri debug build per OS.
 once the secrets below exist; Windows and Linux bundles are unsigned. `Pages`
 deploys the `site/` folder to GitHub Pages.
 
+Both workflows create a CycloneDX SBOM (`sbom` job) from `Cargo.lock` and
+`pnpm-lock.yaml`. CI keeps it as the `sbom` workflow artifact; releases
+attach it as `sandbox-watcher-vX.Y.Z.cdx.json`. It includes development
+dependencies, so it lists more than the installers ship.
+
 ### macOS signing
 
 Needs a paid Apple Developer Program membership and a **Developer ID

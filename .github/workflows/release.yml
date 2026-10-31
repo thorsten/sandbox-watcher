@@ -140,3 +140,30 @@ jobs:
           prerelease: ${{ github.ref_type != 'tag' }}
           includeUpdaterJson: true
           args: --target ${{ matrix.target }}
+
+  sbom:
+    name: SBOM
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: tag
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=v$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+          fi
+      # Same scan as in CI, attached to the release next to the installers.
+      - uses: anchore/sbom-action@v0.24.3
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: sandbox-watcher-${{ steps.tag.outputs.tag }}.cdx.json
+          artifact-name: sbom
+          upload-release-assets: false
+      - name: Attach the SBOM to the release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "${{ steps.tag.outputs.tag }}" "sandbox-watcher-${{ steps.tag.outputs.tag }}.cdx.json" --clobber

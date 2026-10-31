@@ -157,6 +157,21 @@ jobs:
       - run: pnpm test
       - run: pnpm build
 
+  sbom:
+    name: SBOM
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # One CycloneDX file from Cargo.lock and pnpm-lock.yaml; Cargo.lock
+      # already lists the crates of all three platforms.
+      - uses: anchore/sbom-action@v0.24.3
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: sandbox-watcher.cdx.json
+          artifact-name: sbom
+          upload-release-assets: false
+
   commits:
     name: Commit messages
     if: github.event_name == 'pull_request'
