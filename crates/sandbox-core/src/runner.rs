@@ -21,6 +21,8 @@ pub struct CommandOutput {
 #[derive(Clone)]
 pub enum CommandRunner {
     Local,
+    #[cfg(unix)]
+    Ssh(std::sync::Arc<crate::ssh::SshSession>),
     #[cfg(test)]
     Fake(Arc<FakeRunner>),
 }
@@ -38,13 +40,23 @@ impl CommandRunner {
     ) -> Result<CommandOutput> {
         match self {
             CommandRunner::Local => run_local(binary, args, timeout).await,
+            #[cfg(unix)]
+            CommandRunner::Ssh(session) => {
+                session
+                    .run(&crate::ssh::remote_command(binary, args), timeout)
+                    .await
+            }
             #[cfg(test)]
             CommandRunner::Fake(fake) => Ok(fake.answer(binary, args)),
         }
     }
 }
 
-async fn run_local(binary: &str, args: &[String], timeout: Duration) -> Result<CommandOutput> {
+pub(crate) async fn run_local(
+    binary: &str,
+    args: &[String],
+    timeout: Duration,
+) -> Result<CommandOutput> {
     let child = tokio::process::Command::new(binary)
         .args(args)
         .stdin(Stdio::null())
