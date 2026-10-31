@@ -132,6 +132,9 @@ Watch containers on another machine over SSH.
 
 - Add an SSH alias from `~/.ssh/config` under Settings, then Remote hosts.
   Use key or agent authentication only; the app cannot prompt for passwords.
+- Or pick hosts from your Docker contexts: Settings, Remote hosts, lists every
+  `ssh://` context. Contexts with a port or path need an alias in
+  `~/.ssh/config` first; the list offers the entry to copy.
 - Accept the host key once in a terminal with `ssh <alias>`. The app never
   accepts host keys.
 - Docker, Podman and Apple `container` are supported on the remote machine.

@@ -1,6 +1,6 @@
 # Import ssh:// Docker contexts as remote hosts: design
 
-Date: 2026-10-31. Target release: 0.7.0. Status: approved in conversation, awaiting spec review.
+Date: 2026-10-31. Target release: 0.7.0. Status: approved; implemented on `feat/0.7.0`.
 
 ## Goal
 
@@ -45,7 +45,8 @@ pub struct SshContext {
     pub alias: Option<String>,
     /// Why the context cannot be added as is. Set exactly when `alias` is `None`.
     pub reason: Option<String>,
-    /// A `~/.ssh/config` block that gives the context an alias. Set exactly when `alias` is `None`.
+    /// A `~/.ssh/config` block that gives the context an alias. Set when `alias` is `None`
+    /// and the endpoint names a usable host and port.
     pub snippet: Option<String>,
 }
 
@@ -61,8 +62,10 @@ pub async fn docker_ssh_contexts(runner: &CommandRunner) -> Vec<SshContext>;
   - With a port: reason `uses port <n>`.
   - With a path: reason `has a path`.
   - Failing `validate_alias`: the validation message as reason.
+  - Empty host: reason `has no host`, no snippet. Port 0 or not a number: reason
+    `has an invalid port`, no snippet.
 - Snippet for non-importable contexts, with `<name>` sanitised to `[A-Za-z0-9._-]` (other
-  characters become `-`, leading `-` removed, `docker-<name>` if the result is empty or `local`):
+  characters become `-`, leading `-` removed, `docker-context` if the result is empty, `docker-local` if it is `local`):
 
   ```
   Host <name>
@@ -76,24 +79,24 @@ pub async fn docker_ssh_contexts(runner: &CommandRunner) -> Vec<SshContext>;
 
 ### Tauri: `src-tauri`
 
-- `list_docker_ssh_contexts() -> Vec<DockerSshContextRow>` where the row is the `SshContext`
-  plus `added: bool`, true when `alias` equals the alias of an entry in `remote_hosts`.
-  Read-only; uses `CommandRunner::Local`.
+- `list_docker_ssh_contexts() -> Vec<SshContext>`. Read-only; uses `CommandRunner::Local`;
+  demo data in mock mode. The UI marks a context as added when its alias is in the Settings
+  draft, because Settings saves from its footer.
 - On Windows the command returns an empty list.
 - Importing uses the existing remote host save path with
   `RemoteHost { alias, display_name: Some(name), enabled: true }`. The live runtime is unchanged.
 
 ### UI: `RemoteHostsSection.tsx`
 
-- A "From Docker contexts" list, loaded when the section mounts and after hosts are saved.
+- A "From Docker contexts" list, loaded once when the section mounts.
 - Row states:
   - importable: checkbox, context name, endpoint;
   - added: no checkbox, "added";
   - not importable: disabled, the reason, and a copy button for the snippet.
 - "Add selected" adds all ticked contexts at once.
 - Hidden when the list is empty, which includes Windows.
-- `src/types.ts` mirrors `DockerSshContextRow`. Mock mode returns one importable context
-  (`ssh://dev@devbox`) and one with a port (`ssh://me@vm:2222`).
+- `src/types.ts` mirrors `SshContext`. Mock mode returns one importable context
+  (`ssh://dev@staging`) and one with a port (`ssh://me@build-vm:2222`).
 
 ## Testing
 

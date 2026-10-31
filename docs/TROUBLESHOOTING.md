@@ -62,7 +62,8 @@ On macOS the app checks `/var/run/docker.sock`, `~/.docker/run/docker.sock`,
 `~/.colima/default/docker.sock` and `~/.rd/docker.sock`; on Linux
 `/var/run/docker.sock` and `~/.docker/desktop/docker.sock`. Colima profiles
 other than `default` need `DOCKER_HOST` or an active `docker context`.
-Contexts that use `ssh://` are not supported.
+Contexts that use `ssh://` are not watched directly. Import them under
+Settings, Remote hosts, From Docker contexts.
 
 ## Rootless Podman on Linux
 
