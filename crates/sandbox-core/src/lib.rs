@@ -28,6 +28,7 @@ pub mod network;
 pub mod notify;
 pub mod overview;
 pub mod paths;
+pub mod runner;
 pub mod sandbox;
 pub mod sessions;
 pub mod settings;

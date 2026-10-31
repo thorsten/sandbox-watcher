@@ -4,7 +4,6 @@
 //! event stream and no stats API, which `capabilities()` reports.
 
 use std::collections::BTreeMap;
-use std::process::Stdio;
 use std::time::Duration;
 
 use async_trait::async_trait;
@@ -19,6 +18,7 @@ use crate::model::{
     ContainerDetails, ContainerState, Mount, MountRole, Readiness, ResourceSample, RuntimeEvent,
     RuntimeInfo, RuntimeKind, SandboxContainer,
 };
+use crate::runner::{CommandOutput, CommandRunner};
 use crate::sandbox::{HASH_LABEL, PROJECT_LABEL, READY_FILE};
 use crate::{Error, Result};
 
@@ -27,43 +27,32 @@ const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
 #[derive(Clone)]
 pub struct AppleContainerAdapter {
     binary: String,
-}
-
-struct CommandOutput {
-    exit_code: i64,
-    stdout: String,
-    stderr: String,
+    runner: CommandRunner,
 }
 
 impl AppleContainerAdapter {
     pub fn new(binary: impl Into<String>) -> Self {
+        Self::with_runner(CommandRunner::Local, binary)
+    }
+
+    pub fn with_runner(runner: CommandRunner, binary: impl Into<String>) -> Self {
         Self {
             binary: binary.into(),
+            runner,
         }
     }
 
     async fn run(&self, args: &[String], timeout: Duration) -> Result<CommandOutput> {
-        let child = tokio::process::Command::new(&self.binary)
-            .args(args)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true)
-            .spawn()
-            .map_err(|e| Error::RuntimeUnavailable {
-                runtime: RuntimeKind::AppleContainer.to_string(),
-                reason: format!("cannot start {}: {e}", self.binary),
-            })?;
-        let output = tokio::time::timeout(timeout, child.wait_with_output())
+        self.runner
+            .run(&self.binary, args, timeout)
             .await
-            .map_err(|_| {
-                Error::Protocol(format!("{} {} timed out", self.binary, args.join(" ")))
-            })??;
-        Ok(CommandOutput {
-            exit_code: output.status.code().map(i64::from).unwrap_or(-1),
-            stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-            stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-        })
+            .map_err(|e| match e {
+                Error::RuntimeUnavailable { reason, .. } => Error::RuntimeUnavailable {
+                    runtime: RuntimeKind::AppleContainer.to_string(),
+                    reason,
+                },
+                other => other,
+            })
     }
 
     /// Run and require exit code 0.
@@ -319,6 +308,25 @@ impl RuntimeAdapter for AppleContainerAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runner::FakeRunner;
+    use std::sync::Arc;
+
+    #[tokio::test]
+    async fn apple_adapter_runs_through_the_runner() {
+        let fake = Arc::new(FakeRunner::new(vec![(
+            "container --version",
+            CommandOutput {
+                exit_code: 0,
+                stdout: "container CLI version 0.6.0\n".into(),
+                stderr: String::new(),
+            },
+        )]));
+        let adapter =
+            AppleContainerAdapter::with_runner(CommandRunner::Fake(fake.clone()), "container");
+        let info = adapter.ping().await.unwrap();
+        assert_eq!(info.version.as_deref(), Some("container CLI version 0.6.0"));
+        assert_eq!(fake.calls(), vec!["container --version"]);
+    }
 
     #[test]
     fn detects_missing_resource_messages() {
