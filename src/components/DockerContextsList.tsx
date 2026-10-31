@@ -26,10 +26,14 @@ export function contextsToAdd(
 
 export function DockerContextsList({ contexts, hosts, onAdd }: Props) {
   const [selected, setSelected] = useState<string[]>([]);
+  const [copied, setCopied] = useState<{ name: string; ok: boolean } | null>(null);
   if (contexts.length === 0) return null;
   const aliases = new Set(hosts.map((h) => h.alias));
   const toggle = (name: string, on: boolean) =>
     setSelected((s) => (on ? [...s, name] : s.filter((n) => n !== name)));
+  const copy = async (c: SshContext) => {
+    setCopied({ name: c.name, ok: await copyText(c.snippet ?? "") });
+  };
   const add = () => {
     onAdd(contextsToAdd(contexts, selected, hosts));
     setSelected([]);
@@ -58,10 +62,12 @@ export function DockerContextsList({ contexts, hosts, onAdd }: Props) {
               <span className="muted">
                 {c.name} {c.endpoint} · {c.reason}{" "}
                 {c.snippet && (
-                  <button type="button" onClick={() => void copyText(c.snippet ?? "")}>
+                  <button type="button" onClick={() => void copy(c)}>
                     Copy ~/.ssh/config entry
                   </button>
                 )}
+                {copied?.name === c.name && (copied.ok ? " Copied" : " Clipboard unavailable")}
+                {c.snippet && <pre>{c.snippet}</pre>}
               </span>
             )}
           </li>

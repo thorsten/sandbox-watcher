@@ -150,6 +150,12 @@ describe("docker ssh contexts", () => {
     expect(text).toContain("Add selected");
   });
 
+  it("shows the ssh config entry it copies", () => {
+    const { html } = render(<DockerContextsList contexts={[vm]} hosts={[]} onAdd={noop} />);
+    expect(html).toContain("<pre");
+    expect(html).toContain("Host vm\n  HostName vm\n  Port 2222\n");
+  });
+
   it("renders nothing without contexts", () => {
     const { html } = render(<DockerContextsList contexts={[]} hosts={[]} onAdd={noop} />);
     expect(html).toBe("");
