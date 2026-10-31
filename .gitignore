@@ -22,3 +22,6 @@ Thumbs.db
 
 # Updater signing keys: never commit
 .keys/
+
+# pnpm store created inside the project by the Linux sandbox
+.pnpm-store/
