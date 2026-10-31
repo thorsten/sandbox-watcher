@@ -164,6 +164,10 @@ pub fn ssh_context(name: &str, endpoint: &str) -> SshContext {
         snippet,
     };
     let rest = endpoint.strip_prefix("ssh://").unwrap_or(endpoint);
+    // A snippet line break or space could add directives such as ProxyCommand.
+    if rest.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return rejected("has invalid characters", None);
+    }
     let (authority, path) = rest.split_once('/').unwrap_or((rest, ""));
     let (user, host_port) = match authority.rsplit_once('@') {
         Some((user, host_port)) => (Some(user).filter(|u| !u.is_empty()), host_port),
@@ -366,6 +370,25 @@ mod tests {
             assert_eq!(c.alias, None, "{endpoint}");
             assert_eq!(c.reason.as_deref(), Some("has no host"), "{endpoint}");
             assert_eq!(c.snippet, None, "{endpoint}");
+        }
+    }
+
+    #[test]
+    fn whitespace_and_control_characters_get_no_snippet() {
+        for endpoint in [
+            "ssh://me\nProxyCommand x@box",
+            "ssh://me@a b",
+            "ssh://me\t@box:2222",
+            "ssh://me@box\u{7f}",
+        ] {
+            let c = ssh_context("x", endpoint);
+            assert_eq!(c.alias, None, "{endpoint:?}");
+            assert_eq!(
+                c.reason.as_deref(),
+                Some("has invalid characters"),
+                "{endpoint:?}"
+            );
+            assert_eq!(c.snippet, None, "{endpoint:?}");
         }
     }
 
