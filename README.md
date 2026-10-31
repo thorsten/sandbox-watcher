@@ -67,6 +67,8 @@ quit from the tray menu. Settings (refresh interval, runtime, terminal,
 notifications, launch at login, theme) are in the window's Settings panel and
 stored as `settings.json` in the app's config directory.
 
+If no containers show up, see [Troubleshooting](docs/TROUBLESHOOTING.md).
+
 ## Layout
 
 | Path                  | What                                                                                                                               |
