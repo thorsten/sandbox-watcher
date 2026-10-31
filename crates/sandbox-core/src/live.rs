@@ -4,9 +4,13 @@
 //! Selection follows sandbox: a `runtime` set in sandbox's user config (or
 //! `SANDBOX_WATCHER_RUNTIME`) pins one runtime; otherwise every detected
 //! runtime is used and containers from all of them are shown together.
+//!
+//! Remote hosts from settings are connected in the background (see
+//! [`crate::remote_hosts`]); their adapters sit next to the local ones.
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use futures::StreamExt;
 
@@ -18,8 +22,14 @@ use crate::endpoints;
 use crate::host::{Host, RuntimeId, parse_container_key};
 use crate::model::{RuntimeEvent, RuntimeEventKind, RuntimeKind};
 use crate::network::DIAGNOSTIC_COMMAND_PREFIX;
-use crate::overview::{DataSource, HostedAdapter, Overview, RuntimeStatus, load_many};
+use crate::overview::{
+    DataSource, HostedAdapter, Overview, RuntimeFailure, RuntimeStatus, load_many_with_failures,
+};
+use crate::remote_hosts::{RemoteHosts, Wake};
 use crate::sandbox::PROBE_SENTINEL;
+use crate::settings::RemoteHost;
+
+pub use crate::remote_hosts::{REMOTE_TIMEOUT, stale_snapshot, test_remote_host};
 
 /// Receives relevant runtime events, see [`is_relevant`].
 pub type Listener = Arc<dyn Fn(RuntimeEvent) + Send + Sync>;
@@ -38,6 +48,7 @@ pub struct LiveRuntime {
     listener: Mutex<Option<Listener>>,
     /// Runtime pinned by the user's settings; wins over env and sandbox config.
     preferred_override: Mutex<Option<RuntimeKind>>,
+    remotes: RemoteHosts,
 }
 
 /// Events worth a UI refresh. Our own probe and diagnostic execs and the
@@ -111,6 +122,27 @@ impl LiveRuntime {
     /// Pin a runtime from settings. `None` falls back to env and sandbox config.
     pub fn set_preferred(&self, kind: Option<RuntimeKind>) {
         *self.preferred_override.lock().expect("preferred poisoned") = kind;
+    }
+
+    /// Remote hosts from settings. Takes effect on the next refresh.
+    pub fn set_remote_hosts(&self, hosts: Vec<RemoteHost>) {
+        self.remotes.set_hosts(hosts);
+    }
+
+    /// Retry unreachable hosts on the next refresh ("Test connection").
+    pub fn reset_backoff(&self) {
+        self.remotes.reset_backoff();
+    }
+
+    /// The watcher's poll interval. A much longer gap between refreshes is
+    /// taken as a wake from sleep and resets the reconnect backoff.
+    pub fn set_poll_interval(&self, interval: Duration) {
+        self.remotes.set_poll_interval(interval);
+    }
+
+    /// Close every remote session. Call on quit.
+    pub async fn shutdown(&self) {
+        self.remotes.shutdown().await;
     }
 
     fn preferred(&self) -> Option<RuntimeKind> {
@@ -211,13 +243,10 @@ impl LiveRuntime {
         }
     }
 
-    /// Detect, connect what is missing, and load the overview across runtimes.
+    /// Detect, connect what is missing, and load the overview across runtimes
+    /// and remote hosts.
     pub async fn overview(self: &Arc<Self>) -> Overview {
         let candidates = detect(&Environment::current());
-        if candidates.is_empty() {
-            self.clear();
-            return Overview::not_detected(DataSource::Live);
-        }
         let selected = select_candidates(candidates.clone(), self.preferred());
 
         // Drop adapters for runtimes that are no longer selected.
@@ -253,17 +282,92 @@ impl LiveRuntime {
             }
         }
 
-        self.load_connected(candidates).await
+        let (overview, connected) = self
+            .remotes
+            .refresh(self.wake(), |remote| async move {
+                self.sync_remote_adapters(&remote);
+                self.load_reporting(candidates).await
+            })
+            .await;
+        self.sync_remote_adapters(&connected);
+        overview
+    }
+
+    /// Asks the listener for a refresh once a background connection finished.
+    fn wake(&self) -> Option<Wake> {
+        let listener = self.listener.lock().expect("listener poisoned").clone()?;
+        Some(Arc::new(move || {
+            listener(RuntimeEvent {
+                at: chrono::Utc::now(),
+                container_id: String::new(),
+                container_name: None,
+                kind: RuntimeEventKind::Created,
+            })
+        }))
+    }
+
+    /// Make the installed remote adapters exactly `wanted`: drop the others,
+    /// install new ones (which also subscribes to their events).
+    fn sync_remote_adapters(self: &Arc<Self>, wanted: &[HostedAdapter]) {
+        let is_wanted = |id: &RuntimeId, adapter: &Arc<dyn RuntimeAdapter>| {
+            wanted.iter().any(|w| {
+                w.host == id.host && w.adapter.kind() == id.kind && Arc::ptr_eq(&w.adapter, adapter)
+            })
+        };
+        let (stale, missing): (Vec<RuntimeId>, Vec<HostedAdapter>) = {
+            let state = self.state.lock().expect("live state poisoned");
+            let stale = state
+                .adapters
+                .iter()
+                .filter(|(id, adapter)| !id.host.is_local() && !is_wanted(id, adapter))
+                .map(|(id, _)| id.clone())
+                .collect();
+            let missing = wanted
+                .iter()
+                .filter(|w| {
+                    let id = RuntimeId {
+                        host: w.host.clone(),
+                        kind: w.adapter.kind(),
+                    };
+                    !state
+                        .adapters
+                        .get(&id)
+                        .is_some_and(|a| Arc::ptr_eq(a, &w.adapter))
+                })
+                .cloned()
+                .collect();
+            (stale, missing)
+        };
+        for id in stale {
+            self.drop_adapter(&id);
+        }
+        for hosted in missing {
+            self.with_adapter(hosted.host, hosted.adapter);
+        }
     }
 
     /// Load the overview from the connected adapters, forget the ones that
     /// failed, and remember which adapter owns which container.
     pub async fn load_connected(self: &Arc<Self>, candidates: Vec<DetectedRuntime>) -> Overview {
+        self.load_reporting(candidates).await.0
+    }
+
+    async fn load_reporting(
+        self: &Arc<Self>,
+        candidates: Vec<DetectedRuntime>,
+    ) -> (Overview, Vec<RuntimeFailure>) {
         let adapters = self.adapters();
         if adapters.is_empty() {
-            return Overview::detected_only(candidates);
+            self.clear();
+            let overview = if candidates.is_empty() {
+                Overview::not_detected(DataSource::Live)
+            } else {
+                Overview::detected_only(candidates)
+            };
+            return (overview, vec![]);
         }
-        let overview = load_many(&adapters, DataSource::Live, candidates).await;
+        let (overview, failures) =
+            load_many_with_failures(&adapters, DataSource::Live, candidates).await;
 
         // Forget adapters that failed so they are reconnected next time, and
         // remember which adapter owns which container.
@@ -291,7 +395,7 @@ impl LiveRuntime {
             }
             _ => self.clear(),
         }
-        overview
+        (overview, failures)
     }
 
     fn clear(&self) {
@@ -313,6 +417,7 @@ mod tests {
 
     use super::*;
     use crate::mock::MockAdapter;
+    use crate::overview::ContainerOverview;
 
     fn event(kind: RuntimeEventKind) -> RuntimeEvent {
         RuntimeEvent {
@@ -420,5 +525,50 @@ mod tests {
         let (_, id) = live.adapter_for(&prefix).expect("prefix on same host");
         assert!(id.starts_with(&prefix));
         assert!(live.adapter_for(&format!("devbox/{prefix}")).is_none());
+    }
+
+    fn test_container(key: &str) -> ContainerOverview {
+        let (host, id) = parse_container_key(key);
+        ContainerOverview {
+            container: crate::model::SandboxContainer {
+                id: id.clone(),
+                name: format!("sandbox-{id}"),
+                project_slug: id,
+                image: "sandbox:latest".into(),
+                state: crate::model::ContainerState::Running,
+                created_at: None,
+                started_at: None,
+                config_hash: None,
+                labels: Default::default(),
+            },
+            host,
+            key: key.into(),
+            runtime: RuntimeKind::Docker,
+            readiness: crate::model::Readiness::Ready,
+            sessions: vec![crate::model::Session {
+                pid: 7,
+                command: "claude".into(),
+                agent: crate::model::AgentKind::ClaudeCode,
+            }],
+            last_seen_at: None,
+        }
+    }
+
+    #[test]
+    fn unreachable_host_keeps_last_snapshot_greyed() {
+        let mut c = test_container("devbox/c1");
+        c.last_seen_at = None;
+        let since = chrono::Utc::now();
+        let kept = stale_snapshot(&[c], since);
+        assert_eq!(kept[0].last_seen_at, Some(since));
+        assert!(
+            kept[0].sessions.is_empty(),
+            "no live sessions claimed while unreachable"
+        );
+    }
+
+    #[test]
+    fn remote_timeout_is_ten_seconds() {
+        assert_eq!(REMOTE_TIMEOUT, Duration::from_secs(10));
     }
 }

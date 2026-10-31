@@ -12,6 +12,7 @@ use crate::host::Host;
 use crate::model::{AgentKind, NetworkStatus};
 use crate::network::NetworkReport;
 use crate::overview::{ContainerOverview, Overview};
+use crate::remote::HostState;
 use crate::settings::NotificationSettings;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -107,11 +108,29 @@ pub fn diff(
     }
     let before = by_id(previous);
     let after = by_id(next);
+    // Hosts that were connecting or unreachable last round: their containers
+    // appearing now is a (re)connect, not a start.
+    let was_offline: HashSet<&str> = previous
+        .hosts
+        .iter()
+        .filter(|h| h.state != HostState::Connected)
+        .map(|h| h.alias.as_str())
+        .collect();
 
     for (id, now) in &after {
+        // A greyed-out snapshot of an unreachable host, or the first round
+        // after it came back: nothing here is a real change.
+        if now.last_seen_at.is_some() {
+            continue;
+        }
         let name = &now.container.name;
         match before.get(id) {
             None => {
+                if let Host::Remote(alias) = &now.host
+                    && was_offline.contains(alias.as_str())
+                {
+                    continue;
+                }
                 if settings.container_started && now.container.state.is_running() {
                     out.push(Notification {
                         kind: NotificationKind::ContainerStarted,
@@ -125,6 +144,9 @@ pub fn diff(
                 }
             }
             Some(was) => {
+                if was.last_seen_at.is_some() {
+                    continue;
+                }
                 let was_running = was.container.state.is_running();
                 let is_running = now.container.state.is_running();
                 if !was_running && is_running && settings.container_started {
@@ -214,7 +236,9 @@ pub fn diff(
     if settings.stale_container {
         let was_stale = stale_ids(previous);
         for id in stale_ids(next).difference(&was_stale) {
-            if let Some(c) = after.get(id.as_str()) {
+            if let Some(c) = after.get(id.as_str())
+                && c.last_seen_at.is_none()
+            {
                 out.push(Notification {
                     kind: NotificationKind::StaleContainer,
                     title: titled(c, format!("Stale sandbox: {}", c.container.project_slug)),
@@ -409,12 +433,35 @@ mod tests {
         c
     }
 
+    fn running(id: &str, slug: &str) -> ContainerOverview {
+        ContainerOverview {
+            container: crate::model::SandboxContainer {
+                id: id.into(),
+                name: format!("sandbox-{slug}"),
+                project_slug: slug.into(),
+                image: "sandbox:latest".into(),
+                state: crate::model::ContainerState::Running,
+                created_at: None,
+                started_at: None,
+                config_hash: None,
+                labels: Default::default(),
+            },
+            host: Host::Local,
+            key: id.into(),
+            runtime: RuntimeKind::Docker,
+            readiness: crate::model::Readiness::Ready,
+            sessions: vec![],
+            last_seen_at: None,
+        }
+    }
+
     fn overview_with(containers: Vec<ContainerOverview>) -> Overview {
         Overview {
             source: DataSource::Mock,
             runtime: crate::overview::RuntimeStatus::NotDetected,
             containers,
             tested_sandbox_version: String::new(),
+            hosts: vec![],
         }
     }
 
@@ -449,5 +496,48 @@ mod tests {
         let mut b = remote(running_template().await, "devbox");
         b.container.config_hash = Some("bbbbbbbbbbbb".into());
         assert!(stale_ids(&overview_with(vec![a, b])).is_empty());
+    }
+
+    #[test]
+    fn unreachable_hosts_do_not_notify() {
+        let mut c = remote(running("c1", "web-shop"), "devbox");
+        c.sessions = vec![Session {
+            pid: 42,
+            command: "claude".into(),
+            agent: AgentKind::ClaudeCode,
+        }];
+        let before = overview_with(vec![c.clone()]);
+        let mut gone = c.clone();
+        gone.last_seen_at = Some(chrono::Utc::now());
+        gone.sessions.clear();
+        let during = overview_with(vec![gone.clone()]);
+        assert!(diff(&before, &during, &NotificationSettings::default()).is_empty());
+        // Coming back with the same running container is not "started".
+        assert!(diff(&during, &before, &NotificationSettings::default()).is_empty());
+    }
+
+    #[test]
+    fn containers_missing_from_an_unreachable_host_do_not_notify() {
+        let a = remote(running("c1", "web-shop"), "devbox");
+        let b = remote(running("c2", "billing"), "devbox");
+        let before = overview_with(vec![a.clone(), b]);
+        let mut greyed = a;
+        greyed.last_seen_at = Some(chrono::Utc::now());
+        let during = overview_with(vec![greyed]);
+        assert!(diff(&before, &during, &NotificationSettings::default()).is_empty());
+    }
+
+    #[test]
+    fn first_connect_of_a_host_does_not_report_starts() {
+        let mut before = overview_with(vec![]);
+        before.hosts = vec![crate::remote::HostStatus {
+            alias: "devbox".into(),
+            display_name: "devbox".into(),
+            state: HostState::Connecting,
+            runtimes: vec![],
+            probes: vec![],
+        }];
+        let after = overview_with(vec![remote(running("c1", "web-shop"), "devbox")]);
+        assert!(diff(&before, &after, &NotificationSettings::default()).is_empty());
     }
 }

@@ -71,6 +71,8 @@ impl Watcher {
         } else {
             let live = Arc::new(LiveRuntime::new());
             live.set_preferred(settings.runtime_override);
+            live.set_remote_hosts(settings.remote_hosts.clone());
+            live.set_poll_interval(Duration::from_secs(settings.poll_interval_secs));
             Mode::Live(live)
         };
         let (trigger, rx) = mpsc::channel(16);
@@ -99,10 +101,27 @@ impl Watcher {
     pub fn apply_settings(&self, settings: Settings) {
         if let Mode::Live(live) = &self.mode {
             live.set_preferred(settings.runtime_override);
+            live.set_remote_hosts(settings.remote_hosts.clone());
+            live.set_poll_interval(Duration::from_secs(settings.poll_interval_secs));
         }
         *self.settings.write().expect("settings poisoned") = settings.clone();
         let _ = self.app.emit(SETTINGS_UPDATED, &settings);
         self.poke();
+    }
+
+    /// Retry unreachable remote hosts now. Does nothing in mock mode.
+    pub fn reset_backoff(&self) {
+        if let Mode::Live(live) = &self.mode {
+            live.reset_backoff();
+            self.poke();
+        }
+    }
+
+    /// Close remote sessions. Call once on exit.
+    pub async fn shutdown(&self) {
+        if let Mode::Live(live) = &self.mode {
+            live.shutdown().await;
+        }
     }
 
     pub fn overview(&self) -> Option<Overview> {

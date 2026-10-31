@@ -50,6 +50,12 @@ describe("api command names and arguments", () => {
     ["install update", () => api.installUpdate(), "install_update", undefined],
     ["version", () => api.appVersion(), "app_version", undefined],
     [
+      "test remote host",
+      () => api.testRemoteHost("devbox"),
+      "test_remote_host",
+      { alias: "devbox" },
+    ],
+    [
       "editor project",
       () => api.openInEditor("c1"),
       "open_in_editor",

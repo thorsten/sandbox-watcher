@@ -103,7 +103,28 @@ export interface Overview {
   runtime: RuntimeStatus;
   containers: SandboxContainer[];
   tested_sandbox_version: string;
+  /** Configured remote hosts and their connection state. */
+  hosts: HostStatus[];
 }
+
+export interface RemoteHost {
+  alias: string;
+  display_name: string | null;
+  enabled: boolean;
+}
+
+export type HostState =
+  | { state: "disabled" }
+  | { state: "connecting" }
+  | { state: "connected" }
+  | { state: "unreachable"; reason: string; since: string };
+
+export type HostStatus = HostState & {
+  alias: string;
+  display_name: string;
+  runtimes: RuntimeKind[];
+  probes: string[];
+};
 
 export type NetworkStatus = "allowed" | "blocked";
 export type NetworkSource = "firewall" | "dns" | "proxy-access";
@@ -210,6 +231,7 @@ export interface Settings {
   prices: Record<string, ModelPrice>;
   check_for_updates: boolean;
   editor: EditorChoice;
+  remote_hosts: RemoteHost[];
 }
 
 export interface ProcessInfo {

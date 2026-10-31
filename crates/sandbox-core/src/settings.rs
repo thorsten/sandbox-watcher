@@ -30,6 +30,21 @@ pub enum TerminalChoice {
     Custom(String),
 }
 
+/// A machine reached through the user's own `ssh`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemoteHost {
+    /// Alias from `~/.ssh/config`, or `user@host`.
+    pub alias: String,
+    #[serde(default)]
+    pub display_name: Option<String>,
+    #[serde(default = "enabled_by_default")]
+    pub enabled: bool,
+}
+
+fn enabled_by_default() -> bool {
+    true
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, rename_all = "snake_case")]
 pub struct NotificationSettings {
@@ -86,6 +101,8 @@ pub struct Settings {
     pub check_for_updates: bool,
     /// Where Open in editor sends files and folders.
     pub editor: EditorChoice,
+    /// Machines whose containers are shown next to the local ones.
+    pub remote_hosts: Vec<RemoteHost>,
 }
 
 impl Default for Settings {
@@ -107,6 +124,7 @@ impl Default for Settings {
             prices: default_prices(),
             check_for_updates: true,
             editor: EditorChoice::System,
+            remote_hosts: vec![],
         }
     }
 }
@@ -133,6 +151,11 @@ impl Settings {
         {
             self.terminal = TerminalChoice::Auto;
         }
+        // Invalid aliases could inject ssh options; duplicates would share a connection.
+        let mut seen = std::collections::HashSet::new();
+        self.remote_hosts.retain(|h| {
+            crate::host::validate_alias(&h.alias).is_ok() && seen.insert(h.alias.clone())
+        });
         self
     }
 
@@ -222,6 +245,46 @@ mod tests {
         }
         .with_env_fallbacks(Some("podman"), None);
         assert_eq!(pinned.runtime_override, Some(RuntimeKind::Docker));
+    }
+
+    #[test]
+    fn remote_hosts_default_empty_and_are_normalised() {
+        let old: Settings = serde_json::from_str(r#"{"poll_interval_secs":10}"#).unwrap();
+        assert!(
+            old.remote_hosts.is_empty(),
+            "0.5 settings load without remote hosts"
+        );
+
+        let s = Settings {
+            remote_hosts: vec![
+                RemoteHost {
+                    alias: "devbox".into(),
+                    display_name: None,
+                    enabled: true,
+                },
+                RemoteHost {
+                    alias: "devbox".into(),
+                    display_name: Some("dup".into()),
+                    enabled: true,
+                },
+                RemoteHost {
+                    alias: "-oProxyCommand=x".into(),
+                    display_name: None,
+                    enabled: true,
+                },
+            ],
+            ..Settings::default()
+        }
+        .normalised();
+        assert_eq!(s.remote_hosts.len(), 1);
+        assert_eq!(s.remote_hosts[0].alias, "devbox");
+    }
+
+    #[test]
+    fn remote_host_enabled_defaults_to_true() {
+        let s = Settings::from_json(r#"{"remote_hosts":[{"alias":"devbox"}]}"#);
+        assert!(s.remote_hosts[0].enabled);
+        assert_eq!(s.remote_hosts[0].display_name, None);
     }
 
     #[test]

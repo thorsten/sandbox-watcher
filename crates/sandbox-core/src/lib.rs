@@ -29,6 +29,7 @@ pub mod notify;
 pub mod overview;
 pub mod paths;
 pub mod remote;
+pub mod remote_hosts;
 pub mod runner;
 pub mod sandbox;
 pub mod sessions;

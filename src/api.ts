@@ -12,6 +12,7 @@ import type {
   StopResult,
   UpdateInfo,
   DetectedRuntime,
+  HostStatus,
   NetworkReport,
   Overview,
   ResourceSample,
@@ -162,6 +163,11 @@ export function openInEditor(containerKey: string, path?: string): Promise<strin
 
 export function detectRuntimes(): Promise<DetectedRuntime[]> {
   return invoke<DetectedRuntime[]>("detect_runtimes");
+}
+
+/** Open a throwaway connection to a remote host and report what it found. */
+export function testRemoteHost(alias: string): Promise<HostStatus> {
+  return invoke<HostStatus>("test_remote_host", { alias });
 }
 
 export function appVersion(): Promise<string> {

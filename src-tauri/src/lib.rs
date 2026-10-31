@@ -25,10 +25,11 @@ use sandbox_core::model::AgentKind;
 use sandbox_core::model::{ContainerDetails, ResourceSample};
 use sandbox_core::network::NetworkReport;
 use sandbox_core::overview::Overview;
+use sandbox_core::remote::HostStatus;
 use sandbox_core::settings::{Settings, TerminalChoice};
 use sandbox_core::turns::TurnReport;
 use tauri::menu::MenuEvent;
-use tauri::{AppHandle, Manager, State, WindowEvent};
+use tauri::{AppHandle, Manager, RunEvent, State, WindowEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt as AutostartExt};
 use tauri_plugin_opener::OpenerExt;
 use watcher::{Mode, Watcher};
@@ -545,6 +546,16 @@ async fn install_update(app: AppHandle) -> Result<(), String> {
     updates::install(&app).await
 }
 
+/// Open a throwaway connection to a host, report what it found, and retry
+/// unreachable hosts right away.
+#[tauri::command]
+async fn test_remote_host(state: State<'_, App>, alias: String) -> Result<HostStatus, String> {
+    sandbox_core::host::validate_alias(&alias)?;
+    let status = sandbox_core::live::test_remote_host(&alias).await;
+    state.reset_backoff();
+    Ok(status)
+}
+
 #[tauri::command]
 fn detect_runtimes() -> Vec<DetectedRuntime> {
     detect(&Environment::current())
@@ -649,10 +660,20 @@ pub fn run() {
             check_for_update,
             install_update,
             detect_runtimes,
+            test_remote_host,
             app_version
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Sandbox Watcher");
+        .build(tauri::generate_context!())
+        .expect("error while building Sandbox Watcher")
+        .run(|app, event| {
+            if let RunEvent::Exit = event
+                && let Some(watcher) = app.try_state::<App>()
+            {
+                // Close ssh master connections and their private socket directory.
+                let watcher = watcher.inner().clone();
+                tauri::async_runtime::block_on(watcher.shutdown());
+            }
+        });
 }
 
 #[cfg(test)]

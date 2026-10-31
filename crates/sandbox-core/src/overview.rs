@@ -2,6 +2,7 @@
 //! is inside them.
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
@@ -10,6 +11,8 @@ use crate::adapter::{Capabilities, ContainerFilter, RuntimeAdapter};
 use crate::detect::DetectedRuntime;
 use crate::host::{Host, container_key};
 use crate::model::{Readiness, RuntimeInfo, RuntimeKind, SandboxContainer, Session};
+use crate::remote::HostStatus;
+use crate::remote_hosts::REMOTE_TIMEOUT;
 use crate::sandbox::TESTED_SANDBOX_VERSION;
 use crate::sessions::probe_container;
 
@@ -85,6 +88,9 @@ pub struct Overview {
     pub runtime: RuntimeStatus,
     pub containers: Vec<ContainerOverview>,
     pub tested_sandbox_version: String,
+    /// Configured remote hosts and their connection state.
+    #[serde(default)]
+    pub hosts: Vec<HostStatus>,
 }
 
 impl Overview {
@@ -98,6 +104,7 @@ impl Overview {
             runtime,
             containers,
             tested_sandbox_version: TESTED_SANDBOX_VERSION.into(),
+            hosts: vec![],
         }
     }
 
@@ -145,7 +152,29 @@ struct RuntimeLoad {
     containers: Vec<ContainerOverview>,
 }
 
-async fn load_one(hosted: HostedAdapter) -> std::result::Result<RuntimeLoad, RuntimeFailure> {
+/// Load one runtime, giving up after `timeout` if one is set.
+async fn load_one(
+    hosted: HostedAdapter,
+    timeout: Option<Duration>,
+) -> std::result::Result<RuntimeLoad, RuntimeFailure> {
+    let Some(limit) = timeout else {
+        return load_runtime(hosted).await;
+    };
+    let host = hosted.host.clone();
+    let kind = hosted.adapter.kind();
+    tokio::time::timeout(limit, load_runtime(hosted))
+        .await
+        .unwrap_or_else(|_| {
+            Err(RuntimeFailure {
+                host,
+                kind,
+                endpoint: String::new(),
+                reason: format!("no answer within {}s", limit.as_secs()),
+            })
+        })
+}
+
+async fn load_runtime(hosted: HostedAdapter) -> std::result::Result<RuntimeLoad, RuntimeFailure> {
     let HostedAdapter { host, adapter } = hosted;
     let failure = |endpoint: String, reason: String| RuntimeFailure {
         host: host.clone(),
@@ -207,7 +236,25 @@ pub async fn load_many(
     source: DataSource,
     candidates: Vec<DetectedRuntime>,
 ) -> Overview {
-    let results = futures::future::join_all(adapters.iter().cloned().map(load_one)).await;
+    load_many_with_failures(adapters, source, candidates)
+        .await
+        .0
+}
+
+/// [`load_many`], also returning every runtime that failed, even when none
+/// answered and the overview only carries the joined reasons. Remote
+/// runtimes get [`REMOTE_TIMEOUT`] each, so a slow host cannot hold up the
+/// others.
+pub async fn load_many_with_failures(
+    adapters: &[HostedAdapter],
+    source: DataSource,
+    candidates: Vec<DetectedRuntime>,
+) -> (Overview, Vec<RuntimeFailure>) {
+    let loads = adapters.iter().cloned().map(|hosted| {
+        let timeout = (!hosted.host.is_local()).then_some(REMOTE_TIMEOUT);
+        load_one(hosted, timeout)
+    });
+    let results = futures::future::join_all(loads).await;
     let mut runtimes = Vec::new();
     let mut failures = Vec::new();
     let mut containers = Vec::new();
@@ -233,12 +280,31 @@ pub async fn load_many(
             })
             .collect::<Vec<_>>()
             .join("; ");
-        return Overview::with(
-            source,
-            RuntimeStatus::Unavailable { candidates, reason },
-            vec![],
+        return (
+            Overview::with(
+                source,
+                RuntimeStatus::Unavailable { candidates, reason },
+                vec![],
+            ),
+            failures,
         );
     }
+    sort_containers(&mut containers);
+    (
+        Overview::with(
+            source,
+            RuntimeStatus::Connected {
+                runtimes,
+                failures: failures.clone(),
+            },
+            containers,
+        ),
+        failures,
+    )
+}
+
+/// Running first, then by host (local first), runtime order, then name.
+pub(crate) fn sort_containers(containers: &mut [ContainerOverview]) {
     containers.sort_by(|a, b| {
         b.container
             .state
@@ -248,11 +314,6 @@ pub async fn load_many(
             .then_with(|| a.runtime.as_str().cmp(b.runtime.as_str()))
             .then_with(|| a.container.name.cmp(&b.container.name))
     });
-    Overview::with(
-        source,
-        RuntimeStatus::Connected { runtimes, failures },
-        containers,
-    )
 }
 
 /// Single-runtime convenience over [`load_many`].

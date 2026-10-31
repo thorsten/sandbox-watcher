@@ -133,6 +133,7 @@ export function settings(partial: Partial<Settings> = {}): Settings {
     prices: { "claude-sonnet-4": { input: 3, output: 15, cache_read: 0.3, cache_write: 3.75 } },
     check_for_updates: true,
     editor: { kind: "system" },
+    remote_hosts: [],
     ...partial,
   };
 }
