@@ -9,7 +9,7 @@ A cross-platform desktop app that shows what is happening in your running
 which projects have a sandbox up, which agents run inside, what they reach
 on the network, and what they consume.
 
-Status: 0.1.0, all milestones implemented, unsigned builds. See [`docs/MILESTONES.md`](docs/MILESTONES.md)
+Status: 0.4.0, all milestones implemented. macOS releases after 0.4.0 are signed and notarised. See [`docs/MILESTONES.md`](docs/MILESTONES.md)
 for the plan and [`docs/adr/`](docs/adr/) for decisions.
 
 ## What you see
@@ -52,13 +52,13 @@ directory are opened.
 
 Download the latest build from the
 [releases page](https://github.com/thorsten/sandbox-watcher/releases/latest)
-or the [project site](https://thorsten.github.io/sandbox-watcher/). Builds are
-not signed yet:
+or the [project site](https://thorsten.github.io/sandbox-watcher/).
 
-- **macOS:** open the `.dmg`, drag the app to Applications, then run
-  `xattr -dr com.apple.quarantine "/Applications/Sandbox Watcher.app"` once,
-  or right-click the app and choose _Open_.
-- **Windows:** run the `.msi` or `-setup.exe`; on the SmartScreen prompt choose
+- **macOS:** open the `.dmg` and drag the app to Applications. The app is
+  signed and notarised by Apple. Releases up to 0.4.0 are unsigned; for those,
+  run `xattr -dr com.apple.quarantine "/Applications/Sandbox Watcher.app"`
+  once, or right-click the app and choose _Open_.
+- **Windows:** not signed yet. Run the `.msi` or `-setup.exe`; on the SmartScreen prompt choose
   _More info_, then _Run anyway_.
 - **Linux:** install the `.deb` or `.rpm`, or `chmod +x` the `.AppImage`.
 

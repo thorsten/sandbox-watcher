@@ -327,7 +327,11 @@
             </div>
             <details>
               <summary>First launch</summary>
-              <p>Drag the app to Applications, then run once:</p>
+              <p>
+                Drag the app to Applications and open it. The app is signed and notarised by Apple,
+                so macOS opens it without warnings.
+              </p>
+              <p>Releases up to 0.4.0 are unsigned. For those, run once:</p>
               <pre>xattr -dr com.apple.quarantine "/Applications/Sandbox Watcher.app"</pre>
               <p>or right-click the app and choose <em>Open</em>.</p>
             </details>
@@ -421,10 +425,11 @@
             </p>
           </details>
           <details>
-            <summary>Why are the builds unsigned?</summary>
+            <summary>Are the builds signed?</summary>
             <p>
-              Code signing and notarisation need paid developer certificates. They are planned;
-              until then the first launch needs the usual one-time confirmation, described above.
+              The macOS build is signed with a Developer ID and notarised by Apple. Windows and
+              Linux builds are not signed yet, so Windows shows a one-time SmartScreen prompt,
+              described above.
             </p>
           </details>
           <details>
