@@ -28,3 +28,8 @@ Thumbs.db
 
 # Personal Claude Code overrides
 .claude/settings.local.json
+
+# Signing certificates: never commit
+*.p12
+*.p8
+*.cer
