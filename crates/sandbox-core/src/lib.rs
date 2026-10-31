@@ -19,6 +19,7 @@ pub mod endpoints;
 pub mod error;
 pub mod files;
 pub mod history;
+pub mod host;
 pub mod live;
 pub mod mock;
 pub mod model;
