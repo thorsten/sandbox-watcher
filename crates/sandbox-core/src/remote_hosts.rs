@@ -8,11 +8,12 @@
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use futures::future::BoxFuture;
 use tokio::task::{AbortHandle, JoinHandle};
+use tokio::time::Instant;
 
 use crate::host::{Host, validate_alias};
 use crate::model::RuntimeKind;
@@ -185,6 +186,10 @@ struct RemoteConnection {
     /// A connection attempt running in the background.
     connecting: Option<JoinHandle<ConnectResult>>,
     last_containers: Vec<ContainerOverview>,
+    /// Runtimes that failed while the host stayed up. Not loaded until
+    /// `parked_until`, which follows the host's backoff.
+    parked: Vec<HostedAdapter>,
+    parked_until: Option<Instant>,
 }
 
 impl RemoteConnection {
@@ -210,6 +215,8 @@ impl RemoteConnection {
             retry_at: None,
             connecting: None,
             last_containers: vec![],
+            parked: vec![],
+            parked_until: None,
         }
     }
 
@@ -219,6 +226,21 @@ impl RemoteConnection {
 
     fn is_connected(&self) -> bool {
         self.status.state == HostState::Connected
+    }
+
+    /// Put parked runtimes back once their backoff delay has passed.
+    fn unpark_when_due(&mut self) {
+        if self.parked.is_empty() || self.parked_until.is_some_and(|at| Instant::now() < at) {
+            return;
+        }
+        self.adapters.append(&mut self.parked);
+        self.parked_until = None;
+        self.status.runtimes = kinds(&self.adapters);
+    }
+
+    fn clear_parked(&mut self) {
+        self.parked.clear();
+        self.parked_until = None;
     }
 }
 
@@ -319,9 +341,10 @@ impl RemoteHosts {
     /// One refresh round: apply settings, collect or start connection
     /// attempts, then check live sessions while `load` runs with the adapters
     /// of connected hosts, each bounded by [`REMOTE_TIMEOUT`]. Hosts whose
-    /// session died or whose runtimes all failed become unreachable; greyed
-    /// snapshots and the host list are added to the overview. Returns the
-    /// overview and the adapters of the hosts still connected afterwards.
+    /// session died or whose runtimes all failed become unreachable; a runtime
+    /// that fails alone is parked and loaded again after the host's backoff.
+    /// Greyed snapshots and the host list are added to the overview. Returns
+    /// the overview and the adapters of the hosts still connected afterwards.
     pub async fn refresh<F, Fut>(
         &self,
         wake: Option<Wake>,
@@ -343,6 +366,7 @@ impl RemoteHosts {
             for c in list.iter_mut() {
                 c.backoff.reset();
                 c.retry_at = None;
+                c.parked_until = None;
             }
         }
 
@@ -352,6 +376,9 @@ impl RemoteHosts {
                 .map(|c| self.advance(c, wake.clone())),
         )
         .await;
+        for c in list.iter_mut().filter(|c| c.is_connected()) {
+            c.unpark_when_due();
+        }
 
         // Checks run next to the loads, so a round takes at most
         // REMOTE_TIMEOUT longer than the local load.
@@ -401,13 +428,20 @@ impl RemoteHosts {
                     .join("; ");
                 self.mark_unreachable(c, reason);
             } else {
-                // Keep the host; drop only the failed runtimes until the
-                // next connect detects them again.
-                c.adapters.retain(|a| !is_failed(a));
+                // Keep the host; park the failed runtimes and try them again
+                // after the host's backoff, not every round.
+                let (down, up): (Vec<_>, Vec<_>) = std::mem::take(&mut c.adapters)
+                    .into_iter()
+                    .partition(is_failed);
+                c.adapters = up;
+                c.parked.extend(down);
+                c.parked_until = Some(Instant::now() + c.backoff.next_delay());
                 c.status.runtimes = kinds(&c.adapters);
-                c.status
-                    .probes
-                    .extend(failed.iter().map(|f| format!("{}: {}", f.kind, f.reason)));
+                for line in failed.iter().map(|f| format!("{}: {}", f.kind, f.reason)) {
+                    if !c.status.probes.contains(&line) {
+                        c.status.probes.push(line);
+                    }
+                }
             }
         }
 
@@ -558,6 +592,11 @@ impl RemoteHosts {
         connects.retain(|h| !h.is_finished());
         connects.push(handle.abort_handle());
         drop(connects);
+        // Shutdown may have drained the list between the check above and the
+        // push; it would never see this attempt, so abort it here.
+        if self.shut_down.load(Ordering::SeqCst) {
+            handle.abort();
+        }
         c.connecting = Some(handle);
     }
 
@@ -577,6 +616,7 @@ impl RemoteHosts {
         c.session = Some(session);
         c.status.runtimes = kinds(&adapters);
         c.adapters = adapters;
+        c.clear_parked();
         c.status.state = HostState::Connected;
         c.status.probes = detection.probes;
         c.backoff.reset();
@@ -589,6 +629,7 @@ impl RemoteHosts {
             self.close_in_background(session);
         }
         c.adapters.clear();
+        c.clear_parked();
         c.status.runtimes.clear();
         let since = match &c.status.state {
             HostState::Unreachable { since, .. } => *since,
@@ -989,8 +1030,35 @@ mod tests {
         assert_eq!(remotes.open_sessions(), 0);
     }
 
-    #[tokio::test]
-    async fn partially_failing_host_drops_only_the_failed_runtime() {
+    /// A round in which Docker on `devbox` fails while everything else loads.
+    async fn round_docker_fails(remotes: &RemoteHosts) -> (Overview, Vec<HostedAdapter>) {
+        remotes
+            .refresh(None, |adapters| async move {
+                let (overview, _) =
+                    load_many_with_failures(&adapters, DataSource::Mock, vec![]).await;
+                let failures = adapters
+                    .iter()
+                    .filter(|a| a.adapter.kind() == RuntimeKind::Docker)
+                    .map(|a| RuntimeFailure {
+                        host: a.host.clone(),
+                        kind: RuntimeKind::Docker,
+                        endpoint: String::new(),
+                        reason: "boom".into(),
+                    })
+                    .collect();
+                (overview, failures)
+            })
+            .await
+    }
+
+    fn kinds_of(adapters: &[HostedAdapter]) -> Vec<RuntimeKind> {
+        let mut kinds: Vec<_> = adapters.iter().map(|a| a.adapter.kind()).collect();
+        kinds.sort_by_key(|k| k.as_str());
+        kinds
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn failed_runtime_on_a_live_host_is_retried_after_the_backoff() {
         let (script, remotes) = setup();
         script.two_runtimes.store(true, Ordering::SeqCst);
         remotes.set_hosts(vec![host("devbox")]);
@@ -999,19 +1067,7 @@ mod tests {
         let (_, adapters) = round(&remotes).await;
         assert_eq!(adapters.len(), 2);
 
-        let (overview, adapters) = remotes
-            .refresh(None, |adapters| async move {
-                let (overview, _) =
-                    load_many_with_failures(&adapters, DataSource::Mock, vec![]).await;
-                let failures = vec![RuntimeFailure {
-                    host: Host::Remote("devbox".into()),
-                    kind: RuntimeKind::Docker,
-                    endpoint: String::new(),
-                    reason: "boom".into(),
-                }];
-                (overview, failures)
-            })
-            .await;
+        let (overview, adapters) = round_docker_fails(&remotes).await;
         assert_eq!(state(&overview, "devbox"), HostState::Connected);
         assert_eq!(overview.hosts[0].runtimes, vec![RuntimeKind::Podman]);
         assert!(
@@ -1019,15 +1075,43 @@ mod tests {
                 .probes
                 .contains(&"docker: boom".to_string())
         );
-        let kinds: Vec<_> = adapters.iter().map(|a| a.adapter.kind()).collect();
-        assert_eq!(
-            kinds,
-            vec![RuntimeKind::Podman],
-            "docker is not reinstalled"
-        );
+        assert_eq!(kinds_of(&adapters), vec![RuntimeKind::Podman]);
 
+        // Within the backoff: not tried again every round.
         let (_, adapters) = round(&remotes).await;
-        assert_eq!(adapters.len(), 1, "stays dropped until the next connect");
+        assert_eq!(kinds_of(&adapters), vec![RuntimeKind::Podman]);
+
+        // After the first backoff step (5 s) Docker is back.
+        tokio::time::advance(Duration::from_secs(6)).await;
+        let (overview, adapters) = round(&remotes).await;
+        assert_eq!(
+            kinds_of(&adapters),
+            vec![RuntimeKind::Docker, RuntimeKind::Podman]
+        );
+        assert_eq!(kinds_of_status(&overview), kinds_of(&adapters));
+        assert!(
+            overview
+                .containers
+                .iter()
+                .any(|c| c.runtime == RuntimeKind::Docker),
+            "its containers show again"
+        );
+        assert_eq!(script.calls(), 1, "no reconnect was needed");
+
+        // A runtime failing again waits longer (10 s), the host stays up.
+        round_docker_fails(&remotes).await;
+        tokio::time::advance(Duration::from_secs(6)).await;
+        let (_, adapters) = round(&remotes).await;
+        assert_eq!(kinds_of(&adapters), vec![RuntimeKind::Podman]);
+        tokio::time::advance(Duration::from_secs(5)).await;
+        let (_, adapters) = round(&remotes).await;
+        assert_eq!(adapters.len(), 2);
+    }
+
+    fn kinds_of_status(overview: &Overview) -> Vec<RuntimeKind> {
+        let mut kinds = overview.hosts[0].runtimes.clone();
+        kinds.sort_by_key(|k| k.as_str());
+        kinds
     }
 
     #[tokio::test(start_paused = true)]
