@@ -16,6 +16,7 @@ import type {
   NetworkReport,
   Overview,
   ResourceSample,
+  SshContext,
   TurnReport,
 } from "./types";
 
@@ -168,6 +169,11 @@ export function detectRuntimes(): Promise<DetectedRuntime[]> {
 /** Open a throwaway connection to a remote host and report what it found. */
 export function testRemoteHost(alias: string): Promise<HostStatus> {
   return invoke<HostStatus>("test_remote_host", { alias });
+}
+
+/** The `ssh://` Docker contexts on this machine. Never connects to them. */
+export function listDockerSshContexts(): Promise<SshContext[]> {
+  return invoke<SshContext[]>("list_docker_ssh_contexts");
 }
 
 export function appVersion(): Promise<string> {

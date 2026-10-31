@@ -56,6 +56,12 @@ describe("api command names and arguments", () => {
       { alias: "devbox" },
     ],
     [
+      "list docker ssh contexts",
+      () => api.listDockerSshContexts(),
+      "list_docker_ssh_contexts",
+      undefined,
+    ],
+    [
       "editor project",
       () => api.openInEditor("c1"),
       "open_in_editor",

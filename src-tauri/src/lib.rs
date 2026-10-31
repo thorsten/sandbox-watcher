@@ -20,12 +20,14 @@ use sandbox_core::activity::ContainerActivity;
 use sandbox_core::adapter::LogOptions;
 use sandbox_core::allowlist::{AllowResult, ConfigTarget};
 use sandbox_core::detect::{DetectedRuntime, Environment, detect};
+use sandbox_core::endpoints::SshContext;
 use sandbox_core::history::{HistoryQuery, HistoryView};
 use sandbox_core::model::AgentKind;
 use sandbox_core::model::{ContainerDetails, ResourceSample};
 use sandbox_core::network::NetworkReport;
 use sandbox_core::overview::Overview;
 use sandbox_core::remote::HostStatus;
+use sandbox_core::runner::CommandRunner;
 use sandbox_core::settings::{Settings, TerminalChoice};
 use sandbox_core::turns::TurnReport;
 use tauri::menu::MenuEvent;
@@ -556,6 +558,19 @@ async fn test_remote_host(state: State<'_, App>, alias: String) -> Result<HostSt
     Ok(status)
 }
 
+/// The `ssh://` Docker contexts that can be imported as remote hosts.
+/// Reads only; nothing is connected or saved.
+#[tauri::command]
+async fn list_docker_ssh_contexts(state: State<'_, App>) -> Result<Vec<SshContext>, String> {
+    if matches!(state.mode, Mode::Mock(_)) {
+        return Ok(sandbox_core::mock::demo_ssh_contexts());
+    }
+    if cfg!(not(unix)) {
+        return Ok(vec![]);
+    }
+    Ok(sandbox_core::endpoints::docker_ssh_contexts(&CommandRunner::Local).await)
+}
+
 #[tauri::command]
 fn detect_runtimes() -> Vec<DetectedRuntime> {
     detect(&Environment::current())
@@ -661,6 +676,7 @@ pub fn run() {
             install_update,
             detect_runtimes,
             test_remote_host,
+            list_docker_ssh_contexts,
             app_version
         ])
         .build(tauri::generate_context!())

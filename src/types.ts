@@ -113,6 +113,16 @@ export interface RemoteHost {
   enabled: boolean;
 }
 
+/** A Docker context with an `ssh://` endpoint, offered for import. */
+export interface SshContext {
+  name: string;
+  endpoint: string;
+  /** Alias to add; null when the context needs an `~/.ssh/config` entry first. */
+  alias: string | null;
+  reason: string | null;
+  snippet: string | null;
+}
+
 export type HostState =
   | { state: "disabled" }
   | { state: "connecting" }
