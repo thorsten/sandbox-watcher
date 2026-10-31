@@ -1,16 +1,18 @@
 import { useState } from "react";
 import { stopAll } from "../api";
-import { confirmStopEnabled, describeInterruption } from "../actions";
+import { confirmStopEnabled, describeInterruptionByHost } from "../actions";
 import { stopResultLabel } from "../format";
 import { disableConfirmStop } from "../settingsActions";
-import type { SandboxContainer } from "../types";
+import type { HostStatus, SandboxContainer } from "../types";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 export function StopAllButton({
   running,
+  hosts = [],
   onChanged,
 }: {
   running: SandboxContainer[];
+  hosts?: HostStatus[];
   onChanged: () => void;
 }) {
   const [confirming, setConfirming] = useState(false);
@@ -53,7 +55,7 @@ export function StopAllButton({
       {confirming && (
         <ConfirmDialog
           title={`Stop all ${running.length} running sandbox containers?`}
-          lines={describeInterruption(running)}
+          lines={describeInterruptionByHost(running, hosts)}
           confirmLabel="Stop all"
           busy={busy}
           onCancel={() => setConfirming(false)}

@@ -77,6 +77,16 @@ impl MockAdapter {
         adapter
     }
 
+    /// What the mock mode shows for the remote host `devbox`: one running
+    /// container with a Claude Code session.
+    pub fn remote_demo() -> Self {
+        let adapter = Self::empty();
+        let mut container = mock_container("ml-pipeline", 1, "running", "a1b2c3d4e5f6");
+        container.details.container.id = "e5f6a7b8c9d0".into();
+        adapter.add(container);
+        adapter
+    }
+
     pub fn add(&self, container: MockContainer) {
         self.state
             .lock()
@@ -448,6 +458,19 @@ mod tests {
             .await
             .unwrap();
         assert!(billing.is_empty(), "billing-api is exited");
+    }
+
+    #[tokio::test]
+    async fn remote_demo_lists_one_running_container() {
+        let adapter = MockAdapter::remote_demo();
+        let all = adapter
+            .list_containers(&ContainerFilter::all())
+            .await
+            .unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].name, "sandbox-ml-pipeline");
+        assert_eq!(all[0].id, "e5f6a7b8c9d0");
+        assert!(all[0].state.is_running());
     }
 
     #[tokio::test]

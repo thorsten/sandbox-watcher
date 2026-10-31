@@ -36,6 +36,7 @@ export function NetworkPanel({ containerKey, report, now, onChanged }: Props) {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [allowOpen, setAllowOpen] = useState(false);
+  const remote = containerKey.includes("/");
   const selections = useMemo(
     () => selectionsFor(report?.entries ?? [], selected),
     [report, selected],
@@ -81,7 +82,7 @@ export function NetworkPanel({ containerKey, report, now, onChanged }: Props) {
           onChange={(e) => setSearch(e.target.value)}
           aria-label="Filter destinations"
         />
-        {selected.size > 0 && (
+        {!remote && selected.size > 0 && (
           <button type="button" className="primary" onClick={() => setAllowOpen(true)}>
             Allow {selected.size} selected…
           </button>
@@ -120,7 +121,7 @@ export function NetworkPanel({ containerKey, report, now, onChanged }: Props) {
             {entries.map((e) => (
               <tr key={`${e.destination}:${e.port}:${e.status}`}>
                 <td>
-                  {e.status === "blocked" && !isIp(e.destination) && (
+                  {!remote && e.status === "blocked" && !isIp(e.destination) && (
                     <input
                       type="checkbox"
                       aria-label={`Select ${e.destination}`}

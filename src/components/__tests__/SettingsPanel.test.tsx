@@ -43,7 +43,8 @@ describe("SettingsPanel", () => {
     const base = settings();
     const off = settings({ notifications: { ...base.notifications, enabled: false } });
     const { html } = render(<SettingsPanel settings={off} onSaved={noop} onClose={noop} />);
-    expect(count(html, 'disabled=""')).toBe(7);
+    // 7 toggles, plus the empty-alias Add and Test connection buttons of the remote hosts section.
+    expect(count(html, 'disabled=""')).toBe(9);
   });
 
   it("shows the custom terminal command field only for custom", () => {

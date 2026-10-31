@@ -1,6 +1,48 @@
-import { RUNTIME_LABELS, type RuntimeStatus } from "../types";
+import { RUNTIME_LABELS, type HostStatus, type RuntimeStatus } from "../types";
 
-export function RuntimeBanner({ runtime, compact }: { runtime: RuntimeStatus; compact?: boolean }) {
+/** One warning per unreachable remote host, with the probe report folded away. */
+function HostWarnings({ hosts }: { hosts: HostStatus[] }) {
+  const down = hosts.filter((h) => h.state === "unreachable");
+  if (down.length === 0) return null;
+  return (
+    <>
+      {down.map((h) => (
+        <section key={h.alias} className="banner banner-warn host-warning">
+          {h.display_name || h.alias}: {h.state === "unreachable" ? h.reason : ""}
+          {h.probes.length > 0 && (
+            <details>
+              <summary className="muted small">Probes</summary>
+              <ul>
+                {h.probes.map((p) => (
+                  <li key={p}>{p}</li>
+                ))}
+              </ul>
+            </details>
+          )}
+        </section>
+      ))}
+    </>
+  );
+}
+
+export function RuntimeBanner({
+  runtime,
+  hosts = [],
+  compact,
+}: {
+  runtime: RuntimeStatus;
+  hosts?: HostStatus[];
+  compact?: boolean;
+}) {
+  return (
+    <>
+      <RuntimeStatusBanner runtime={runtime} compact={compact} />
+      <HostWarnings hosts={hosts} />
+    </>
+  );
+}
+
+function RuntimeStatusBanner({ runtime, compact }: { runtime: RuntimeStatus; compact?: boolean }) {
   if (compact && runtime.status === "connected") {
     return (
       <div className="runtime-compact">

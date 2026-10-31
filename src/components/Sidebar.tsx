@@ -1,35 +1,70 @@
 import { AGENT_LABELS, formatUptime, groupByProject, staleHashes } from "../format";
+import { hostLabel, hostsInUse, isRemote } from "../hosts";
+import { formatRelative } from "../network";
 import {
   RUNTIME_LABELS,
+  type HostStatus,
   type NetworkReport,
   type RuntimeStatus,
   type SandboxContainer,
 } from "../types";
 import { RuntimeBanner } from "./RuntimeBanner";
 
+const thisMachine = navigator.platform.toLowerCase().includes("mac") ? "This Mac" : "This machine";
+
 interface Props {
   containers: SandboxContainer[];
   runtime: RuntimeStatus;
+  hosts: HostStatus[];
+  /** Host filter: `all`, `local` or an alias. Only shown with several hosts. */
+  hostFilter?: string;
+  onHostFilter?: (host: string) => void;
   network: NetworkReport[] | undefined;
   selectedId: string | null;
   onSelect: (id: string) => void;
   now: Date;
 }
 
-export function Sidebar({ containers, runtime, network, selectedId, onSelect, now }: Props) {
+export function Sidebar({
+  containers,
+  runtime,
+  hosts,
+  hostFilter = "all",
+  onHostFilter,
+  network,
+  selectedId,
+  onSelect,
+  now,
+}: Props) {
   const showRuntime = runtime.status === "connected" && runtime.runtimes.length > 1;
   const stale = staleHashes(containers);
   const blockedFor = (id: string) =>
     network?.find((r) => r.container_id === id)?.entries.filter((e) => e.status === "blocked")
       .length ?? 0;
 
+  const hostChoices = hostsInUse(containers);
   const groups = [...groupByProject(containers)];
   const running = groups.filter(([, g]) => g.some((c) => c.state === "running"));
   const stopped = groups.filter(([, g]) => g.every((c) => c.state !== "running"));
 
   return (
     <aside className="sidebar">
-      <RuntimeBanner runtime={runtime} compact />
+      <RuntimeBanner runtime={runtime} hosts={hosts} compact />
+      {hostChoices.length > 1 && (
+        <select
+          className="host-filter"
+          aria-label="Host filter"
+          value={hostFilter}
+          onChange={(e) => onHostFilter?.(e.target.value)}
+        >
+          <option value="all">All hosts</option>
+          {hostChoices.map((h) => (
+            <option key={h} value={h}>
+              {h === "local" ? thisMachine : hostLabel(h, hosts)}
+            </option>
+          ))}
+        </select>
+      )}
       {runtime.status === "connected" && containers.length === 0 && (
         <div className="sidebar-empty muted">
           No sandbox containers. Start one with <code>sandbox run claude</code>.
@@ -46,6 +81,7 @@ export function Sidebar({ containers, runtime, network, selectedId, onSelect, no
               stale={stale.has(c.key)}
               blocked={blockedFor(c.key)}
               showRuntime={showRuntime}
+              hosts={hosts}
               now={now}
               onSelect={onSelect}
             />
@@ -64,6 +100,7 @@ export function Sidebar({ containers, runtime, network, selectedId, onSelect, no
                 stale={false}
                 blocked={0}
                 showRuntime={showRuntime}
+                hosts={hosts}
                 now={now}
                 onSelect={onSelect}
               />
@@ -81,6 +118,7 @@ function ContainerCard({
   stale,
   blocked,
   showRuntime,
+  hosts,
   now,
   onSelect,
 }: {
@@ -89,6 +127,7 @@ function ContainerCard({
   stale: boolean;
   blocked: number;
   showRuntime: boolean;
+  hosts: HostStatus[];
   now: Date;
   onSelect: (id: string) => void;
 }) {
@@ -101,18 +140,21 @@ function ContainerCard({
   return (
     <button
       type="button"
-      className={`card ${selected ? "selected" : ""} ${isRunning ? "" : "card-stopped"}`}
+      className={`card ${selected ? "selected" : ""} ${isRunning ? "" : "card-stopped"} ${container.last_seen_at ? "unreachable" : ""}`}
       onClick={() => onSelect(container.key)}
       aria-pressed={selected}
     >
       <div className="card-title">
         <span className={`dot ${dot}`} aria-hidden="true" />
         <strong title={container.name}>{container.name}</strong>
+        {isRemote(container) && (
+          <span className="host-badge">{hostLabel(container.host, hosts)}</span>
+        )}
       </div>
       <div className="card-meta muted">
         {isRunning ? formatUptime(container.started_at, now) : container.state}
         {showRuntime && <> · {RUNTIME_LABELS[container.runtime]}</>}
-        {container.project_slug !== container.name && isRunning ? null : null}
+        {container.last_seen_at && <> · last seen {formatRelative(container.last_seen_at, now)}</>}
       </div>
       <div className="card-chips">
         {[...agents].map(([agent, n]) => (

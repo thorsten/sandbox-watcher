@@ -1,4 +1,5 @@
-import type { SandboxContainer } from "./types";
+import { hostLabel, hostsInUse } from "./hosts";
+import type { HostStatus, SandboxContainer } from "./types";
 
 let confirmStop = true;
 
@@ -27,11 +28,31 @@ export function describeInterruption(containers: SandboxContainer[]): string[] {
   return lines;
 }
 
-export function networkLogsCommand(projectDir: string | null): string {
-  const quoted = projectDir ? `'${projectDir.replaceAll("'", "'\\''")}'` : null;
-  return quoted
-    ? `cd ${quoted} && sandbox network logs --status=all`
+const shellQuote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
+
+/**
+ * [`describeInterruption`] grouped by host (local first, then each alias) with a
+ * heading line per host. A single host gets no headings.
+ */
+export function describeInterruptionByHost(
+  containers: SandboxContainer[],
+  hosts: HostStatus[],
+): string[] {
+  const used = hostsInUse(containers);
+  if (used.length <= 1) return describeInterruption(containers);
+  return used.flatMap((host) => [
+    host === "local" ? "This machine" : hostLabel(host, hosts),
+    ...describeInterruption(containers.filter((c) => c.host === host)),
+  ]);
+}
+
+export function networkLogsCommand(projectDir: string | null, host = "local"): string {
+  const local = projectDir
+    ? `cd ${shellQuote(projectDir)} && sandbox network logs --status=all`
     : "sandbox network logs --status=all";
+  return host === "local"
+    ? local
+    : `ssh ${/^[\w.@-]+$/.test(host) ? host : shellQuote(host)} ${shellQuote(local)}`;
 }
 
 export async function copyText(text: string): Promise<boolean> {

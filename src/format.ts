@@ -74,7 +74,7 @@ export function summarize(containers: SandboxContainer[]): Summary {
   let sessions = 0;
   let running = 0;
   for (const c of containers) {
-    if (c.state === "running") running++;
+    if (c.state === "running" && !c.last_seen_at) running++;
     for (const s of c.sessions) {
       sessions++;
       byAgent.set(s.agent, (byAgent.get(s.agent) ?? 0) + 1);
@@ -88,7 +88,7 @@ export function summarize(containers: SandboxContainer[]): Summary {
   return {
     projects: groupByProject(containers).size,
     running,
-    stopped: containers.length - running,
+    stopped: containers.filter((c) => c.state !== "running").length,
     sessions,
     byAgent: ordered,
   };

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { getProjectPath, openInEditor, openProject, openTerminal, stopContainer } from "../api";
 import { confirmStopEnabled, copyText, describeInterruption, networkLogsCommand } from "../actions";
+import { isRemote } from "../hosts";
 import { disableConfirmStop } from "../settingsActions";
 import type { SandboxContainer } from "../types";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -16,6 +17,7 @@ export function ContainerActions({ container, onChanged }: Props) {
   const [notice, setNotice] = useState<{ kind: "ok" | "err"; text: string } | null>(null);
   const [copyOpen, setCopyOpen] = useState(false);
   const isRunning = container.state === "running";
+  const remote = isRemote(container);
 
   const flash = (kind: "ok" | "err", text: string) => {
     setNotice({ kind, text });
@@ -51,7 +53,7 @@ export function ContainerActions({ container, onChanged }: Props) {
       if (what === "path") {
         if (!dir) return flash("err", "No bind-mounted project directory");
         text = dir;
-      } else text = networkLogsCommand(dir);
+      } else text = networkLogsCommand(dir, container.host);
     }
     const ok = await copyText(text);
     flash(ok ? "ok" : "err", ok ? "Copied" : "Clipboard unavailable");
@@ -59,30 +61,38 @@ export function ContainerActions({ container, onChanged }: Props) {
 
   return (
     <div className="actions">
-      <button
-        type="button"
-        disabled={busy !== null}
-        onClick={() => void run("terminal", () => openTerminal(container.key))}
-        title="Open a terminal in the project directory"
-      >
-        Terminal
-      </button>
-      <button
-        type="button"
-        disabled={busy !== null}
-        onClick={() => void run("folder", () => openProject(container.key))}
-        title="Open the project directory"
-      >
-        Folder
-      </button>
-      <button
-        type="button"
-        disabled={busy !== null}
-        onClick={() => void run("editor", () => openInEditor(container.key))}
-        title="Open the project in your editor"
-      >
-        Editor
-      </button>
+      {remote ? (
+        <span className="muted" title="Not available for remote hosts">
+          remote host
+        </span>
+      ) : (
+        <>
+          <button
+            type="button"
+            disabled={busy !== null}
+            onClick={() => void run("terminal", () => openTerminal(container.key))}
+            title="Open a terminal in the project directory"
+          >
+            Terminal
+          </button>
+          <button
+            type="button"
+            disabled={busy !== null}
+            onClick={() => void run("folder", () => openProject(container.key))}
+            title="Open the project directory"
+          >
+            Folder
+          </button>
+          <button
+            type="button"
+            disabled={busy !== null}
+            onClick={() => void run("editor", () => openInEditor(container.key))}
+            title="Open the project in your editor"
+          >
+            Editor
+          </button>
+        </>
+      )}
       <span className="menu">
         <button type="button" onClick={() => setCopyOpen((v) => !v)} aria-expanded={copyOpen}>
           Copy ▾

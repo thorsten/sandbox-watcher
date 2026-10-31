@@ -14,6 +14,7 @@ const ROLE_ORDER: MountRole[] = ["project", "persisted", "other", "runtime"];
 export function MountsPanel({ containerKey }: { containerKey: string }) {
   const [details, setDetails] = useState<ContainerDetails | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
+  const remote = containerKey.includes("/");
 
   useEffect(() => {
     let cancelled = false;
@@ -70,7 +71,7 @@ export function MountsPanel({ containerKey }: { containerKey: string }) {
               </td>
               <td>{m.read_only ? "read-only" : "writable"}</td>
               <td>
-                {m.type === "bind" && (
+                {m.type === "bind" && !remote && (
                   <button
                     type="button"
                     className="link"

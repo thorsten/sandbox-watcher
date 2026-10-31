@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeInterruption, networkLogsCommand } from "./actions";
+import { describeInterruption, describeInterruptionByHost, networkLogsCommand } from "./actions";
 import type { SandboxContainer } from "./types";
 
 function container(partial: Partial<SandboxContainer> & { id: string }): SandboxContainer {
@@ -41,5 +41,45 @@ describe("networkLogsCommand", () => {
       "cd '/Users/me/it'\\''s' && sandbox network logs --status=all",
     );
     expect(networkLogsCommand(null)).toBe("sandbox network logs --status=all");
+  });
+
+  it("prefixes the network logs command with ssh for remote hosts", () => {
+    expect(networkLogsCommand("/home/me/app", "devbox")).toBe(
+      "ssh devbox 'cd '\\''/home/me/app'\\'' && sandbox network logs --status=all'",
+    );
+    expect(networkLogsCommand(null, "devbox")).toBe(
+      "ssh devbox 'sandbox network logs --status=all'",
+    );
+    expect(networkLogsCommand("/x", "local")).toBe("cd '/x' && sandbox network logs --status=all");
+  });
+});
+
+describe("describeInterruptionByHost", () => {
+  const local = container({ id: "a" });
+  const remote = container({ id: "b", key: "devbox/b", host: "devbox" });
+
+  it("adds no headings for a single host", () => {
+    expect(describeInterruptionByHost([local], [])).toEqual(describeInterruption([local]));
+  });
+
+  it("groups by host, local first, using host labels", () => {
+    const lines = describeInterruptionByHost(
+      [remote, local],
+      [
+        {
+          alias: "devbox",
+          display_name: "Dev VM",
+          state: "connected",
+          runtimes: ["docker"],
+          probes: [],
+        },
+      ],
+    );
+    expect(lines).toEqual([
+      "This machine",
+      "sandbox-a: no active sessions",
+      "Dev VM",
+      "sandbox-b: no active sessions",
+    ]);
   });
 });

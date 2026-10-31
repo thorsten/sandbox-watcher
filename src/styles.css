@@ -1253,3 +1253,50 @@ body,
 .turn-facts {
   margin: 0.2rem 0 0.3rem;
 }
+
+.host-badge {
+  font-size: 0.7rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent);
+  white-space: nowrap;
+}
+.card.unreachable {
+  opacity: 0.55;
+}
+.host-filter {
+  margin: 0 0 0.5rem;
+  width: 100%;
+}
+.settings-section {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 0.75rem 0 0;
+  padding: 0.6rem 0.9rem 0.8rem;
+}
+.settings-section h3 {
+  margin: 0 0 0.4rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+  font-weight: 500;
+}
+.remote-hosts {
+  list-style: none;
+  margin: 0.4rem 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.remote-hosts li,
+.remote-host-add {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.host-warning details ul {
+  margin: 0.3rem 0 0;
+  padding-left: 1.2rem;
+}

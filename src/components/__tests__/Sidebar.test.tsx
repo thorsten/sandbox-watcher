@@ -11,6 +11,7 @@ describe("Sidebar", () => {
       <Sidebar
         containers={[]}
         runtime={connected()}
+        hosts={[]}
         network={[]}
         selectedId={null}
         onSelect={noop}
@@ -30,6 +31,7 @@ describe("Sidebar", () => {
           container({ id: "3", project_slug: "docs", name: "sandbox-docs", state: "exited" }),
         ]}
         runtime={connected()}
+        hosts={[]}
         network={[]}
         selectedId="1"
         onSelect={noop}
@@ -47,6 +49,7 @@ describe("Sidebar", () => {
       <Sidebar
         containers={[container({ id: "1" }), container({ id: "2", project_slug: "other" })]}
         runtime={connected()}
+        hosts={[]}
         network={[]}
         selectedId="2"
         onSelect={noop}
@@ -72,6 +75,7 @@ describe("Sidebar", () => {
           container({ id: "2", project_slug: "idle-one" }),
         ]}
         runtime={connected()}
+        hosts={[]}
         network={[]}
         selectedId={null}
         onSelect={noop}
@@ -97,6 +101,7 @@ describe("Sidebar", () => {
           }),
         ]}
         runtime={connected()}
+        hosts={[]}
         network={[
           report([entry(), entry({ destination: "other.example" })], { container_id: "a" }),
         ]}
@@ -113,6 +118,7 @@ describe("Sidebar", () => {
   it("names the runtime only when several are connected", () => {
     const props = {
       containers: [container({ id: "1", runtime: "podman" as const })],
+      hosts: [],
       network: [],
       selectedId: null,
       onSelect: noop,

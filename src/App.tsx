@@ -23,6 +23,7 @@ import { Sidebar } from "./components/Sidebar";
 import { StopAllButton } from "./components/StopAllButton";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { AGENT_LABELS, summarize } from "./format";
+import { filterByHost } from "./hosts";
 import { recentBlockedCount } from "./network";
 import { applyTheme } from "./theme";
 import type { NetworkReport, Overview, SandboxContainer, Settings, UpdateInfo } from "./types";
@@ -49,6 +50,7 @@ export function App() {
   const [version, setVersion] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [hostFilter, setHostFilter] = useState("all");
 
   const acceptSettings = useCallback((s: Settings) => {
     setSettings(s);
@@ -117,6 +119,7 @@ export function App() {
     }
   };
 
+  const visible = filterByHost(containers, hostFilter);
   const summary = summarize(containers);
   const recentBlocked =
     network && state.phase === "ready" ? recentBlockedCount(network, state.refreshedAt) : 0;
@@ -152,7 +155,8 @@ export function App() {
             </span>
           )}
           <StopAllButton
-            running={containers.filter((c) => c.state === "running")}
+            running={containers.filter((c) => c.state === "running" && !c.last_seen_at)}
+            hosts={state.phase === "ready" ? state.overview.hosts : []}
             onChanged={() => void refresh()}
           />
           <button type="button" onClick={() => void refresh()} disabled={refreshing}>
@@ -204,8 +208,11 @@ export function App() {
       {state.phase === "ready" && (
         <div className="layout">
           <Sidebar
-            containers={containers}
+            containers={visible}
             runtime={state.overview.runtime}
+            hosts={state.overview.hosts}
+            hostFilter={hostFilter}
+            onHostFilter={setHostFilter}
             network={network}
             selectedId={selected?.key ?? null}
             onSelect={setSelectedId}
@@ -218,11 +225,12 @@ export function App() {
               <SettingsPanel
                 key={JSON.stringify(settings)}
                 settings={settings}
+                hostStatuses={state.overview.hosts}
                 onSaved={acceptSettings}
                 onClose={() => setShowSettings(false)}
               />
             ) : state.overview.runtime.status !== "connected" ? (
-              <RuntimeBanner runtime={state.overview.runtime} />
+              <RuntimeBanner runtime={state.overview.runtime} hosts={state.overview.hosts} />
             ) : selected ? (
               <DetailPane
                 key={selected.key}

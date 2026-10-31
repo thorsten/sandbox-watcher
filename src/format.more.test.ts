@@ -79,6 +79,14 @@ describe("summarize", () => {
     expect(s).toMatchObject({ projects: 0, running: 0, stopped: 0, sessions: 0 });
     expect(s.byAgent.size).toBe(0);
   });
+  it("does not count containers on unreachable hosts as running", () => {
+    const s = summarize([
+      container({ id: "a" }),
+      container({ id: "b", key: "x/b", host: "x", last_seen_at: "2026-10-30T11:00:00Z" }),
+    ]);
+    expect(s.running).toBe(1);
+    expect(s.stopped).toBe(0);
+  });
   it("orders agents by count, ties by label", () => {
     const s = summarize([
       container({

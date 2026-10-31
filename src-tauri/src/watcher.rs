@@ -12,12 +12,14 @@ use sandbox_core::RuntimeAdapter;
 use sandbox_core::activity::collect_insights;
 use sandbox_core::adapter::ContainerFilter;
 use sandbox_core::history::{History, HistoryQuery, HistoryView};
-use sandbox_core::host::{container_key, parse_container_key};
+use sandbox_core::host::{Host, container_key, parse_container_key};
 use sandbox_core::live::LiveRuntime;
 use sandbox_core::mock::MockAdapter;
+use sandbox_core::model::RuntimeKind;
 use sandbox_core::network::{NetworkReport, collect_all};
 use sandbox_core::notify::{Notification, blocked_bursts, diff, recent_blocked};
-use sandbox_core::overview::{DataSource, HostedAdapter, Overview, load};
+use sandbox_core::overview::{DataSource, HostedAdapter, Overview, load_many};
+use sandbox_core::remote::{HostState, HostStatus};
 use sandbox_core::settings::Settings;
 use sandbox_core::stats_hub::{StatsHub, StatsSet};
 use tauri::{AppHandle, Emitter};
@@ -34,8 +36,9 @@ pub const SETTINGS_UPDATED: &str = "settings-updated";
 const TRIGGER_DEBOUNCE: Duration = Duration::from_millis(300);
 
 pub enum Mode {
-    /// `SANDBOX_WATCHER_MOCK=1`: demo data, no runtime access.
-    Mock(Arc<dyn RuntimeAdapter>),
+    /// `SANDBOX_WATCHER_MOCK=1`: demo data for the local machine and the
+    /// remote host `devbox`, no runtime access.
+    Mock(Vec<HostedAdapter>),
     /// Detect runtimes and keep one adapter per runtime between refreshes.
     Live(Arc<LiveRuntime>),
 }
@@ -67,7 +70,13 @@ impl Watcher {
         history.prune(settings.history_retention_days, Utc::now());
         let mock = std::env::var("SANDBOX_WATCHER_MOCK").is_ok_and(|v| v == "1" || v == "true");
         let mode = if mock {
-            Mode::Mock(Arc::new(MockAdapter::demo()))
+            Mode::Mock(vec![
+                HostedAdapter::local(Arc::new(MockAdapter::demo())),
+                HostedAdapter {
+                    host: Host::Remote("devbox".into()),
+                    adapter: Arc::new(MockAdapter::remote_demo()),
+                },
+            ])
         } else {
             let live = Arc::new(LiveRuntime::new());
             live.set_preferred(settings.runtime_override);
@@ -134,7 +143,7 @@ impl Watcher {
 
     pub fn adapters(&self) -> Vec<HostedAdapter> {
         match &self.mode {
-            Mode::Mock(adapter) => vec![HostedAdapter::local(adapter.clone())],
+            Mode::Mock(adapters) => adapters.clone(),
             Mode::Live(live) => live.adapters(),
         }
     }
@@ -142,9 +151,12 @@ impl Watcher {
     /// The adapter for a container key and the container's raw id.
     pub fn adapter_for(&self, key: &str) -> Result<(Arc<dyn RuntimeAdapter>, String), String> {
         match &self.mode {
-            Mode::Mock(adapter) => {
-                let (_, id) = parse_container_key(key);
-                Some((adapter.clone(), id))
+            Mode::Mock(adapters) => {
+                let (host, id) = parse_container_key(key);
+                adapters
+                    .iter()
+                    .find(|a| a.host == host)
+                    .map(|a| (a.adapter.clone(), id))
             }
             Mode::Live(live) => live.adapter_for(key),
         }
@@ -225,7 +237,17 @@ impl Watcher {
 
     async fn refresh(&self) {
         let overview = match &self.mode {
-            Mode::Mock(adapter) => load(adapter.clone(), DataSource::Mock, vec![]).await,
+            Mode::Mock(adapters) => {
+                let mut overview = load_many(adapters, DataSource::Mock, vec![]).await;
+                overview.hosts = vec![HostStatus {
+                    alias: "devbox".into(),
+                    display_name: "devbox".into(),
+                    state: HostState::Connected,
+                    runtimes: vec![RuntimeKind::Docker],
+                    probes: vec![],
+                }];
+                overview
+            }
             Mode::Live(live) => live.overview().await,
         };
 

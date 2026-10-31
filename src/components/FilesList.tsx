@@ -17,6 +17,7 @@ interface Props {
 export function FilesList({ files, containerKey, projectDir, now, collapseReads = true }: Props) {
   const [showReads, setShowReads] = useState(!collapseReads);
   const [error, setError] = useState<string | null>(null);
+  const canOpen = !!containerKey && !containerKey.includes("/");
   if (files.length === 0) return <p className="muted small">No files touched yet.</p>;
 
   const base = projectDir ?? commonDir(files.map((f) => f.path));
@@ -25,7 +26,7 @@ export function FilesList({ files, containerKey, projectDir, now, collapseReads 
   const shown = showReads ? [...changedFiles, ...readFiles] : changedFiles;
 
   const open = (path: string) => {
-    if (!containerKey) return;
+    if (!containerKey || !canOpen) return;
     setError(null);
     openInEditor(containerKey, path).catch((e: unknown) =>
       setError(e instanceof Error ? e.message : String(e)),
@@ -52,7 +53,7 @@ export function FilesList({ files, containerKey, projectDir, now, collapseReads 
             return (
               <li key={f.path}>
                 <span className={`chip file-${status}`}>{status}</span>
-                {containerKey && status !== "deleted" ? (
+                {canOpen && status !== "deleted" ? (
                   <button
                     type="button"
                     className="link file-path"

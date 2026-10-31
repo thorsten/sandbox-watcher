@@ -1,9 +1,12 @@
 import { useState } from "react";
 import { checkForUpdate, saveSettings } from "../api";
-import { RUNTIME_LABELS, type RuntimeKind, type Settings } from "../types";
+import { RUNTIME_LABELS, type HostStatus, type RuntimeKind, type Settings } from "../types";
+import { RemoteHostsSection } from "./RemoteHostsSection";
 
 interface Props {
   settings: Settings;
+  /** Connection state of the configured remote hosts. */
+  hostStatuses?: HostStatus[];
   onSaved: (settings: Settings) => void;
   onClose: () => void;
 }
@@ -11,7 +14,7 @@ interface Props {
 const RUNTIMES: RuntimeKind[] = ["docker", "podman", "apple-container"];
 const isMac = navigator.platform.toLowerCase().includes("mac");
 
-export function SettingsPanel({ settings, onSaved, onClose }: Props) {
+export function SettingsPanel({ settings, hostStatuses = [], onSaved, onClose }: Props) {
   const [draft, setDraft] = useState<Settings>(settings);
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -330,6 +333,12 @@ export function SettingsPanel({ settings, onSaved, onClose }: Props) {
           </select>
         </label>
       </fieldset>
+
+      <RemoteHostsSection
+        hosts={draft.remote_hosts}
+        statuses={hostStatuses}
+        onChange={(remote_hosts) => update({ remote_hosts })}
+      />
 
       <footer className="settings-footer">
         {status === "error" && <span className="notice notice-err">{error}</span>}

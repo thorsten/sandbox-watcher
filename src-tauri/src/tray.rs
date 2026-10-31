@@ -1,6 +1,7 @@
 //! Tray / menu bar icon with a per-project summary.
 
-use sandbox_core::overview::Overview;
+use sandbox_core::host::Host;
+use sandbox_core::overview::{ContainerOverview, Overview};
 use tauri::menu::{Menu, MenuBuilder, MenuItemBuilder};
 use tauri::tray::{TrayIcon, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, Runtime};
@@ -26,6 +27,71 @@ pub fn show_main_window<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
+/// Running containers whose host answered. Greyed ones (`last_seen_at` set)
+/// come from the cache of an unreachable host and do not count.
+fn running_containers(overview: &Overview) -> impl Iterator<Item = &ContainerOverview> {
+    overview
+        .containers
+        .iter()
+        .filter(|c| c.container.state.is_running() && c.last_seen_at.is_none())
+}
+
+/// Label of a host: its display name, else the alias.
+fn host_label(overview: &Overview, alias: &str) -> String {
+    overview
+        .hosts
+        .iter()
+        .find(|h| h.alias == alias)
+        .map(|h| h.display_name.as_str())
+        .filter(|name| !name.is_empty())
+        .unwrap_or(alias)
+        .to_string()
+}
+
+/// One entry per project and host: menu label and the key of the first
+/// container (click target). Remote projects carry their host label, so the
+/// same slug on two hosts gives two entries.
+fn quick_list(overview: &Overview) -> Vec<(String, String)> {
+    // host, slug, containers, sessions, key of the first container
+    let mut projects: Vec<(&Host, &str, usize, usize, &str)> = Vec::new();
+    for c in running_containers(overview) {
+        match projects
+            .iter_mut()
+            .find(|(host, slug, ..)| **host == c.host && *slug == c.container.project_slug)
+        {
+            Some(entry) => {
+                entry.2 += 1;
+                entry.3 += c.sessions.len();
+            }
+            None => projects.push((
+                &c.host,
+                &c.container.project_slug,
+                1,
+                c.sessions.len(),
+                &c.key,
+            )),
+        }
+    }
+    projects
+        .into_iter()
+        .map(|(host, slug, containers, sessions, key)| {
+            let name = match host {
+                Host::Local => slug.to_string(),
+                Host::Remote(alias) => format!("{}: {slug}", host_label(overview, alias)),
+            };
+            let label = match (containers, sessions) {
+                (1, 0) => format!("{name}: idle"),
+                (1, n) => format!("{name}: {n} session{}", if n == 1 { "" } else { "s" }),
+                (c, n) => format!(
+                    "{name}: {c} containers, {n} session{}",
+                    if n == 1 { "" } else { "s" }
+                ),
+            };
+            (label, key.to_string())
+        })
+        .collect()
+}
+
 fn build_menu<R: Runtime>(
     app: &AppHandle<R>,
     overview: Option<&Overview>,
@@ -36,47 +102,19 @@ fn build_menu<R: Runtime>(
 
     let mut running = 0usize;
     if let Some(overview) = overview {
-        // slug, containers, sessions, id of the first container (click target)
-        let mut projects: Vec<(String, usize, usize, String)> = Vec::new();
-        for c in &overview.containers {
-            if !c.container.state.is_running() {
-                continue;
-            }
-            running += 1;
-            match projects
-                .iter_mut()
-                .find(|(slug, ..)| *slug == c.container.project_slug)
-            {
-                Some(entry) => {
-                    entry.1 += 1;
-                    entry.2 += c.sessions.len();
-                }
-                None => projects.push((
-                    c.container.project_slug.clone(),
-                    1,
-                    c.sessions.len(),
-                    c.key.clone(),
-                )),
-            }
-        }
-        if projects.is_empty() {
+        running = running_containers(overview).count();
+        let entries = quick_list(overview);
+        if entries.is_empty() {
             builder = builder.item(
                 &MenuItemBuilder::with_id("tray-empty", "No running sandboxes")
                     .enabled(false)
                     .build(app)?,
             );
         }
-        for (slug, containers, sessions, id) in &projects {
-            let label = match (containers, sessions) {
-                (1, 0) => format!("{slug}: idle"),
-                (1, n) => format!("{slug}: {n} session{}", if *n == 1 { "" } else { "s" }),
-                (c, n) => format!(
-                    "{slug}: {c} containers, {n} session{}",
-                    if *n == 1 { "" } else { "s" }
-                ),
-            };
+        for (label, key) in &entries {
             builder = builder.item(
-                &MenuItemBuilder::with_id(format!("{MENU_SELECT_PREFIX}{id}"), label).build(app)?,
+                &MenuItemBuilder::with_id(format!("{MENU_SELECT_PREFIX}{key}"), label)
+                    .build(app)?,
             );
         }
         builder = builder.separator();
@@ -98,11 +136,7 @@ fn tooltip(overview: Option<&Overview>) -> String {
     match overview {
         None => "Sandbox Watcher".to_string(),
         Some(o) => {
-            let running = o
-                .containers
-                .iter()
-                .filter(|c| c.container.state.is_running())
-                .count();
+            let running = running_containers(o).count();
             let sessions: usize = o.containers.iter().map(|c| c.sessions.len()).sum();
             format!(
                 "Sandbox Watcher: {running} running, {sessions} session{}",
@@ -176,5 +210,79 @@ pub fn handle_menu_event<R: Runtime>(app: &AppHandle<R>, id: &str) -> bool {
             true
         }
         _ => false,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use sandbox_core::mock::mock_container;
+    use sandbox_core::model::{AgentKind, Session};
+    use sandbox_core::model::{Readiness, RuntimeKind};
+    use sandbox_core::overview::{DataSource, RuntimeStatus};
+    use sandbox_core::remote::{HostState, HostStatus};
+
+    fn entry(host: &str, slug: &str, sessions: usize) -> ContainerOverview {
+        let container = mock_container(slug, 1, "running", "h").details.container;
+        let (host, key) = if host == "local" {
+            (Host::Local, container.id.clone())
+        } else {
+            (
+                Host::Remote(host.into()),
+                format!("{host}/{}", container.id),
+            )
+        };
+        ContainerOverview {
+            container,
+            host,
+            key,
+            runtime: RuntimeKind::Docker,
+            readiness: Readiness::Ready,
+            sessions: (0..sessions)
+                .map(|i| Session {
+                    pid: 100 + i as u32,
+                    command: "claude".into(),
+                    agent: AgentKind::ClaudeCode,
+                })
+                .collect(),
+            last_seen_at: None,
+        }
+    }
+
+    fn overview(containers: Vec<ContainerOverview>) -> Overview {
+        Overview {
+            source: DataSource::Mock,
+            runtime: RuntimeStatus::NotDetected,
+            containers,
+            tested_sandbox_version: "test".into(),
+            hosts: vec![HostStatus {
+                alias: "devbox".into(),
+                display_name: "Dev VM".into(),
+                state: HostState::Connected,
+                runtimes: vec![RuntimeKind::Docker],
+                probes: vec![],
+            }],
+        }
+    }
+
+    #[test]
+    fn same_slug_on_two_hosts_gives_two_entries() {
+        let o = overview(vec![entry("local", "web", 1), entry("devbox", "web", 2)]);
+        let list = quick_list(&o);
+        assert_eq!(list.len(), 2);
+        assert_eq!(list[0].0, "web: 1 session");
+        assert_eq!(list[1].0, "Dev VM: web: 2 sessions");
+        assert!(list[1].1.starts_with("devbox/"), "selects its own key");
+        assert!(!list[0].1.contains('/'));
+    }
+
+    #[test]
+    fn greyed_containers_are_not_running() {
+        let mut greyed = entry("devbox", "web", 1);
+        greyed.last_seen_at = Some(chrono::Utc::now());
+        let o = overview(vec![entry("local", "api", 0), greyed]);
+        assert_eq!(running_containers(&o).count(), 1);
+        assert_eq!(quick_list(&o).len(), 1);
+        assert_eq!(tooltip(Some(&o)), "Sandbox Watcher: 1 running, 0 sessions");
     }
 }
