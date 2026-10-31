@@ -3320,7 +3320,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-core"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "async-trait",
  "bollard",
@@ -3335,7 +3335,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-watcher"
-version = "0.4.0"
+version = "0.5.0"
 dependencies = [
  "chrono",
  "sandbox-core",

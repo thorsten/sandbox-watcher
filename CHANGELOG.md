@@ -3,12 +3,49 @@
 All notable changes to Sandbox Watcher. Generated from
 [Conventional Commits](https://www.conventionalcommits.org/) by `scripts/changelog.mjs`.
 
+## 0.5.0 (2026-10-31)
+
+### Features
+
+- **core:** prices for Claude 5 models and current Opus 4.x ([bc32e9b](https://github.com/thorsten/sandbox-watcher/commit/bc32e9bf7871b78b0fedfdf05108ed0a5b329b7e))
+- turn-level detail per agent session ([38f855a](https://github.com/thorsten/sandbox-watcher/commit/38f855a64abba07e91dd716152575b4e2be2aef3))
+
+### Fixes
+
+- find runtimes when started from Finder or the Dock ([0d9cd9f](https://github.com/thorsten/sandbox-watcher/commit/0d9cd9f66a58d1edebfe8536c174f25ed6ae5b9e))
+- **core:** count Claude Code tokens once per API message ([84083c7](https://github.com/thorsten/sandbox-watcher/commit/84083c7352e7abfd1815fbe4841a2838d2f26798))
+
+### Documentation
+
+- mention the update check in the README privacy section ([61505e6](https://github.com/thorsten/sandbox-watcher/commit/61505e62c6180c69c70f3ec1e54494d287e8e2f4))
+- macOS builds are signed and notarised ([d1df000](https://github.com/thorsten/sandbox-watcher/commit/d1df0005a2e221ee608b578ffdbd1194fe41e6af))
+- add troubleshooting guide ([b10f3c7](https://github.com/thorsten/sandbox-watcher/commit/b10f3c752efc26ceceac7fd5b028113d3cc4bbec))
+- **site:** fill in address in privacy policy ([024f5a7](https://github.com/thorsten/sandbox-watcher/commit/024f5a779012639b121120aa4d5e4274fb388056))
+- **site:** add imprint and privacy policy pages ([d5dd82c](https://github.com/thorsten/sandbox-watcher/commit/d5dd82c8b7aa4e110c5d0c9c097af1b944fe86cc))
+
+### CI
+
+- **release:** sign and notarise macOS builds when Apple secrets exist ([f2653aa](https://github.com/thorsten/sandbox-watcher/commit/f2653aadc6be5e0f9692a409ef599dcacab9eea0))
+
+### Chores
+
+- ignore signing certificates and keys ([c84f4e1](https://github.com/thorsten/sandbox-watcher/commit/c84f4e152966cf3cf90686744778620c5f4e15c7))
+- **release:** bump the README status line with the version ([4c5d78a](https://github.com/thorsten/sandbox-watcher/commit/4c5d78a17228ea869819e5b22ff99aff1e3ac389))
+- ignore personal Claude Code settings ([9260382](https://github.com/thorsten/sandbox-watcher/commit/92603829fd96a550fbfe018da7865911c1c4f1d9))
+- add .editorconfig with spaces-only indentation ([86184c0](https://github.com/thorsten/sandbox-watcher/commit/86184c0e3dc4153486b2ef032864aabbbe233137))
+
 ## 0.4.0 (2026-10-30)
 
 ### Features
 
 - show touched files and open them in your editor ([9da680b](https://github.com/thorsten/sandbox-watcher/commit/9da680bda037f20be208204d39b6a811ef3b22bc))
 - **core:** files per agent session and editor launching ([27150f5](https://github.com/thorsten/sandbox-watcher/commit/27150f5aebe01dce047a8ac9edc92aec27fbffee))
+
+### Chores
+
+- **release:** v0.4.0 ([b761ce0](https://github.com/thorsten/sandbox-watcher/commit/b761ce02b2e65d9823cca9ccdba869705101b096))
+
+**Full changelog:** [v0.3.0...v0.4.0](https://github.com/thorsten/sandbox-watcher/compare/v0.3.0...v0.4.0)
 
 ## 0.3.0 (2026-10-30)
 
