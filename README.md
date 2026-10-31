@@ -211,6 +211,12 @@ git commit -m "feat(core): add docker adapter"
 git commit -m "fix(ui): keep stopped containers visible"
 ```
 
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) and the
+[code of conduct](CODE_OF_CONDUCT.md). Report security problems privately as
+described in [`SECURITY.md`](SECURITY.md).
+
 ## License
 
 MIT, see [`LICENSE`](LICENSE).
