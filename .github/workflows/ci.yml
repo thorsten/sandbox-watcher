@@ -63,7 +63,13 @@ jobs:
           SANDBOX_WATCHER_DOCKER_TESTS: "1"
           SANDBOX_WATCHER_TEST_SLUG: watcher-test
           SANDBOX_WATCHER_SSH_HOST: localhost
-        run: cargo test -p sandbox-core --test conformance -- --nocapture
+        # The previous conformance run ends by stopping the container.
+        run: |
+          docker start sandbox-watcher-test
+          for i in $(seq 1 20); do
+            docker exec sandbox-watcher-test test -f /tmp/.sandbox-ready && break || sleep 0.5
+          done
+          cargo test -p sandbox-core --test conformance -- --nocapture
       - name: Remove the test container
         if: always() && runner.os == 'Linux'
         run: docker rm -f sandbox-watcher-test || true
@@ -102,7 +108,13 @@ jobs:
           SANDBOX_WATCHER_RUNTIME: podman
           SANDBOX_WATCHER_TEST_SLUG: watcher-podman
           SANDBOX_WATCHER_SSH_HOST: localhost
-        run: cargo test -p sandbox-core --test conformance -- --nocapture
+        # The previous conformance run ends by stopping the container.
+        run: |
+          podman start sandbox-watcher-podman
+          for i in $(seq 1 20); do
+            podman exec sandbox-watcher-podman test -f /tmp/.sandbox-ready && break || sleep 0.5
+          done
+          cargo test -p sandbox-core --test conformance -- --nocapture
       - name: Podman diagnostics
         if: failure() && runner.os == 'Linux'
         run: |
