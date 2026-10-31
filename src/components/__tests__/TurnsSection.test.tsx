@@ -6,7 +6,7 @@ import { TurnsList, TurnsSection } from "../TurnsSection";
 describe("TurnsSection", () => {
   it("waits for the user before reading the transcript", () => {
     const { text } = render(
-      <TurnsSection containerId="c1" agent="claude-code" projectDir="/p" now={NOW} />,
+      <TurnsSection containerKey="c1" agent="claude-code" projectDir="/p" now={NOW} />,
     );
     expect(text).toContain("Turns");
     expect(text).toContain("Show turns");
@@ -23,7 +23,7 @@ describe("TurnsList", () => {
       ],
     });
     const { html, text } = render(
-      <TurnsList report={report} containerId="c1" projectDir="/Users/dev/web-shop" now={NOW} />,
+      <TurnsList report={report} containerKey="c1" projectDir="/Users/dev/web-shop" now={NOW} />,
     );
     expect(text).toContain("3 turns, newest first");
     expect(text.indexOf("#2 Now add a test")).toBeLessThan(text.indexOf("#1 Find the bug"));

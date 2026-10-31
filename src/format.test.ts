@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { formatUptime, groupByProject, staleHashes, summarize } from "./format";
+import { formatUptime, groupByProject, staleHashes, stopResultLabel, summarize } from "./format";
 import type { SandboxContainer } from "./types";
 
 const now = new Date("2026-10-30T12:00:00Z");
 
 function container(partial: Partial<SandboxContainer> & { id: string }): SandboxContainer {
   return {
+    host: "local",
+    key: partial.id,
+    last_seen_at: null,
     name: `sandbox-${partial.project_slug ?? "p"}`,
     project_slug: "p",
     image: "img",
@@ -73,6 +76,44 @@ describe("staleHashes", () => {
     expect([...stale]).toEqual(["old"]);
   });
 
+  it("does not mark the same slug on two hosts as stale", () => {
+    const a = container({
+      id: "c1",
+      key: "c1",
+      host: "local",
+      config_hash: "aaaaaaaaaaaa",
+      started_at: "2026-10-30T08:00:00Z",
+    });
+    const b = container({
+      id: "c1",
+      key: "devbox/c1",
+      host: "devbox",
+      config_hash: "bbbbbbbbbbbb",
+      started_at: "2026-10-30T10:00:00Z",
+    });
+    expect(staleHashes([a, b]).size).toBe(0);
+  });
+
+  it("returns container keys", () => {
+    const old = container({
+      id: "c1",
+      key: "devbox/c1",
+      host: "devbox",
+      project_slug: "x",
+      config_hash: "aaa",
+      started_at: "2026-10-30T08:00:00Z",
+    });
+    const fresh = container({
+      id: "c2",
+      key: "devbox/c2",
+      host: "devbox",
+      project_slug: "x",
+      config_hash: "bbb",
+      started_at: "2026-10-30T10:00:00Z",
+    });
+    expect([...staleHashes([old, fresh])]).toEqual(["devbox/c1"]);
+  });
+
   it("ignores projects with a single hash", () => {
     expect(
       staleHashes([
@@ -114,5 +155,14 @@ describe("summarize", () => {
       ["claude-code", 2],
       ["shell", 1],
     ]);
+  });
+});
+
+describe("stopResultLabel", () => {
+  it("prefixes remote results with the host alias", () => {
+    expect(stopResultLabel({ container_id: "devbox/c1", name: "sandbox-x" })).toBe(
+      "devbox: sandbox-x",
+    );
+    expect(stopResultLabel({ container_id: "c1", name: "sandbox-x" })).toBe("sandbox-x");
   });
 });

@@ -4,6 +4,9 @@ import type { SandboxContainer } from "./types";
 
 function container(partial: Partial<SandboxContainer> & { id: string }): SandboxContainer {
   return {
+    host: "local",
+    key: partial.id,
+    last_seen_at: null,
     name: `sandbox-${partial.id}`,
     project_slug: partial.id,
     image: "img",

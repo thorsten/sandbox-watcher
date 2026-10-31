@@ -35,7 +35,7 @@ export function ContainerActions({ container, onChanged }: Props) {
     }
   };
 
-  const doStop = () => run("stop", () => stopContainer(container.id), "Stopped");
+  const doStop = () => run("stop", () => stopContainer(container.key), "Stopped");
 
   const requestStop = () => {
     if (confirmStopEnabled()) setConfirming(true);
@@ -47,7 +47,7 @@ export function ContainerActions({ container, onChanged }: Props) {
     let text: string;
     if (what === "name") text = container.name;
     else {
-      const dir = await getProjectPath(container.id).catch(() => null);
+      const dir = await getProjectPath(container.key).catch(() => null);
       if (what === "path") {
         if (!dir) return flash("err", "No bind-mounted project directory");
         text = dir;
@@ -62,7 +62,7 @@ export function ContainerActions({ container, onChanged }: Props) {
       <button
         type="button"
         disabled={busy !== null}
-        onClick={() => void run("terminal", () => openTerminal(container.id))}
+        onClick={() => void run("terminal", () => openTerminal(container.key))}
         title="Open a terminal in the project directory"
       >
         Terminal
@@ -70,7 +70,7 @@ export function ContainerActions({ container, onChanged }: Props) {
       <button
         type="button"
         disabled={busy !== null}
-        onClick={() => void run("folder", () => openProject(container.id))}
+        onClick={() => void run("folder", () => openProject(container.key))}
         title="Open the project directory"
       >
         Folder
@@ -78,7 +78,7 @@ export function ContainerActions({ container, onChanged }: Props) {
       <button
         type="button"
         disabled={busy !== null}
-        onClick={() => void run("editor", () => openInEditor(container.id))}
+        onClick={() => void run("editor", () => openInEditor(container.key))}
         title="Open the project in your editor"
       >
         Editor

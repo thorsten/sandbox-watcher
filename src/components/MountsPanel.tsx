@@ -11,13 +11,13 @@ const ROLE_LABELS: Record<MountRole, string> = {
 
 const ROLE_ORDER: MountRole[] = ["project", "persisted", "other", "runtime"];
 
-export function MountsPanel({ containerId }: { containerId: string }) {
+export function MountsPanel({ containerKey }: { containerKey: string }) {
   const [details, setDetails] = useState<ContainerDetails | null | undefined>(undefined);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    getContainerDetails(containerId).then(
+    getContainerDetails(containerKey).then(
       (d) => {
         if (!cancelled) setDetails(d);
       },
@@ -28,7 +28,7 @@ export function MountsPanel({ containerId }: { containerId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [containerId]);
+  }, [containerKey]);
 
   if (error) return <p className="network-note warn">{error}</p>;
   if (details === undefined) return <div className="mounts muted">Inspecting container…</div>;
@@ -74,7 +74,7 @@ export function MountsPanel({ containerId }: { containerId: string }) {
                   <button
                     type="button"
                     className="link"
-                    onClick={() => void revealMount(containerId, m.source).catch(() => undefined)}
+                    onClick={() => void revealMount(containerKey, m.source).catch(() => undefined)}
                   >
                     Show
                   </button>

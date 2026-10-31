@@ -43,7 +43,7 @@ describe("RuntimeBanner", () => {
   it("mentions failures next to connected runtimes", () => {
     const runtime = connected(["docker"]);
     if (runtime.status !== "connected") throw new Error("fixture");
-    runtime.failures = [{ kind: "podman", endpoint: "", reason: "machine stopped" }];
+    runtime.failures = [{ host: "local", kind: "podman", endpoint: "", reason: "machine stopped" }];
     const { text } = render(<RuntimeBanner runtime={runtime} />);
     expect(text).toContain("Podman detected but not reachable: machine stopped");
   });

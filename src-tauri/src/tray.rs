@@ -10,9 +10,9 @@ pub const MENU_SHOW: &str = "tray-show";
 pub const MENU_STOP_ALL: &str = "tray-stop-all";
 pub const MENU_SETTINGS: &str = "tray-settings";
 pub const MENU_QUIT: &str = "tray-quit";
-/// Prefix of per-project items; the rest of the id is a container id.
+/// Prefix of per-project items; the rest of the id is a container key.
 pub const MENU_SELECT_PREFIX: &str = "tray-select:";
-/// Emitted with a container id when the user picks a project in the tray.
+/// Emitted with a container key when the user picks a project in the tray.
 pub const SELECT_CONTAINER_EVENT: &str = "select-container";
 /// Emitted to the webview when the user picks "Settings" in the tray.
 pub const OPEN_SETTINGS_EVENT: &str = "open-settings";
@@ -55,7 +55,7 @@ fn build_menu<R: Runtime>(
                     c.container.project_slug.clone(),
                     1,
                     c.sessions.len(),
-                    c.container.id.clone(),
+                    c.key.clone(),
                 )),
             }
         }

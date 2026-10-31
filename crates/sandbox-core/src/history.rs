@@ -118,7 +118,7 @@ impl History {
             .iter()
             .filter(|c| c.container.state.is_running())
         {
-            let id = c.container.id.clone();
+            let id = c.key.clone();
             seen_containers.insert(id.clone(), ());
             match self
                 .containers
@@ -473,5 +473,34 @@ mod tests {
         );
         assert_eq!(view.total.tokens, 42);
         assert!(view.total.cost_incomplete, "tokens without a price");
+    }
+
+    #[tokio::test]
+    async fn remote_records_use_the_container_key() {
+        let mock = MockAdapter::demo();
+        let mut o = snapshot(&mock).await;
+        for c in &mut o.containers {
+            c.host = crate::host::Host::Remote("devbox".into());
+            c.key = format!("devbox/{}", c.container.id);
+        }
+        let mut h = History::default();
+        h.observe(&o, Utc.with_ymd_and_hms(2026, 10, 30, 10, 0, 0).unwrap());
+        assert!(
+            h.containers
+                .iter()
+                .all(|r| r.container_id.starts_with("devbox/"))
+        );
+        assert!(
+            h.sessions
+                .iter()
+                .all(|r| r.container_id.starts_with("devbox/"))
+        );
+    }
+
+    #[test]
+    fn history_from_0_5_loads_and_keys_stay_ids() {
+        let old = r#"{"version":1,"containers":[{"container_id":"abc","name":"sandbox-x","project_slug":"x","runtime":"docker","started_at":"2026-10-30T09:00:00Z","ended_at":null,"last_seen_at":"2026-10-30T10:00:00Z"}],"sessions":[]}"#;
+        let history: History = serde_json::from_str(old).expect("0.5 history loads");
+        assert_eq!(history.containers[0].container_id, "abc");
     }
 }

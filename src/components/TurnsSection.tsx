@@ -6,14 +6,14 @@ import type { AgentKind, TurnReport } from "../types";
 import { FilesList } from "./FilesList";
 
 interface Props {
-  containerId: string;
+  containerKey: string;
   agent: AgentKind;
   projectDir: string | null;
   now: Date;
 }
 
 /** Loads on request: the whole transcript is read, not just its tail. */
-export function TurnsSection({ containerId, agent, projectDir, now }: Props) {
+export function TurnsSection({ containerKey, agent, projectDir, now }: Props) {
   const [report, setReport] = useState<TurnReport | null | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,7 +21,7 @@ export function TurnsSection({ containerId, agent, projectDir, now }: Props) {
   const load = () => {
     setLoading(true);
     setError(null);
-    getTurns(containerId, agent)
+    getTurns(containerKey, agent)
       .then(setReport)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));
@@ -38,7 +38,7 @@ export function TurnsSection({ containerId, agent, projectDir, now }: Props) {
       {error && <p className="notice notice-err">{error}</p>}
       {report === null && <p className="muted small">No transcript found for this agent.</p>}
       {report && (
-        <TurnsList report={report} containerId={containerId} projectDir={projectDir} now={now} />
+        <TurnsList report={report} containerKey={containerKey} projectDir={projectDir} now={now} />
       )}
     </div>
   );
@@ -46,12 +46,12 @@ export function TurnsSection({ containerId, agent, projectDir, now }: Props) {
 
 export function TurnsList({
   report,
-  containerId,
+  containerKey,
   projectDir,
   now,
 }: {
   report: TurnReport;
-  containerId?: string;
+  containerKey?: string;
   projectDir: string | null;
   now: Date;
 }) {
@@ -85,7 +85,7 @@ export function TurnsList({
                 </p>
                 <FilesList
                   files={t.files}
-                  containerId={containerId}
+                  containerKey={containerKey}
                   projectDir={projectDir}
                   now={now}
                 />

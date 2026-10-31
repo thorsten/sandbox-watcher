@@ -122,18 +122,18 @@ describe("UpdateBanner", () => {
 
 describe("panels before their data arrives", () => {
   it("show loading states", () => {
-    expect(render(<ActivityPanel containerId="c1" now={now} />).text).toContain(
+    expect(render(<ActivityPanel containerKey="c1" now={now} />).text).toContain(
       "Looking inside the sandbox",
     );
-    expect(render(<MountsPanel containerId="c1" />).text).toContain("Inspecting container");
-    expect(render(<ResourcesPanel containerId="c1" />).text).toContain(
+    expect(render(<MountsPanel containerKey="c1" />).text).toContain("Inspecting container");
+    expect(render(<ResourcesPanel containerKey="c1" />).text).toContain(
       "Collecting resource samples",
     );
-    expect(render(<LogsPanel containerId="c1" />).text).toContain("Reading container log");
+    expect(render(<LogsPanel containerKey="c1" />).text).toContain("Reading container log");
     expect(
       render(
         <AllowDialog
-          containerId="c1"
+          containerKey="c1"
           selections={[{ host: "a.b", ports: [443] }]}
           onClose={noop}
         />,

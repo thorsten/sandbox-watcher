@@ -7,14 +7,14 @@ import type { FileTouch } from "../types";
 interface Props {
   files: FileTouch[];
   /** Container to resolve the editor target; without it rows are plain text. */
-  containerId?: string;
+  containerKey?: string;
   projectDir: string | null;
   now: Date;
   /** Collapse read-only files behind a toggle. Default true. */
   collapseReads?: boolean;
 }
 
-export function FilesList({ files, containerId, projectDir, now, collapseReads = true }: Props) {
+export function FilesList({ files, containerKey, projectDir, now, collapseReads = true }: Props) {
   const [showReads, setShowReads] = useState(!collapseReads);
   const [error, setError] = useState<string | null>(null);
   if (files.length === 0) return <p className="muted small">No files touched yet.</p>;
@@ -25,9 +25,9 @@ export function FilesList({ files, containerId, projectDir, now, collapseReads =
   const shown = showReads ? [...changedFiles, ...readFiles] : changedFiles;
 
   const open = (path: string) => {
-    if (!containerId) return;
+    if (!containerKey) return;
     setError(null);
-    openInEditor(containerId, path).catch((e: unknown) =>
+    openInEditor(containerKey, path).catch((e: unknown) =>
       setError(e instanceof Error ? e.message : String(e)),
     );
   };
@@ -52,7 +52,7 @@ export function FilesList({ files, containerId, projectDir, now, collapseReads =
             return (
               <li key={f.path}>
                 <span className={`chip file-${status}`}>{status}</span>
-                {containerId && status !== "deleted" ? (
+                {containerKey && status !== "deleted" ? (
                   <button
                     type="button"
                     className="link file-path"

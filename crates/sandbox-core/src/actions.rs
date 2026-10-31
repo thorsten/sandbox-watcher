@@ -7,13 +7,16 @@ use serde::{Deserialize, Serialize};
 
 use crate::Result;
 use crate::adapter::{ContainerFilter, RuntimeAdapter};
+use crate::host::container_key;
 use crate::model::MountRole;
 use crate::mounts::classify;
+use crate::overview::HostedAdapter;
 use crate::paths::annotate_host_paths;
 
 /// Outcome of stopping one container.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct StopResult {
+    /// Container key: the raw id locally, `alias/id` on a remote host.
     pub container_id: String,
     pub name: String,
     pub ok: bool,
@@ -23,10 +26,13 @@ pub struct StopResult {
 /// Default grace period before the runtime kills the container.
 pub const STOP_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Stop every running sandbox container of every adapter.
-pub async fn stop_all(adapters: &[Arc<dyn RuntimeAdapter>], timeout: Duration) -> Vec<StopResult> {
+/// Stop every running sandbox container of every adapter. Results carry the
+/// container key, so equal ids on two hosts stay apart.
+pub async fn stop_all(adapters: &[HostedAdapter], timeout: Duration) -> Vec<StopResult> {
     let mut results = Vec::new();
-    for adapter in adapters {
+    for hosted in adapters {
+        let adapter = &hosted.adapter;
+        let host = &hosted.host;
         let Ok(containers) = adapter.list_containers(&ContainerFilter::running()).await else {
             continue;
         };
@@ -35,7 +41,7 @@ pub async fn stop_all(adapters: &[Arc<dyn RuntimeAdapter>], timeout: Duration) -
             async move {
                 let outcome = adapter.stop(&c.id, Some(timeout)).await;
                 StopResult {
-                    container_id: c.id.clone(),
+                    container_id: container_key(host, &c.id),
                     name: c.name.clone(),
                     ok: outcome.is_ok(),
                     error: outcome.err().map(|e| e.to_string()),
@@ -253,6 +259,7 @@ pub fn network_logs_command(project_dir: Option<&str>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::host::Host;
     use crate::mock::MockAdapter;
 
     #[test]
@@ -347,7 +354,7 @@ mod tests {
     #[tokio::test]
     async fn stop_all_stops_running_only() {
         let mock = MockAdapter::demo();
-        let adapters: Vec<Arc<dyn RuntimeAdapter>> = vec![Arc::new(mock.clone())];
+        let adapters = vec![HostedAdapter::local(Arc::new(mock.clone()))];
         let results = stop_all(&adapters, STOP_TIMEOUT).await;
         assert_eq!(results.len(), 3);
         assert!(results.iter().all(|r| r.ok));
@@ -356,6 +363,21 @@ mod tests {
             .await
             .unwrap();
         assert!(running.is_empty());
+    }
+
+    #[tokio::test]
+    async fn stop_all_results_carry_container_keys() {
+        let adapters = vec![HostedAdapter {
+            host: Host::Remote("devbox".into()),
+            adapter: Arc::new(MockAdapter::demo()),
+        }];
+        let results = stop_all(&adapters, STOP_TIMEOUT).await;
+        assert!(
+            results
+                .iter()
+                .all(|r| r.container_id.starts_with("devbox/")),
+            "{results:?}"
+        );
     }
 
     #[tokio::test]

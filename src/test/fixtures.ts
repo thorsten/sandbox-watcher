@@ -23,6 +23,9 @@ export function container(
   const id = partial.id ?? "c1";
   return {
     id,
+    host: "local",
+    key: partial.key ?? id,
+    last_seen_at: null,
     name: `sandbox-${partial.project_slug ?? "web-shop"}`,
     project_slug: "web-shop",
     image: "sandbox-project-web-shop:0.73.1",
@@ -72,6 +75,7 @@ export function connected(
     status: "connected",
     runtimes: kinds.map((kind) => ({
       kind,
+      host: "local",
       version: "27.0.1",
       endpoint: `/var/run/${kind}.sock`,
       capabilities: {

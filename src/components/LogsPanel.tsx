@@ -4,7 +4,7 @@ import { getLogs } from "../api";
 const FOLLOW_MS = 2_000;
 const TAIL = 200;
 
-export function LogsPanel({ containerId }: { containerId: string }) {
+export function LogsPanel({ containerKey }: { containerKey: string }) {
   const [text, setText] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [follow, setFollow] = useState(true);
@@ -14,12 +14,12 @@ export function LogsPanel({ containerId }: { containerId: string }) {
 
   const load = useCallback(async () => {
     try {
-      setText(await getLogs(containerId, TAIL));
+      setText(await getLogs(containerKey, TAIL));
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
-  }, [containerId]);
+  }, [containerKey]);
 
   useEffect(() => {
     // load() awaits the Tauri command before setting state; no synchronous setState here.

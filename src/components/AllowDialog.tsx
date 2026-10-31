@@ -3,12 +3,12 @@ import { applyAllow, previewAllow } from "../api";
 import type { AllowPreview, AllowResult, ConfigTarget } from "../types";
 
 interface Props {
-  containerId: string;
+  containerKey: string;
   selections: { host: string; ports: number[] }[];
   onClose: (changed: boolean) => void;
 }
 
-export function AllowDialog({ containerId, selections, onClose }: Props) {
+export function AllowDialog({ containerKey, selections, onClose }: Props) {
   const [preview, setPreview] = useState<AllowPreview | null>(null);
   const [target, setTarget] = useState<ConfigTarget>("global");
   const [busy, setBusy] = useState(false);
@@ -17,7 +17,7 @@ export function AllowDialog({ containerId, selections, onClose }: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    previewAllow(containerId, selections).then(
+    previewAllow(containerKey, selections).then(
       (p) => {
         if (cancelled) return;
         setPreview(p);
@@ -28,7 +28,7 @@ export function AllowDialog({ containerId, selections, onClose }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [containerId, selections]);
+  }, [containerKey, selections]);
 
   const already = preview
     ? target === "global"
@@ -41,7 +41,7 @@ export function AllowDialog({ containerId, selections, onClose }: Props) {
   const apply = async () => {
     setBusy(true);
     try {
-      setResult(await applyAllow(containerId, target, toAdd));
+      setResult(await applyAllow(containerKey, target, toAdd));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

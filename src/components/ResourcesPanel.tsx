@@ -6,7 +6,7 @@ import { Sparkline } from "./Sparkline";
 
 const POLL_MS = 2_000;
 
-export function ResourcesPanel({ containerId }: { containerId: string }) {
+export function ResourcesPanel({ containerKey }: { containerKey: string }) {
   const [samples, setSamples] = useState<ResourceSample[] | null>(null);
 
   useEffect(() => {
@@ -14,7 +14,7 @@ export function ResourcesPanel({ containerId }: { containerId: string }) {
     const load = async () => {
       try {
         const all = await getStats();
-        if (!cancelled) setSamples(all[containerId] ?? []);
+        if (!cancelled) setSamples(all[containerKey] ?? []);
       } catch {
         if (!cancelled) setSamples([]);
       }
@@ -25,7 +25,7 @@ export function ResourcesPanel({ containerId }: { containerId: string }) {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [containerId]);
+  }, [containerKey]);
 
   if (samples === null) return <div className="resources muted">Collecting resource samples…</div>;
   const latest = samples[samples.length - 1];

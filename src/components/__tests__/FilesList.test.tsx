@@ -37,7 +37,7 @@ describe("FilesList", () => {
 
   it("makes existing files clickable only with a container", () => {
     const withContainer = render(
-      <FilesList files={files} containerId="c1" projectDir="/p" now={NOW} />,
+      <FilesList files={files} containerKey="c1" projectDir="/p" now={NOW} />,
     );
     expect(count(withContainer.html, 'class="link file-path"')).toBe(2);
     expect(withContainer.html).toContain('title="Open /p/src/cart.ts"');

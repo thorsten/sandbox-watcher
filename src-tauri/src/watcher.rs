@@ -12,14 +12,14 @@ use sandbox_core::RuntimeAdapter;
 use sandbox_core::activity::collect_insights;
 use sandbox_core::adapter::ContainerFilter;
 use sandbox_core::history::{History, HistoryQuery, HistoryView};
-use sandbox_core::host::parse_container_key;
+use sandbox_core::host::{container_key, parse_container_key};
 use sandbox_core::live::LiveRuntime;
 use sandbox_core::mock::MockAdapter;
 use sandbox_core::network::{NetworkReport, collect_all};
 use sandbox_core::notify::{Notification, blocked_bursts, diff, recent_blocked};
 use sandbox_core::overview::{DataSource, HostedAdapter, Overview, load};
 use sandbox_core::settings::Settings;
-use sandbox_core::stats_hub::StatsHub;
+use sandbox_core::stats_hub::{StatsHub, StatsSet};
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_notification::NotificationExt;
 use tokio::sync::{Notify, mpsc};
@@ -211,7 +211,7 @@ impl Watcher {
         };
 
         // Stats tracking per adapter.
-        let sets: Vec<(Arc<dyn RuntimeAdapter>, Vec<String>)> = self
+        let sets: Vec<StatsSet> = self
             .adapters()
             .into_iter()
             .map(|hosted| {
@@ -222,7 +222,7 @@ impl Watcher {
                     .filter(|c| {
                         c.host == hosted.host && c.runtime == kind && c.container.state.is_running()
                     })
-                    .map(|c| c.container.id.clone())
+                    .map(|c| (c.key.clone(), c.container.id.clone()))
                     .collect();
                 (hosted.adapter, ids)
             })
@@ -260,10 +260,10 @@ impl Watcher {
                 {
                     let mut history = self.history.lock().expect("history poisoned");
                     if let Some(usage) = &insight.usage {
-                        changed = history.record_usage(&c.container.id, usage) || changed;
+                        changed = history.record_usage(&c.key, usage) || changed;
                     }
-                    changed = history.record_files(&c.container.id, insight.agent, &insight.files)
-                        || changed;
+                    changed =
+                        history.record_files(&c.key, insight.agent, &insight.files) || changed;
                 }
             }
             self.save_history(changed);
@@ -274,7 +274,10 @@ impl Watcher {
         for hosted in self.adapters() {
             let adapter = hosted.adapter;
             if let Ok(containers) = adapter.list_containers(&ContainerFilter::running()).await {
-                reports.extend(collect_all(&adapter, &containers, Utc::now()).await);
+                for mut report in collect_all(&adapter, &containers, Utc::now()).await {
+                    report.container_id = container_key(&hosted.host, &report.container_id);
+                    reports.push(report);
+                }
             }
         }
         let counts = recent_blocked(&reports, Utc::now(), settings.blocked_burst_window_secs);

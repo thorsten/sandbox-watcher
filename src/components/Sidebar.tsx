@@ -40,11 +40,11 @@ export function Sidebar({ containers, runtime, network, selectedId, onSelect, no
           <h2 title={slug}>{slug}</h2>
           {group.map((c) => (
             <ContainerCard
-              key={c.id}
+              key={c.key}
               container={c}
-              selected={c.id === selectedId}
-              stale={stale.has(c.id)}
-              blocked={blockedFor(c.id)}
+              selected={c.key === selectedId}
+              stale={stale.has(c.key)}
+              blocked={blockedFor(c.key)}
               showRuntime={showRuntime}
               now={now}
               onSelect={onSelect}
@@ -58,9 +58,9 @@ export function Sidebar({ containers, runtime, network, selectedId, onSelect, no
           {stopped.flatMap(([, group]) =>
             group.map((c) => (
               <ContainerCard
-                key={c.id}
+                key={c.key}
                 container={c}
-                selected={c.id === selectedId}
+                selected={c.key === selectedId}
                 stale={false}
                 blocked={0}
                 showRuntime={showRuntime}
@@ -102,7 +102,7 @@ function ContainerCard({
     <button
       type="button"
       className={`card ${selected ? "selected" : ""} ${isRunning ? "" : "card-stopped"}`}
-      onClick={() => onSelect(container.id)}
+      onClick={() => onSelect(container.key)}
       aria-pressed={selected}
     >
       <div className="card-title">

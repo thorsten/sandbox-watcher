@@ -103,18 +103,18 @@ export function DetailPane({ container, runtime, report, now, onChanged }: Props
       </nav>
 
       <div className="detail-body">
-        {active === "activity" && <ActivityPanel containerId={container.id} now={now} />}
+        {active === "activity" && <ActivityPanel containerKey={container.key} now={now} />}
         {active === "network" && (
           <NetworkPanel
-            containerId={container.id}
+            containerKey={container.key}
             report={report}
             now={now}
             onChanged={onChanged}
           />
         )}
-        {active === "resources" && <ResourcesPanel containerId={container.id} />}
-        {active === "logs" && <LogsPanel containerId={container.id} />}
-        {active === "mounts" && <MountsPanel containerId={container.id} />}
+        {active === "resources" && <ResourcesPanel containerKey={container.key} />}
+        {active === "logs" && <LogsPanel containerKey={container.key} />}
+        {active === "mounts" && <MountsPanel containerKey={container.key} />}
       </div>
     </section>
   );

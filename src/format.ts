@@ -1,4 +1,4 @@
-import type { AgentKind, SandboxContainer } from "./types";
+import type { AgentKind, SandboxContainer, StopResult } from "./types";
 
 /** Same buckets as `sandbox status` (container-status.ts, getContainerUptime). */
 export function formatUptime(startedAt: string | null, now: Date = new Date()): string {
@@ -25,10 +25,17 @@ export function groupByProject(containers: SandboxContainer[]): Map<string, Sand
   return groups;
 }
 
-/** Hashes that differ inside one project mean one container is stale. */
+/** Hashes that differ inside one project on one host mean one container is stale. Returns container keys. */
 export function staleHashes(containers: SandboxContainer[]): Set<string> {
   const stale = new Set<string>();
-  for (const [, group] of groupByProject(containers)) {
+  const groups = new Map<string, SandboxContainer[]>();
+  for (const c of containers) {
+    const id = `${c.host}\u0000${c.project_slug}`;
+    const group = groups.get(id);
+    if (group) group.push(c);
+    else groups.set(id, [c]);
+  }
+  for (const group of groups.values()) {
     const hashes = new Set(group.map((c) => c.config_hash).filter((h): h is string => !!h));
     if (hashes.size <= 1) continue;
     // The newest running container defines the current hash.
@@ -38,7 +45,7 @@ export function staleHashes(containers: SandboxContainer[]): Set<string> {
         (a, b) => Date.parse(b.started_at ?? "") - Date.parse(a.started_at ?? ""),
       )[0]?.config_hash;
     for (const c of group) {
-      if (c.config_hash && current && c.config_hash !== current) stale.add(c.id);
+      if (c.config_hash && current && c.config_hash !== current) stale.add(c.key);
     }
   }
   return stale;
@@ -85,4 +92,10 @@ export function summarize(containers: SandboxContainer[]): Summary {
     sessions,
     byAgent: ordered,
   };
+}
+
+/** Name of a stop result, prefixed with the host alias for remote containers (key `alias/id`). */
+export function stopResultLabel(result: Pick<StopResult, "container_id" | "name">): string {
+  const slash = result.container_id.indexOf("/");
+  return slash < 0 ? result.name : `${result.container_id.slice(0, slash)}: ${result.name}`;
 }

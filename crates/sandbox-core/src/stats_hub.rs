@@ -17,6 +17,9 @@ use crate::model::ResourceSample;
 pub const HISTORY_LEN: usize = 90;
 const POLL_INTERVAL: Duration = Duration::from_secs(2);
 
+/// One adapter with its running containers as `(key, raw id)` pairs.
+pub type StatsSet = (Arc<dyn RuntimeAdapter>, Vec<(String, String)>);
+
 type History = Arc<Mutex<VecDeque<ResourceSample>>>;
 
 struct Tracked {
@@ -73,31 +76,35 @@ impl StatsHub {
     /// restart tasks whose stream ended. Each container is tied to the adapter
     /// that listed it; a container that moved to another adapter is restarted.
     /// Adapters without stats support are skipped.
-    pub fn sync(&self, sets: &[(Arc<dyn RuntimeAdapter>, Vec<String>)]) {
+    pub fn sync(&self, sets: &[StatsSet]) {
         let mut inner = self.inner.lock().expect("stats hub poisoned");
-        let wanted: Vec<(usize, &Arc<dyn RuntimeAdapter>, &String)> = sets
+        let wanted: Vec<(usize, &Arc<dyn RuntimeAdapter>, &String, &String)> = sets
             .iter()
             .filter(|(adapter, _)| adapter.capabilities().stats)
-            .flat_map(|(adapter, ids)| ids.iter().map(move |id| (ptr_of(adapter), adapter, id)))
+            .flat_map(|(adapter, pairs)| {
+                pairs
+                    .iter()
+                    .map(move |(key, id)| (ptr_of(adapter), adapter, key, id))
+            })
             .collect();
-        inner.tracked.retain(|id, t| {
+        inner.tracked.retain(|key, t| {
             let keep = wanted
                 .iter()
-                .any(|(ptr, _, wanted_id)| *wanted_id == id && *ptr == t.adapter_ptr)
+                .any(|(ptr, _, wanted_key, _)| *wanted_key == key && *ptr == t.adapter_ptr)
                 && !t.task.is_finished();
             if !keep {
                 t.task.abort();
             }
             keep
         });
-        for (ptr, adapter, id) in wanted {
-            if inner.tracked.contains_key(id) {
+        for (ptr, adapter, key, id) in wanted {
+            if inner.tracked.contains_key(key) {
                 continue;
             }
             let history: History = Arc::default();
             let task = tokio::spawn(collect(adapter.clone(), id.clone(), history.clone()));
             inner.tracked.insert(
-                id.clone(),
+                key.clone(),
                 Tracked {
                     task,
                     history,
@@ -107,9 +114,13 @@ impl StatsHub {
         }
     }
 
-    /// Convenience for a single adapter.
+    /// Convenience for a single adapter whose keys equal the raw ids.
     pub fn sync_one(&self, adapter: &Arc<dyn RuntimeAdapter>, running_ids: &[String]) {
-        self.sync(&[(adapter.clone(), running_ids.to_vec())]);
+        let pairs = running_ids
+            .iter()
+            .map(|id| (id.clone(), id.clone()))
+            .collect();
+        self.sync(&[(adapter.clone(), pairs)]);
     }
 
     /// Stop all tracking, e.g. when the runtime went away.
@@ -120,7 +131,7 @@ impl StatsHub {
         }
     }
 
-    /// Current history per container id, oldest first.
+    /// Current history per container key, oldest first.
     pub fn snapshot(&self) -> HashMap<String, Vec<ResourceSample>> {
         let inner = self.inner.lock().expect("stats hub poisoned");
         inner
@@ -169,5 +180,16 @@ mod tests {
         );
         hub.sync(&[]);
         assert!(hub.snapshot().is_empty());
+    }
+
+    #[tokio::test]
+    async fn snapshot_is_keyed_by_container_key() {
+        let hub = StatsHub::new();
+        let adapter: Arc<dyn RuntimeAdapter> = Arc::new(MockAdapter::demo());
+        let id = "sandbox-web-shop".to_string();
+        hub.sync(&[(adapter, vec![(format!("devbox/{id}"), id.clone())])]);
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        let snap = hub.snapshot();
+        assert!(!snap[&format!("devbox/{id}")].is_empty());
     }
 }

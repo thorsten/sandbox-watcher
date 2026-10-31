@@ -8,6 +8,7 @@ use std::collections::{HashMap, HashSet};
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 
+use crate::host::Host;
 use crate::model::{AgentKind, NetworkStatus};
 use crate::network::NetworkReport;
 use crate::overview::{ContainerOverview, Overview};
@@ -48,17 +49,24 @@ fn by_id(overview: &Overview) -> HashMap<&str, &ContainerOverview> {
     overview
         .containers
         .iter()
-        .map(|c| (c.container.id.as_str(), c))
+        .map(|c| (c.key.as_str(), c))
         .collect()
 }
 
+fn titled(c: &ContainerOverview, title: String) -> String {
+    match &c.host {
+        Host::Local => title,
+        Host::Remote(alias) => format!("{alias}: {title}"),
+    }
+}
+
 /// Containers whose hash differs from the newest running container of their
-/// project. Mirrors `staleHashes` in the UI.
+/// project. Grouped per host and project, returns container keys. Mirrors `staleHashes` in the UI.
 pub fn stale_ids(overview: &Overview) -> HashSet<String> {
-    let mut by_project: HashMap<&str, Vec<&ContainerOverview>> = HashMap::new();
+    let mut by_project: HashMap<(Host, &str), Vec<&ContainerOverview>> = HashMap::new();
     for c in &overview.containers {
         by_project
-            .entry(c.container.project_slug.as_str())
+            .entry((c.host.clone(), c.container.project_slug.as_str()))
             .or_default()
             .push(c);
     }
@@ -80,7 +88,7 @@ pub fn stale_ids(overview: &Overview) -> HashSet<String> {
             if let (Some(hash), Some(current)) = (c.container.config_hash.as_deref(), current)
                 && hash != current
             {
-                stale.insert(c.container.id.clone());
+                stale.insert(c.key.clone());
             }
         }
     }
@@ -107,7 +115,10 @@ pub fn diff(
                 if settings.container_started && now.container.state.is_running() {
                     out.push(Notification {
                         kind: NotificationKind::ContainerStarted,
-                        title: format!("Sandbox started: {}", now.container.project_slug),
+                        title: titled(
+                            now,
+                            format!("Sandbox started: {}", now.container.project_slug),
+                        ),
                         body: format!("{name} is running"),
                         container_id: (*id).to_string(),
                     });
@@ -119,7 +130,10 @@ pub fn diff(
                 if !was_running && is_running && settings.container_started {
                     out.push(Notification {
                         kind: NotificationKind::ContainerStarted,
-                        title: format!("Sandbox started: {}", now.container.project_slug),
+                        title: titled(
+                            now,
+                            format!("Sandbox started: {}", now.container.project_slug),
+                        ),
                         body: format!("{name} is running again"),
                         container_id: (*id).to_string(),
                     });
@@ -129,9 +143,12 @@ pub fn diff(
                     if !was.sessions.is_empty() && settings.container_died {
                         out.push(Notification {
                             kind: NotificationKind::ContainerDied,
-                            title: format!(
-                                "Sandbox stopped unexpectedly: {}",
-                                now.container.project_slug
+                            title: titled(
+                                now,
+                                format!(
+                                    "Sandbox stopped unexpectedly: {}",
+                                    now.container.project_slug
+                                ),
                             ),
                             body: format!(
                                 "{name} stopped while {} session{} ran",
@@ -143,7 +160,10 @@ pub fn diff(
                     } else if settings.container_stopped {
                         out.push(Notification {
                             kind: NotificationKind::ContainerStopped,
-                            title: format!("Sandbox stopped: {}", now.container.project_slug),
+                            title: titled(
+                                now,
+                                format!("Sandbox stopped: {}", now.container.project_slug),
+                            ),
                             body: format!("{name} is no longer running"),
                             container_id: (*id).to_string(),
                         });
@@ -156,10 +176,13 @@ pub fn diff(
                         for s in now.sessions.iter().filter(|s| !old.contains(&s.pid)) {
                             out.push(Notification {
                                 kind: NotificationKind::SessionStarted,
-                                title: format!(
-                                    "{} started in {}",
-                                    agent_label(s.agent, &s.command),
-                                    now.container.project_slug
+                                title: titled(
+                                    now,
+                                    format!(
+                                        "{} started in {}",
+                                        agent_label(s.agent, &s.command),
+                                        now.container.project_slug
+                                    ),
                                 ),
                                 body: format!("{name}, PID {}", s.pid),
                                 container_id: (*id).to_string(),
@@ -170,10 +193,13 @@ pub fn diff(
                         for s in was.sessions.iter().filter(|s| !new.contains(&s.pid)) {
                             out.push(Notification {
                                 kind: NotificationKind::SessionEnded,
-                                title: format!(
-                                    "{} ended in {}",
-                                    agent_label(s.agent, &s.command),
-                                    now.container.project_slug
+                                title: titled(
+                                    now,
+                                    format!(
+                                        "{} ended in {}",
+                                        agent_label(s.agent, &s.command),
+                                        now.container.project_slug
+                                    ),
                                 ),
                                 body: format!("{name}, PID {}", s.pid),
                                 container_id: (*id).to_string(),
@@ -191,7 +217,7 @@ pub fn diff(
             if let Some(c) = after.get(id.as_str()) {
                 out.push(Notification {
                     kind: NotificationKind::StaleContainer,
-                    title: format!("Stale sandbox: {}", c.container.project_slug),
+                    title: titled(c, format!("Stale sandbox: {}", c.container.project_slug)),
                     body: format!("{} was created from an older configuration than the newest container of this project", c.container.name),
                     container_id: id.clone(),
                 });
@@ -244,7 +270,7 @@ pub fn blocked_bursts(
             let c = names.get(id.as_str())?;
             Some(Notification {
                 kind: NotificationKind::BlockedBurst,
-                title: format!("Blocked requests: {}", c.container.project_slug),
+                title: titled(c, format!("Blocked requests: {}", c.container.project_slug)),
                 body: format!("{n} blocked connections recently from {}", c.container.name),
                 container_id: id.clone(),
             })
@@ -318,6 +344,7 @@ mod tests {
         let mut brand_new = before.clone();
         let mut extra = before.containers[1].clone();
         extra.container.id = "new-id".into();
+        extra.key = "new-id".into();
         extra.container.name = "sandbox-new".into();
         extra.container.project_slug = "new".into();
         extra.runtime = RuntimeKind::Docker;
@@ -374,5 +401,53 @@ mod tests {
         assert_eq!(kinds(&n), vec![NotificationKind::BlockedBurst]);
         let n = blocked_bursts(&cur, &cur, &overview, 5, &NotificationSettings::default());
         assert!(n.is_empty(), "stays above threshold: no repeat");
+    }
+
+    fn remote(mut c: ContainerOverview, alias: &str) -> ContainerOverview {
+        c.key = crate::host::container_key(&Host::Remote(alias.into()), &c.container.id);
+        c.host = Host::Remote(alias.into());
+        c
+    }
+
+    fn overview_with(containers: Vec<ContainerOverview>) -> Overview {
+        Overview {
+            source: DataSource::Mock,
+            runtime: crate::overview::RuntimeStatus::NotDetected,
+            containers,
+            tested_sandbox_version: String::new(),
+        }
+    }
+
+    async fn running_template() -> ContainerOverview {
+        let mut c = snapshot(&MockAdapter::demo())
+            .await
+            .containers
+            .into_iter()
+            .find(|c| c.container.state.is_running())
+            .unwrap();
+        c.container.id = "c1".into();
+        c.key = "c1".into();
+        c.container.project_slug = "web-shop".into();
+        c.sessions.clear();
+        c
+    }
+
+    #[tokio::test]
+    async fn remote_notifications_carry_host_and_key() {
+        let before = overview_with(vec![]);
+        let started = remote(running_template().await, "devbox");
+        let after = overview_with(vec![started]);
+        let out = diff(&before, &after, &NotificationSettings::default());
+        assert_eq!(out[0].container_id, "devbox/c1");
+        assert!(out[0].title.starts_with("devbox: "), "{}", out[0].title);
+    }
+
+    #[tokio::test]
+    async fn same_slug_on_two_hosts_is_not_stale() {
+        let mut a = running_template().await;
+        a.container.config_hash = Some("aaaaaaaaaaaa".into());
+        let mut b = remote(running_template().await, "devbox");
+        b.container.config_hash = Some("bbbbbbbbbbbb".into());
+        assert!(stale_ids(&overview_with(vec![a, b])).is_empty());
     }
 }

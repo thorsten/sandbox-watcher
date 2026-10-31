@@ -101,7 +101,7 @@ export function App() {
   // Keep the selection on the same container across refreshes; otherwise
   // pick the first running one.
   const selected =
-    containers.find((c) => c.id === selectedId) ??
+    containers.find((c) => c.key === selectedId) ??
     containers.find((c) => c.state === "running") ??
     containers[0] ??
     null;
@@ -207,7 +207,7 @@ export function App() {
             containers={containers}
             runtime={state.overview.runtime}
             network={network}
-            selectedId={selected?.id ?? null}
+            selectedId={selected?.key ?? null}
             onSelect={setSelectedId}
             now={state.refreshedAt}
           />
@@ -225,10 +225,10 @@ export function App() {
               <RuntimeBanner runtime={state.overview.runtime} />
             ) : selected ? (
               <DetailPane
-                key={selected.id}
+                key={selected.key}
                 container={selected}
                 runtime={state.overview.runtime}
-                report={network?.find((r) => r.container_id === selected.id)}
+                report={network?.find((r) => r.container_id === selected.key)}
                 now={state.refreshedAt}
                 onChanged={() => void refresh()}
               />

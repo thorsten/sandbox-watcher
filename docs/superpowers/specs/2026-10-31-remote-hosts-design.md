@@ -84,7 +84,10 @@ collide across machines.
 - New `Host` enum: `Local` or `Remote(String)` (the alias). New `RuntimeId { host, kind }`.
 - `Live` keys adapters and event tasks by `RuntimeId`.
 - `ContainerOverview` gains `host: Host`, serialised flat as `host` (`"local"` or the alias).
-- Every Tauri command that takes `container_id` also takes `host`. `adapter_for(host, id)`.
+- Every Tauri command addresses a container by its container key: `<id>` for local
+  containers, `<alias>/<id>` for remote ones (aliases cannot contain `/`). The Rust side
+  parses the key with `parse_container_key`; `adapter_for(key)` returns the adapter and the
+  raw id. Stats, network reports, notifications and history are keyed the same way.
 - History keys become `<host>/<container id>` for remote containers. Local keys stay as they
   are, so existing history files load unchanged.
 - `src/types.ts` mirrors the new fields.

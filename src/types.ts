@@ -23,6 +23,12 @@ export interface Session {
 
 export interface SandboxContainer {
   id: string;
+  /** `local` or the SSH alias of the remote host. */
+  host: string;
+  /** Identity across hosts: `<id>` locally, `<alias>/<id>` remotely. Pass this to commands. */
+  key: string;
+  /** Set while the container's host is unreachable: when it was last seen. */
+  last_seen_at: string | null;
   name: string;
   project_slug: string;
   image: string;
@@ -69,9 +75,10 @@ export interface Capabilities {
   stop: boolean;
 }
 
-export type ConnectedRuntime = RuntimeInfo & { capabilities: Capabilities };
+export type ConnectedRuntime = RuntimeInfo & { host: string; capabilities: Capabilities };
 
 export interface RuntimeFailure {
+  host: string;
   kind: RuntimeKind;
   endpoint: string;
   reason: string;

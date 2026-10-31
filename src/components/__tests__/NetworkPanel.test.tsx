@@ -5,7 +5,7 @@ import { NetworkPanel } from "../NetworkPanel";
 
 describe("NetworkPanel", () => {
   it("shows a loading state before the first report", () => {
-    expect(render(<NetworkPanel containerId="c1" report={undefined} now={NOW} />).text).toContain(
+    expect(render(<NetworkPanel containerKey="c1" report={undefined} now={NOW} />).text).toContain(
       "Reading network logs",
     );
   });
@@ -13,7 +13,7 @@ describe("NetworkPanel", () => {
   it("renders a row per entry with status, count and age", () => {
     const { text, html } = render(
       <NetworkPanel
-        containerId="c1"
+        containerKey="c1"
         report={report([
           entry({ destination: "evil.example", count: 3 }),
           entry({
@@ -37,7 +37,7 @@ describe("NetworkPanel", () => {
   it("labels DNS-only rows and shows the resolved IP", () => {
     const { text } = render(
       <NetworkPanel
-        containerId="c1"
+        containerKey="c1"
         report={report([
           entry({ destination: "dns.only", port: 0 }),
           entry({ destination: "example.com", dst_ip: "93.184.216.34" }),
@@ -52,7 +52,7 @@ describe("NetworkPanel", () => {
   it("offers checkboxes only for blocked host names", () => {
     const { html } = render(
       <NetworkPanel
-        containerId="c1"
+        containerKey="c1"
         report={report([
           entry({ destination: "blocked.example" }),
           entry({ destination: "10.0.0.5", dst_ip: "10.0.0.5" }),
@@ -68,7 +68,7 @@ describe("NetworkPanel", () => {
   it("warns about failed and unparsed sources", () => {
     const { text } = render(
       <NetworkPanel
-        containerId="c1"
+        containerKey="c1"
         report={report([], { failed_sources: ["dns"], unparsed_sources: ["proxy-access"] })}
         now={NOW}
       />,

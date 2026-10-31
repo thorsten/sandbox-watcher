@@ -10,7 +10,7 @@ const SOURCE_LABELS = {
 } as const;
 
 interface Props {
-  containerId: string;
+  containerKey: string;
   report: NetworkReport | undefined;
   now: Date;
   onChanged?: () => void;
@@ -31,7 +31,7 @@ function selectionsFor(entries: NetworkEntry[], hosts: Set<string>) {
   }));
 }
 
-export function NetworkPanel({ containerId, report, now, onChanged }: Props) {
+export function NetworkPanel({ containerKey, report, now, onChanged }: Props) {
   const [status, setStatus] = useState<"all" | "blocked">("all");
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -151,7 +151,7 @@ export function NetworkPanel({ containerId, report, now, onChanged }: Props) {
 
       {allowOpen && (
         <AllowDialog
-          containerId={containerId}
+          containerKey={containerKey}
           selections={selections}
           onClose={(changed) => {
             setAllowOpen(false);

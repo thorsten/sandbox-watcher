@@ -48,7 +48,7 @@ export function onSettingsUpdated(handler: (settings: Settings) => void): Promis
 }
 
 /** Tray menu picked a project: select this container in the window. */
-export function onSelectContainer(handler: (containerId: string) => void): Promise<UnlistenFn> {
+export function onSelectContainer(handler: (containerKey: string) => void): Promise<UnlistenFn> {
   return listen<string>("select-container", (e) => handler(e.payload));
 }
 
@@ -65,46 +65,46 @@ export function getStats(): Promise<Record<string, ResourceSample[]>> {
   return invoke<Record<string, ResourceSample[]>>("get_stats");
 }
 
-export function getActivity(containerId: string): Promise<ContainerActivity> {
-  return invoke<ContainerActivity>("get_activity", { containerId });
+export function getActivity(containerKey: string): Promise<ContainerActivity> {
+  return invoke<ContainerActivity>("get_activity", { containerKey });
 }
 
 /** Turn-by-turn detail of an agent's transcript; reads it in full, so on demand only. */
-export function getTurns(containerId: string, agent: AgentKind): Promise<TurnReport | null> {
-  return invoke<TurnReport | null>("get_turns", { containerId, agent });
+export function getTurns(containerKey: string, agent: AgentKind): Promise<TurnReport | null> {
+  return invoke<TurnReport | null>("get_turns", { containerKey, agent });
 }
 
-export function getContainerDetails(containerId: string): Promise<ContainerDetails | null> {
-  return invoke<ContainerDetails | null>("get_container_details", { containerId });
+export function getContainerDetails(containerKey: string): Promise<ContainerDetails | null> {
+  return invoke<ContainerDetails | null>("get_container_details", { containerKey });
 }
 
-export function getLogs(containerId: string, tail = 200): Promise<string> {
-  return invoke<string>("get_logs", { containerId, tail });
+export function getLogs(containerKey: string, tail = 200): Promise<string> {
+  return invoke<string>("get_logs", { containerKey, tail });
 }
 
-export function revealMount(containerId: string, path: string): Promise<void> {
-  return invoke<void>("reveal_mount", { containerId, path });
+export function revealMount(containerKey: string, path: string): Promise<void> {
+  return invoke<void>("reveal_mount", { containerKey, path });
 }
 
-export function stopContainer(containerId: string): Promise<void> {
-  return invoke<void>("stop_container", { containerId });
+export function stopContainer(containerKey: string): Promise<void> {
+  return invoke<void>("stop_container", { containerKey });
 }
 
 export function stopAll(): Promise<StopResult[]> {
   return invoke<StopResult[]>("stop_all");
 }
 
-export function getProjectPath(containerId: string): Promise<string | null> {
-  return invoke<string | null>("get_project_path", { containerId });
+export function getProjectPath(containerKey: string): Promise<string | null> {
+  return invoke<string | null>("get_project_path", { containerKey });
 }
 
-export function openProject(containerId: string): Promise<void> {
-  return invoke<void>("open_project", { containerId });
+export function openProject(containerKey: string): Promise<void> {
+  return invoke<void>("open_project", { containerKey });
 }
 
 /** Resolves with the terminal program that was started. */
-export function openTerminal(containerId: string): Promise<string> {
-  return invoke<string>("open_terminal", { containerId });
+export function openTerminal(containerKey: string): Promise<string> {
+  return invoke<string>("open_terminal", { containerKey });
 }
 
 export function getHistory(
@@ -120,18 +120,18 @@ export function clearHistory(): Promise<void> {
 }
 
 export function previewAllow(
-  containerId: string,
+  containerKey: string,
   selections: { host: string; ports: number[] }[],
 ): Promise<AllowPreview> {
-  return invoke<AllowPreview>("preview_allow", { containerId, selections });
+  return invoke<AllowPreview>("preview_allow", { containerKey, selections });
 }
 
 export function applyAllow(
-  containerId: string,
+  containerKey: string,
   target: ConfigTarget,
   entries: string[],
 ): Promise<AllowResult> {
-  return invoke<AllowResult>("apply_allow", { containerId, target, entries });
+  return invoke<AllowResult>("apply_allow", { containerKey, target, entries });
 }
 
 export function checkForUpdate(): Promise<UpdateInfo | null> {
@@ -156,8 +156,8 @@ export function onUpdateProgress(
 }
 
 /** Open the project (no path) or a file inside it in the configured editor. */
-export function openInEditor(containerId: string, path?: string): Promise<string> {
-  return invoke<string>("open_in_editor", { containerId, path: path ?? null });
+export function openInEditor(containerKey: string, path?: string): Promise<string> {
+  return invoke<string>("open_in_editor", { containerKey, path: path ?? null });
 }
 
 export function detectRuntimes(): Promise<DetectedRuntime[]> {

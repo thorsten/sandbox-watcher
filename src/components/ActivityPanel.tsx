@@ -44,7 +44,7 @@ function missingTranscripts(activity: ContainerActivity): AgentKind[] {
   return known.filter((a) => running.has(a) && !have.has(a));
 }
 
-export function ActivityPanel({ containerId, now }: { containerId: string; now: Date }) {
+export function ActivityPanel({ containerKey, now }: { containerKey: string; now: Date }) {
   const [activity, setActivity] = useState<ContainerActivity | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,7 +52,7 @@ export function ActivityPanel({ containerId, now }: { containerId: string; now: 
     let cancelled = false;
     const load = async () => {
       try {
-        const a = await getActivity(containerId);
+        const a = await getActivity(containerKey);
         if (!cancelled) {
           setActivity(a);
           setError(null);
@@ -67,7 +67,7 @@ export function ActivityPanel({ containerId, now }: { containerId: string; now: 
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [containerId]);
+  }, [containerKey]);
 
   if (error) return <p className="network-note warn">{error}</p>;
   if (!activity) return <div className="activity muted">Looking inside the sandbox…</div>;
@@ -133,12 +133,12 @@ export function ActivityPanel({ containerId, now }: { containerId: string; now: 
           <h4 className="files-title">Files</h4>
           <FilesList
             files={agent.files}
-            containerId={containerId}
+            containerKey={containerKey}
             projectDir={activity.project_dir}
             now={now}
           />
           <TurnsSection
-            containerId={containerId}
+            containerKey={containerKey}
             agent={agent.agent}
             projectDir={activity.project_dir}
             now={now}
