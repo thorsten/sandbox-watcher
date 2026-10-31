@@ -9,7 +9,7 @@ A cross-platform desktop app that shows what is happening in your running
 which projects have a sandbox up, which agents run inside, what they reach
 on the network, and what they consume.
 
-Status: 0.5.0, all milestones implemented. macOS releases after 0.4.0 are signed and notarised. See [`docs/MILESTONES.md`](docs/MILESTONES.md)
+Status: 0.6.0, all milestones implemented. macOS releases after 0.4.0 are signed and notarised. See [`docs/MILESTONES.md`](docs/MILESTONES.md)
 for the plan and [`docs/adr/`](docs/adr/) for decisions.
 
 ## What you see

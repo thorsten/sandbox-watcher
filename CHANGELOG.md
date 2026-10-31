@@ -3,6 +3,49 @@
 All notable changes to Sandbox Watcher. Generated from
 [Conventional Commits](https://www.conventionalcommits.org/) by `scripts/changelog.mjs`.
 
+## 0.6.0 (2026-10-31)
+
+### Features
+
+- **ui:** remote host badges, filter, settings and mock host ([c6816fc](https://github.com/thorsten/sandbox-watcher/commit/c6816fc8605a462d7c1d1570f63ba65af1a7a629))
+- connect to remote hosts from settings ([7926c8e](https://github.com/thorsten/sandbox-watcher/commit/7926c8e6c5cd31fd1fb0845a24cb3bbd300a6c9a))
+- **core:** detect runtimes on remote hosts ([5ac946d](https://github.com/thorsten/sandbox-watcher/commit/5ac946d4375f589611de0e193b80a4a0f47643fc))
+- **core:** ssh master sessions with socket forwarding ([2cdc265](https://github.com/thorsten/sandbox-watcher/commit/2cdc265bb5a5c3b39eeee8193699b80ea0a9cf98))
+- **core:** host identity and container keys ([15b925c](https://github.com/thorsten/sandbox-watcher/commit/15b925cb4cd5380f1eadfca48a1e62a55548e463))
+
+### Fixes
+
+- **ui:** show greyed containers as unreachable and name remote runtimes ([34f4060](https://github.com/thorsten/sandbox-watcher/commit/34f4060d3710edf0d6d0f7848646f10522f832fc))
+- **core:** retry a failed remote runtime after the host backoff ([7b7d668](https://github.com/thorsten/sandbox-watcher/commit/7b7d668a4009661970c50b373b553df4620a58d9))
+- bound remote round trips after the overview ([e9d5939](https://github.com/thorsten/sandbox-watcher/commit/e9d593989e33d8e95b5f4415ff852ddf8d68d59f))
+- **core:** harden ssh options and report failed remote probes ([62ac148](https://github.com/thorsten/sandbox-watcher/commit/62ac1483653f59a5be6c75df4c4b0b5eb066b566))
+- **ui:** keep host filter reachable and skip greyed sessions in counts ([ad30011](https://github.com/thorsten/sandbox-watcher/commit/ad30011036d9bd33e90da22113159f9726fb9085))
+- **core:** keep history and shutdown correct for unreachable hosts ([5261b2f](https://github.com/thorsten/sandbox-watcher/commit/5261b2f2361f605a113092980f4e0b975c56a4d9))
+- **core:** drain ssh master stderr and validate forwards ([575b578](https://github.com/thorsten/sandbox-watcher/commit/575b578de0457225d22cd23ffa5063a04c6c12f5))
+
+### Refactoring
+
+- **core:** run runtime CLIs through a CommandRunner ([6cceec6](https://github.com/thorsten/sandbox-watcher/commit/6cceec6084a6aa4f88dc3fb44ecb76e77fa1f8ef))
+- address containers by container key ([ee1b650](https://github.com/thorsten/sandbox-watcher/commit/ee1b650493f25b89e682b570fc49728391db0bc3))
+- stop all covers every host ([bf7d551](https://github.com/thorsten/sandbox-watcher/commit/bf7d551721073696f70459998d24ba00070e0954))
+- **core:** carry host and container key through the overview ([49f44f1](https://github.com/thorsten/sandbox-watcher/commit/49f44f166ef904e455b768b09a499661eaa6fa6b))
+
+### Documentation
+
+- implementation plan for remote hosts ([88d8372](https://github.com/thorsten/sandbox-watcher/commit/88d8372e12616032fadbc8f267465240bcd9c079))
+- design for remote hosts over SSH ([0f275b4](https://github.com/thorsten/sandbox-watcher/commit/0f275b472f1a7dc78faa1cf015d0ce720cae4f36))
+- mark Apple container and fresh-machine checks as verified ([f6592d1](https://github.com/thorsten/sandbox-watcher/commit/f6592d168b8b351109a212c6869c38b915abf874))
+
+### Tests
+
+- run conformance over SSH in CI; document remote hosts ([d8db92f](https://github.com/thorsten/sandbox-watcher/commit/d8db92f5283a94ea04e47fd0e123a7b78dc4d0fd))
+
+### CI
+
+- restart test containers before the ssh conformance runs ([584039e](https://github.com/thorsten/sandbox-watcher/commit/584039e5a2efc5a43f3ccac176505330ce4a1c08))
+- run the shell unit tests; mark remote hosts in progress ([2db7ea5](https://github.com/thorsten/sandbox-watcher/commit/2db7ea585510e9037ea5240de0f27aecce927feb))
+- weekly check of the sandbox files the watcher depends on ([ad25800](https://github.com/thorsten/sandbox-watcher/commit/ad25800e1811be238fedba9818c20ea7d660cc39))
+
 ## 0.5.0 (2026-10-31)
 
 ### Features
@@ -29,10 +72,13 @@ All notable changes to Sandbox Watcher. Generated from
 
 ### Chores
 
+- **release:** v0.5.0 ([6a59d7e](https://github.com/thorsten/sandbox-watcher/commit/6a59d7eab17ac03f09419b6eb91bf46bb1ee7075))
 - ignore signing certificates and keys ([c84f4e1](https://github.com/thorsten/sandbox-watcher/commit/c84f4e152966cf3cf90686744778620c5f4e15c7))
 - **release:** bump the README status line with the version ([4c5d78a](https://github.com/thorsten/sandbox-watcher/commit/4c5d78a17228ea869819e5b22ff99aff1e3ac389))
 - ignore personal Claude Code settings ([9260382](https://github.com/thorsten/sandbox-watcher/commit/92603829fd96a550fbfe018da7865911c1c4f1d9))
 - add .editorconfig with spaces-only indentation ([86184c0](https://github.com/thorsten/sandbox-watcher/commit/86184c0e3dc4153486b2ef032864aabbbe233137))
+
+**Full changelog:** [v0.4.0...v0.5.0](https://github.com/thorsten/sandbox-watcher/compare/v0.4.0...v0.5.0)
 
 ## 0.4.0 (2026-10-30)
 
