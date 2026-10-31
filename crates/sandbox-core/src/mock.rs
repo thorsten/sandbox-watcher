@@ -526,3 +526,11 @@ mod tests {
         ));
     }
 }
+
+/// Docker contexts for demo mode: one importable, one that needs an alias.
+pub fn demo_ssh_contexts() -> Vec<crate::endpoints::SshContext> {
+    vec![
+        crate::endpoints::ssh_context("staging", "ssh://dev@staging"),
+        crate::endpoints::ssh_context("build-vm", "ssh://me@build-vm:2222"),
+    ]
+}
