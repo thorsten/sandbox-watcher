@@ -198,6 +198,9 @@ MIT, see [`LICENSE`](LICENSE).
 
 ## Privacy
 
-The app only talks to the local container runtime. It never reads
-environment variable values from containers, only their names, and it sends
-nothing anywhere.
+The app talks to the local container runtime and to nothing else, with one
+exception: the update check asks GitHub Releases for a new version on start
+and every six hours, which sends your IP address to GitHub. It can be turned
+off in Settings. The app never reads environment variable values from
+containers, only their names, and it sends no container, session or usage
+data anywhere.
