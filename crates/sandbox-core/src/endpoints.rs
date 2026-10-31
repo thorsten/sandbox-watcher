@@ -71,6 +71,21 @@ pub async fn podman_socket(runner: &CommandRunner) -> Option<String> {
     normalise_host(&path)
 }
 
+/// Endpoint of a runtime on a remote host, discovered through its CLI there.
+/// Docker falls back to the default socket; TCP endpoints are passed through
+/// and rejected by the caller.
+pub async fn resolve_remote(runner: &CommandRunner, kind: RuntimeKind) -> Option<String> {
+    match kind {
+        RuntimeKind::Docker => Some(
+            docker_host_from_context(runner)
+                .await
+                .unwrap_or_else(|| "unix:///var/run/docker.sock".into()),
+        ),
+        RuntimeKind::Podman => podman_socket(runner).await,
+        RuntimeKind::AppleContainer => Some("container".into()),
+    }
+}
+
 /// Accept `unix://`, `npipe://`, `tcp://` and bare paths; reject SSH and empty values.
 pub fn normalise_host(value: &str) -> Option<String> {
     let v = value.trim().trim_matches('"');
