@@ -5,7 +5,7 @@ A cross-platform desktop app that shows what is happening in your running
 which projects have a sandbox up, which agents are running inside, what they
 are doing on the network, and how much they consume.
 
-Status: M0 and M1 done and verified live, M2 verified live, M3 verified live, M4 verified live, M5 verified live (Docker and Podman in CI, Apple container untested), M6 verified live, M7 implemented without signing/notarisation (2026-10-30). Based on sandbox `0.73.1`.
+Status: M0 and M1 done and verified live, M2 verified live, M3 verified live, M4 verified live, M5 verified live (Docker and Podman in CI, Apple container verified live), M6 verified live, M7 implemented with macOS signing and notarisation, Windows unsigned, fresh-machine check passed (2026-10-31). Based on sandbox `0.73.1`.
 
 ---
 
