@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { useCallback } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { advance, deferred, flush, mount, type Deferred } from "./test/dom";
+import { advance, click, deferred, flush, mount, type Deferred } from "./test/dom";
 import { usePolling } from "./usePolling";
 
 /** Renders the hook state; `fetch` is called with the current key for every request. */
@@ -15,10 +15,13 @@ function Probe({
   interval: number | null;
 }) {
   const load = useCallback(() => fetch(id), [fetch, id]);
-  const { data, error } = usePolling(load, interval);
+  const { data, error, refresh } = usePolling(load, interval);
   return (
     <output>
       data={data ?? "none"} error={error ?? "none"}
+      <button type="button" onClick={refresh}>
+        refresh
+      </button>
     </output>
   );
 }
@@ -147,6 +150,30 @@ describe("usePolling", () => {
     await flush();
     await m.rerender(<Probe fetch={fetch} id="a" interval={null} />);
     expect(m.text()).toContain("data=kept");
+    await m.unmount();
+  });
+
+  it("refresh requests now, keeps the data, drops the pending answer and restarts the timer", async () => {
+    const { fetch, calls } = controlled();
+    const m = await mount(<Probe fetch={fetch} id="a" interval={100} />);
+    calls[0]!.d.resolve("first");
+    await flush();
+    await advance(100); // second request pending
+    expect(fetch).toHaveBeenCalledTimes(2);
+
+    await click(m.container.querySelector("button")!);
+    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(m.text()).toContain("data=first");
+
+    calls[1]!.d.resolve("stale");
+    await flush();
+    expect(m.text()).toContain("data=first");
+
+    calls[2]!.d.resolve("fresh");
+    await flush();
+    expect(m.text()).toContain("data=fresh");
+    await advance(100);
+    expect(fetch).toHaveBeenCalledTimes(4);
     await m.unmount();
   });
 });

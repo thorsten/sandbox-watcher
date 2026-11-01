@@ -1,37 +1,25 @@
-import { useEffect, useState } from "react";
 import { getStats } from "../api";
 import { formatBytes, formatPercent } from "../sparkline";
-import type { ResourceSample } from "../types";
+import { usePolling } from "../usePolling";
 import { Sparkline } from "./Sparkline";
 
-const POLL_MS = 2_000;
+export const POLL_MS = 2_000;
 
 export function ResourcesPanel({ containerKey }: { containerKey: string }) {
-  const [samples, setSamples] = useState<ResourceSample[] | null>(null);
+  // One stats call covers every container, so switching containers needs no new request.
+  const { data: all, error } = usePolling(getStats, POLL_MS);
+  const samples = all === null ? null : (all[containerKey] ?? []);
 
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const all = await getStats();
-        if (!cancelled) setSamples(all[containerKey] ?? []);
-      } catch {
-        if (!cancelled) setSamples([]);
-      }
-    };
-    void load();
-    const timer = window.setInterval(() => void load(), POLL_MS);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [containerKey]);
-
-  if (samples === null) return <div className="resources muted">Collecting resource samples…</div>;
+  // A failed refresh keeps the last samples on screen; the note says they may be stale.
+  const note = error !== null ? <p className="network-note warn">{error}</p> : null;
+  if (samples === null) {
+    return note ?? <div className="resources muted">Collecting resource samples…</div>;
+  }
   const latest = samples[samples.length - 1];
   if (!latest) {
     return (
       <div className="resources muted">
+        {note}
         No samples yet. The first one arrives a second or two after the container is seen.
       </div>
     );
@@ -43,6 +31,7 @@ export function ResourcesPanel({ containerKey }: { containerKey: string }) {
 
   return (
     <div className="resources">
+      {note}
       <div className="spark-grid">
         <Sparkline
           title="CPU"

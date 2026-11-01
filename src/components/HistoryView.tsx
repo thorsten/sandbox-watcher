@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { clearHistory, getHistory } from "../api";
 import { AGENT_LABELS } from "../format";
-import type { AgentKind, Aggregate, HistoryView as HistoryData } from "../types";
+import type { AgentKind, Aggregate } from "../types";
 import { formatCost, formatDuration, formatTokens } from "../usageFormat";
 import { describeFiles } from "../files";
+import { usePolling } from "../usePolling";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { FilesList } from "./FilesList";
 
@@ -14,33 +15,24 @@ const RANGES: { label: string; hours: number | null }[] = [
   { label: "All", hours: null },
 ];
 const AGENTS: AgentKind[] = ["claude-code", "codex", "open-code", "pi", "shell", "other"];
+export const HISTORY_POLL_MS = 15_000;
 
 export function HistoryView({ onClose }: { onClose: () => void }) {
   const [range, setRange] = useState<number | null>(24 * 7);
   const [project, setProject] = useState<string>("");
   const [agent, setAgent] = useState<AgentKind | "">("");
-  const [data, setData] = useState<HistoryData | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
-  const [now, setNow] = useState(() => Date.now());
 
-  const load = useCallback(async () => {
-    try {
-      setData(await getHistory(range, project || null, agent || null));
-      setNow(Date.now());
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }, [range, project, agent]);
-
-  useEffect(() => {
-    // load() awaits the command before setting state; no synchronous setState here.
-    // oxlint-disable-next-line react/set-state-in-effect
-    void load();
-    const timer = window.setInterval(() => void load(), 15_000);
-    return () => window.clearInterval(timer);
-  }, [load]);
+  // Changing a filter restarts polling and clears the table until the new answer arrives, so
+  // numbers for one filter are never shown under another.
+  // Live durations are measured against the moment the shown data arrived.
+  const load = useCallback(
+    async () => ({ view: await getHistory(range, project || null, agent || null), at: Date.now() }),
+    [range, project, agent],
+  );
+  const { data: loaded, error, refresh } = usePolling(load, HISTORY_POLL_MS);
+  const data = loaded?.view ?? null;
+  const now = loaded?.at ?? 0;
 
   return (
     <section className="history" aria-labelledby="history-title">
@@ -212,7 +204,7 @@ export function HistoryView({ onClose }: { onClose: () => void }) {
           onCancel={() => setConfirmClear(false)}
           onConfirm={() => {
             setConfirmClear(false);
-            void clearHistory().then(load);
+            void clearHistory().then(refresh);
           }}
         />
       )}

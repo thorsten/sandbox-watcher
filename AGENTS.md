@@ -92,7 +92,8 @@ backend call with a `deferred` promise so slow, late and failing responses
 can be scripted. Polling panels go through `src/usePolling.ts`: one request
 in flight, the next one `intervalMs` after the previous settled, late
 answers dropped after key change, mode change or unmount, last data kept on
-error. Use it instead of `setInterval` for new polling.
+error, `refresh()` for an immediate re-read after an action. Use it instead of
+`setInterval` for new polling.
 
 ## Verification expectations
 

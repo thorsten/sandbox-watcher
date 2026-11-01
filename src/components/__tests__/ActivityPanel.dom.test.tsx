@@ -74,6 +74,22 @@ describe("ActivityPanel polling", () => {
     await m.unmount();
   });
 
+  it("ignores the old container's answer when it arrives before the new one", async () => {
+    const calls = activityCalls();
+    const m = await mount(<ActivityPanel containerKey="c1" now={NOW} />);
+    await m.rerender(<ActivityPanel containerKey="c2" now={NOW} />);
+
+    calls[0]!.d.resolve(withBranch("one"));
+    await flush();
+    expect(m.text()).toContain("Looking inside the sandbox");
+    expect(m.text()).not.toContain("branch one");
+
+    calls[1]!.d.resolve(withBranch("two"));
+    await flush();
+    expect(m.text()).toContain("branch two");
+    await m.unmount();
+  });
+
   it("shows the loading state again after switching while data is on screen", async () => {
     const calls = activityCalls();
     const m = await mount(<ActivityPanel containerKey="c1" now={NOW} />);
