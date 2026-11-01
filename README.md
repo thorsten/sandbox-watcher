@@ -157,8 +157,9 @@ repeat it: not yet verified.
 The app checks GitHub Releases on start and every six hours, shows the new
 version's notes in a banner, and installs on click. Downloads are verified
 against the public key in `src-tauri/tauri.conf.json` before installing.
-Supported for the macOS `.app`, the Windows installers and the Linux
-AppImage; `.deb` and `.rpm` installs update through the package manager.
+Supported for the macOS `.app`, the Windows installers and all three Linux
+formats; `.deb` and `.rpm` installs ask for administrator rights through
+`pkexec` (or `sudo`) because the package is installed system-wide.
 
 The release workflow signs the update artifacts with the
 `TAURI_SIGNING_PRIVATE_KEY` secret (and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
