@@ -8,6 +8,36 @@ interface Props {
   onClose: (changed: boolean) => void;
 }
 
+export function TargetChoice({
+  target,
+  selected,
+  path,
+  unavailable,
+  onSelect,
+}: {
+  target: ConfigTarget;
+  selected: ConfigTarget;
+  path: string | null;
+  unavailable: string | null;
+  onSelect: (t: ConfigTarget) => void;
+}) {
+  const label = target === "global" ? "Global config" : "Project config";
+  const fallback = target === "global" ? "not available" : "no .sandbox directory in this project";
+  return (
+    <label className="check">
+      <input
+        type="radio"
+        name="target"
+        checked={selected === target}
+        disabled={!path || unavailable !== null}
+        onChange={() => onSelect(target)}
+      />
+      {label} <code className="muted">{path ?? fallback}</code>
+      {unavailable && <span className="muted small"> {unavailable}</span>}
+    </label>
+  );
+}
+
 export function AllowDialog({ containerKey, selections, onClose }: Props) {
   const [preview, setPreview] = useState<AllowPreview | null>(null);
   const [target, setTarget] = useState<ConfigTarget>("global");
@@ -21,7 +51,9 @@ export function AllowDialog({ containerKey, selections, onClose }: Props) {
       (p) => {
         if (cancelled) return;
         setPreview(p);
-        if (p.project_path && !p.global_path) setTarget("project");
+        const globalUsable = p.global_path && !p.global_unavailable;
+        const projectUsable = p.project_path && !p.project_unavailable;
+        if (!globalUsable && projectUsable) setTarget("project");
       },
       (e) => !cancelled && setError(e instanceof Error ? e.message : String(e)),
     );
@@ -37,13 +69,34 @@ export function AllowDialog({ containerKey, selections, onClose }: Props) {
     : [];
   const toAdd = preview ? preview.entries.filter((e) => !already.includes(e)) : [];
   const path = preview ? (target === "global" ? preview.global_path : preview.project_path) : null;
+  const unavailable = preview
+    ? target === "global"
+      ? preview.global_unavailable
+      : preview.project_unavailable
+    : null;
+  const alias = containerKey.includes("/") ? containerKey.split("/")[0] : null;
 
   const apply = async () => {
     setBusy(true);
     try {
-      setResult(await applyAllow(containerKey, target, toAdd, null));
+      const hash = target === "global" ? preview?.global_hash : preview?.project_hash;
+      setResult(await applyAllow(containerKey, target, toAdd, hash ?? null));
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const message = e instanceof Error ? e.message : String(e);
+      if (message.startsWith("changed:")) {
+        setError(
+          `${message.slice("changed:".length).trim()}. The preview was refreshed; check the entries and try again.`,
+        );
+        try {
+          setPreview(await previewAllow(containerKey, selections));
+        } catch (e2) {
+          setError(e2 instanceof Error ? e2.message : String(e2));
+        }
+      } else {
+        setError(
+          `${message} If the write may have gone through, close and open the dialog again to see the current config.`,
+        );
+      }
     } finally {
       setBusy(false);
     }
@@ -51,7 +104,7 @@ export function AllowDialog({ containerKey, selections, onClose }: Props) {
 
   return (
     <dialog open className="confirm allow-dialog" aria-labelledby="allow-title">
-      <h3 id="allow-title">Allow blocked destinations</h3>
+      <h3 id="allow-title">Allow blocked destinations{alias && ` on ${alias}`}</h3>
       {error && <p className="network-note warn">{error}</p>}
       {!preview && !error && <p className="muted">Checking configuration…</p>}
 
@@ -64,29 +117,20 @@ export function AllowDialog({ containerKey, selections, onClose }: Props) {
           </p>
           <fieldset>
             <legend>Write to</legend>
-            <label className="check">
-              <input
-                type="radio"
-                name="target"
-                checked={target === "global"}
-                disabled={!preview.global_path}
-                onChange={() => setTarget("global")}
-              />
-              Global config <code className="muted">{preview.global_path ?? "not available"}</code>
-            </label>
-            <label className="check">
-              <input
-                type="radio"
-                name="target"
-                checked={target === "project"}
-                disabled={!preview.project_path}
-                onChange={() => setTarget("project")}
-              />
-              Project config{" "}
-              <code className="muted">
-                {preview.project_path ?? "no .sandbox directory in this project"}
-              </code>
-            </label>
+            <TargetChoice
+              target="global"
+              selected={target}
+              path={preview.global_path}
+              unavailable={preview.global_unavailable}
+              onSelect={setTarget}
+            />
+            <TargetChoice
+              target="project"
+              selected={target}
+              path={preview.project_path}
+              unavailable={preview.project_unavailable}
+              onSelect={setTarget}
+            />
           </fieldset>
           <p>Entries to add:</p>
           {toAdd.length === 0 ? (
@@ -105,7 +149,7 @@ export function AllowDialog({ containerKey, selections, onClose }: Props) {
               type="button"
               className="primary"
               onClick={() => void apply()}
-              disabled={busy || toAdd.length === 0 || !path}
+              disabled={busy || toAdd.length === 0 || !path || unavailable !== null}
             >
               {busy ? "Writing…" : `Add ${toAdd.length} to ${target} config`}
             </button>

@@ -144,8 +144,8 @@ Watch containers on another machine over SSH.
 - Docker, Podman and Apple `container` are supported on the remote machine.
   Unix sockets and plain `tcp://` endpoints are forwarded; TLS Docker
   endpoints are not supported.
-- Remote containers can be watched and stopped. Terminal, folder, editor,
-  reveal and the allow list are not available for them.
+- Remote containers can be watched and stopped, and their allow list edited.
+  Terminal, folder, editor and reveal are not available for them.
 - Windows is not supported.
 
 Conformance over SSH runs in CI on Linux against `localhost`

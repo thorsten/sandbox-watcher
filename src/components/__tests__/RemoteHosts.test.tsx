@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import { connected, container, NOW } from "../../test/fixtures";
+import { connected, container, entry, NOW, report } from "../../test/fixtures";
 import { count, render } from "../../test/render";
 import { ContainerActions } from "../ContainerActions";
+import { NetworkPanel } from "../NetworkPanel";
 import { DockerContextsList, contextsToAdd } from "../DockerContextsList";
 import { RemoteHostsSection, validAlias } from "../RemoteHostsSection";
 import { RuntimeBanner } from "../RuntimeBanner";
@@ -22,6 +23,18 @@ describe("remote hosts in the UI", () => {
     expect(html).toContain("Stop");
     expect(html).toContain("remote host");
     expect(html).toContain("Not available for remote hosts");
+  });
+
+  it("offers the allow list for remote containers", () => {
+    const { html } = render(
+      <NetworkPanel
+        containerKey="devbox/b"
+        report={report([entry({ destination: "api.example.com", port: 443 })])}
+        now={NOW}
+        onChanged={noop}
+      />,
+    );
+    expect(html).toContain('aria-label="Select api.example.com"');
   });
 
   it("keeps host-side actions for local containers", () => {
