@@ -70,7 +70,10 @@ pub(crate) async fn run_local(
         })?;
     let output = tokio::time::timeout(timeout, child.wait_with_output())
         .await
-        .map_err(|_| Error::Protocol(format!("{binary} {} timed out", args.join(" "))))??;
+        // Only the binary: arguments can hold a whole remote script.
+        .map_err(|_| {
+            Error::Protocol(format!("{binary} timed out after {}s", timeout.as_secs()))
+        })??;
     Ok(CommandOutput {
         exit_code: output.status.code().map(i64::from).unwrap_or(-1),
         stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
@@ -162,6 +165,7 @@ mod tests {
             .await
             .unwrap_err();
         assert!(err.to_string().contains("timed out"), "{err}");
+        assert!(!err.to_string().contains("sleep"), "{err}");
     }
 
     #[tokio::test]
