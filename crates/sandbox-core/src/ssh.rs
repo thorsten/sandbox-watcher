@@ -131,30 +131,100 @@ pub fn run_args(control: &Path, alias: &str, remote: &str) -> Vec<String> {
     args
 }
 
-pub fn forward_args(control: &Path, alias: &str, local: &Path, remote: &str) -> Vec<String> {
+/// Where a forwarded local socket leads on the remote host.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ForwardTarget {
+    /// Absolute path, no ':'.
+    UnixSocket(String),
+    /// Plain TCP as seen from the remote host. `host` keeps IPv6 brackets.
+    Tcp { host: String, port: u16 },
+}
+
+impl ForwardTarget {
+    /// Accepts `unix://<path>`, a bare absolute path, `tcp://<host>:<port>`
+    /// and `tcp://[<v6>]:<port>`. Everything else is an error with a reason
+    /// fit for a probe line.
+    pub fn parse(endpoint: &str) -> std::result::Result<ForwardTarget, String> {
+        let endpoint = endpoint.trim();
+        if endpoint.is_empty() {
+            return Err("empty endpoint".into());
+        }
+        if endpoint.starts_with("https://") {
+            return Err(format!(
+                "{endpoint}: TLS Docker endpoints are not supported"
+            ));
+        }
+        if let Some(rest) = endpoint.strip_prefix("tcp://") {
+            return parse_tcp(rest).map_err(|reason| format!("{endpoint}: {reason}"));
+        }
+        let path = endpoint.strip_prefix("unix://").unwrap_or(endpoint);
+        if !path.starts_with('/') {
+            return Err(format!(
+                "{endpoint}: not a Unix socket path or tcp:// endpoint"
+            ));
+        }
+        if path.contains(':') {
+            return Err(format!("{endpoint}: socket path must not contain ':'"));
+        }
+        Ok(ForwardTarget::UnixSocket(path.to_string()))
+    }
+
+    /// The remote half of ssh's `-L` argument.
+    pub fn to_forward_spec(&self) -> String {
+        match self {
+            ForwardTarget::UnixSocket(path) => path.clone(),
+            ForwardTarget::Tcp { host, port } => format!("{host}:{port}"),
+        }
+    }
+}
+
+fn parse_tcp(rest: &str) -> std::result::Result<ForwardTarget, String> {
+    let (host, port) = if let Some(after) = rest.strip_prefix('[') {
+        let (v6, tail) = after.split_once(']').ok_or("unterminated IPv6 literal")?;
+        if v6.is_empty() || !v6.chars().all(|c| c.is_ascii_hexdigit() || c == ':') {
+            return Err("invalid IPv6 literal".into());
+        }
+        let port = tail.strip_prefix(':').ok_or("missing port")?;
+        (format!("[{v6}]"), port)
+    } else {
+        let (host, port) = rest.rsplit_once(':').ok_or("missing port")?;
+        if host.is_empty() {
+            return Err("missing host".into());
+        }
+        if host.len() > 253
+            || !host
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '_'))
+        {
+            return Err("host may contain letters, digits, '.', '-' and '_' only".into());
+        }
+        (host.to_string(), port)
+    };
+    let port: u16 = port
+        .parse()
+        .ok()
+        .filter(|p| *p > 0)
+        .ok_or("port must be 1 to 65535")?;
+    Ok(ForwardTarget::Tcp { host, port })
+}
+
+pub fn forward_args(
+    control: &Path,
+    alias: &str,
+    local: &Path,
+    target: &ForwardTarget,
+) -> Vec<String> {
     let mut args = vec!["-S".into(), control.display().to_string()];
     args.extend(client_options());
     args.extend([
         "-O".into(),
         "forward".into(),
         "-L".into(),
-        format!("{}:{remote}", local.display()),
+        format!("{}:{}", local.display(), target.to_forward_spec()),
         "--".into(),
         alias.into(),
     ]);
     args
-}
-
-/// A forwarded remote socket must be an absolute path; ':' would be parsed
-/// as a `-L` field separator or turn the forward into a TCP one.
-pub fn validate_remote_socket(path: &str) -> std::result::Result<(), String> {
-    if !path.starts_with('/') {
-        return Err(format!("remote socket path must be absolute: {path}"));
-    }
-    if path.contains(':') {
-        return Err(format!("remote socket path must not contain ':': {path}"));
-    }
-    Ok(())
 }
 
 /// A short, private directory: Unix socket paths are limited to 104 bytes on macOS.
@@ -309,16 +379,13 @@ impl SshSession {
         .await
     }
 
-    /// Forward a remote Unix socket to a new local one and return its path.
-    pub async fn forward(&self, remote_socket: &str) -> Result<PathBuf> {
-        validate_remote_socket(remote_socket).map_err(|reason| Error::RuntimeUnavailable {
-            runtime: format!("ssh {}", self.alias),
-            reason,
-        })?;
+    /// Forward a remote socket or TCP port to a new local Unix socket and
+    /// return its path. OpenSSH accepts a Unix listener with a TCP destination.
+    pub async fn forward(&self, target: &ForwardTarget) -> Result<PathBuf> {
         let n = self.forwards.fetch_add(1, Ordering::Relaxed);
         let local = self.dir.join(format!("f{n}.sock"));
         let out = ssh(
-            &forward_args(&self.control, &self.alias, &local, remote_socket),
+            &forward_args(&self.control, &self.alias, &local, target),
             Duration::from_secs(10),
         )
         .await?;
@@ -326,7 +393,8 @@ impl SshSession {
             return Err(Error::RuntimeUnavailable {
                 runtime: format!("ssh {}", self.alias),
                 reason: format!(
-                    "cannot forward {remote_socket}: {}",
+                    "cannot forward {}: {}",
+                    target.to_forward_spec(),
                     ssh_hint(&out.stderr, &self.alias)
                 ),
             });
@@ -452,7 +520,7 @@ mod tests {
             control,
             "devbox",
             Path::new("/tmp/sw-1-0/f0.sock"),
-            "/var/run/docker.sock",
+            &ForwardTarget::UnixSocket("/var/run/docker.sock".into()),
         );
         assert!(fwd.windows(2).any(|w| w == ["-O", "forward"]));
         assert!(
@@ -498,12 +566,99 @@ mod tests {
     }
 
     #[test]
-    fn rejects_unsafe_remote_sockets() {
-        assert!(validate_remote_socket("/var/run/docker.sock").is_ok());
-        assert!(validate_remote_socket("docker.sock").is_err());
-        assert!(validate_remote_socket("").is_err());
-        assert!(validate_remote_socket("/a:b").is_err());
-        assert!(validate_remote_socket("/a:8080").is_err());
+    fn parses_forward_targets() {
+        use ForwardTarget::*;
+        let ok = |s: &str| ForwardTarget::parse(s).unwrap();
+        assert_eq!(
+            ok("/var/run/docker.sock"),
+            UnixSocket("/var/run/docker.sock".into())
+        );
+        assert_eq!(
+            ok("unix:///run/podman/podman.sock"),
+            UnixSocket("/run/podman/podman.sock".into())
+        );
+        assert_eq!(
+            ok("tcp://127.0.0.1:2375"),
+            Tcp {
+                host: "127.0.0.1".into(),
+                port: 2375
+            }
+        );
+        assert_eq!(
+            ok("tcp://docker.internal:2375"),
+            Tcp {
+                host: "docker.internal".into(),
+                port: 2375
+            }
+        );
+        assert_eq!(
+            ok("tcp://[::1]:2375"),
+            Tcp {
+                host: "[::1]".into(),
+                port: 2375
+            }
+        );
+        assert_eq!(
+            ok("tcp://host:2376"),
+            Tcp {
+                host: "host".into(),
+                port: 2376
+            }
+        );
+    }
+
+    #[test]
+    fn rejects_unsafe_forward_targets() {
+        for bad in [
+            "relative/path.sock",
+            "/path:with:colons",
+            "tcp://a b:2375",
+            "tcp://host",
+            "tcp://host:0",
+            "tcp://host:70000",
+            "tcp://:2375",
+            "tcp://host:2375/path",
+            "tcp://user@host:2375",
+            "ssh://host",
+            "",
+        ] {
+            assert!(
+                ForwardTarget::parse(bad).is_err(),
+                "{bad} should be rejected"
+            );
+        }
+        let err = ForwardTarget::parse("https://host:2376").unwrap_err();
+        assert!(
+            err.contains("TLS Docker endpoints are not supported"),
+            "{err}"
+        );
+    }
+
+    #[test]
+    fn forward_args_for_tcp_ipv6() {
+        let target = ForwardTarget::parse("tcp://[::1]:2375").unwrap();
+        let args = forward_args(
+            Path::new("/tmp/c"),
+            "box",
+            Path::new("/tmp/f0.sock"),
+            &target,
+        );
+        let l = args.iter().position(|a| a == "-L").unwrap();
+        assert_eq!(args[l + 1], "/tmp/f0.sock:[::1]:2375");
+        assert_eq!(args.iter().filter(|a| *a == "-L").count(), 1);
+    }
+
+    #[test]
+    fn forward_args_for_unix_socket_unchanged() {
+        let target = ForwardTarget::parse("/var/run/docker.sock").unwrap();
+        let args = forward_args(
+            Path::new("/tmp/c"),
+            "box",
+            Path::new("/tmp/f0.sock"),
+            &target,
+        );
+        let l = args.iter().position(|a| a == "-L").unwrap();
+        assert_eq!(args[l + 1], "/tmp/f0.sock:/var/run/docker.sock");
     }
 
     #[test]

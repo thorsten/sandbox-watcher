@@ -179,32 +179,29 @@ pub async fn connect_host(
     for candidate in &detection.candidates {
         let adapter: Option<Arc<dyn RuntimeAdapter>> = match candidate.kind {
             RuntimeKind::Docker | RuntimeKind::Podman => {
-                let remote = candidate.endpoint.trim_start_matches("unix://");
-                if !remote.starts_with('/') {
-                    detection.probes.push(format!(
-                        "{}: {} is not a Unix socket; only sockets are forwarded",
-                        candidate.kind, candidate.endpoint
-                    ));
-                    None
-                } else {
-                    match session.forward(remote).await {
-                        Ok(local) => {
-                            match DockerAdapter::connect(
-                                candidate.kind,
-                                &local.display().to_string(),
-                            ) {
-                                Ok(a) => Some(Arc::new(a) as Arc<dyn RuntimeAdapter>),
-                                Err(e) => {
-                                    detection.probes.push(format!("{}: {e}", candidate.kind));
-                                    None
-                                }
+                match crate::ssh::ForwardTarget::parse(&candidate.endpoint) {
+                    Err(reason) => {
+                        detection
+                            .probes
+                            .push(format!("{}: {reason}", candidate.kind));
+                        None
+                    }
+                    Ok(target) => match session.forward(&target).await {
+                        Ok(local) => match DockerAdapter::connect(
+                            candidate.kind,
+                            &local.display().to_string(),
+                        ) {
+                            Ok(a) => Some(Arc::new(a) as Arc<dyn RuntimeAdapter>),
+                            Err(e) => {
+                                detection.probes.push(format!("{}: {e}", candidate.kind));
+                                None
                             }
-                        }
+                        },
                         Err(e) => {
                             detection.probes.push(format!("{}: {e}", candidate.kind));
                             None
                         }
-                    }
+                    },
                 }
             }
             RuntimeKind::AppleContainer => Some(Arc::new(AppleContainerAdapter::with_runner(
