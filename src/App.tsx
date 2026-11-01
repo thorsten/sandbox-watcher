@@ -40,6 +40,7 @@ export function App() {
   const [network, setNetwork] = useState<NetworkReport[] | undefined>(undefined);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [showSettings, setShowSettings] = useState(false);
+  const [focusDiagnostics, setFocusDiagnostics] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [dismissedVersion, setDismissedVersion] = useState<string | null>(null);
@@ -225,11 +226,22 @@ export function App() {
                 key={JSON.stringify(settings)}
                 settings={settings}
                 hostStatuses={state.overview.hosts}
+                focusDiagnostics={focusDiagnostics}
                 onSaved={acceptSettings}
-                onClose={() => setShowSettings(false)}
+                onClose={() => {
+                  setShowSettings(false);
+                  setFocusDiagnostics(false);
+                }}
               />
             ) : state.overview.runtime.status !== "connected" ? (
-              <RuntimeBanner runtime={state.overview.runtime} hosts={state.overview.hosts} />
+              <RuntimeBanner
+                runtime={state.overview.runtime}
+                hosts={state.overview.hosts}
+                onDiagnostics={() => {
+                  setFocusDiagnostics(true);
+                  setShowSettings(true);
+                }}
+              />
             ) : selected ? (
               <DetailPane
                 key={selected.key}

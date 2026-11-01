@@ -15,10 +15,12 @@ describe("SettingsPanel", () => {
       "History and cost",
       "Updates",
       "Window",
+      "Diagnostics",
     ]) {
       expect(text).toContain(legend);
     }
     expect(text).toContain("Check now");
+    expect(text).toContain("Run diagnostics");
     expect(text).toContain("Save");
   });
 

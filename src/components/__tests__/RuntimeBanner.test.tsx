@@ -118,4 +118,14 @@ describe("RuntimeBanner", () => {
       for (const keys of siblingKeys(tree)) expect(new Set(keys).size).toBe(keys.length);
     }
   });
+
+  it("links to diagnostics only when nothing is connected", () => {
+    const notDetected: RuntimeStatus = { status: "not-detected" };
+    const { text } = render(
+      <RuntimeBanner runtime={notDetected} onDiagnostics={() => undefined} />,
+    );
+    expect(text).toContain("Diagnostics");
+    const ok = render(<RuntimeBanner runtime={connected()} onDiagnostics={() => undefined} />);
+    expect(ok.text).not.toContain("Diagnostics");
+  });
 });

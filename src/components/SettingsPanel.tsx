@@ -1,12 +1,15 @@
 import { useState } from "react";
 import { checkForUpdate, saveSettings } from "../api";
 import { RUNTIME_LABELS, type HostStatus, type RuntimeKind, type Settings } from "../types";
+import { DiagnosticsSection } from "./DiagnosticsSection";
 import { RemoteHostsSection } from "./RemoteHostsSection";
 
 interface Props {
   settings: Settings;
   /** Connection state of the configured remote hosts. */
   hostStatuses?: HostStatus[];
+  /** Scroll the Diagnostics section into view on mount. */
+  focusDiagnostics?: boolean;
   onSaved: (settings: Settings) => void;
   onClose: () => void;
 }
@@ -14,7 +17,13 @@ interface Props {
 const RUNTIMES: RuntimeKind[] = ["docker", "podman", "apple-container"];
 const isMac = navigator.platform.toLowerCase().includes("mac");
 
-export function SettingsPanel({ settings, hostStatuses = [], onSaved, onClose }: Props) {
+export function SettingsPanel({
+  settings,
+  hostStatuses = [],
+  focusDiagnostics = false,
+  onSaved,
+  onClose,
+}: Props) {
   const [draft, setDraft] = useState<Settings>(settings);
   const [status, setStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [error, setError] = useState<string | null>(null);
@@ -339,6 +348,8 @@ export function SettingsPanel({ settings, hostStatuses = [], onSaved, onClose }:
         statuses={hostStatuses}
         onChange={(remote_hosts) => update({ remote_hosts })}
       />
+
+      <DiagnosticsSection focus={focusDiagnostics} />
 
       <footer className="settings-footer">
         {status === "error" && <span className="notice notice-err">{error}</span>}

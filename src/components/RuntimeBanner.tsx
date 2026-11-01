@@ -36,14 +36,21 @@ export function RuntimeBanner({
   runtime,
   hosts = [],
   compact,
+  onDiagnostics,
 }: {
   runtime: RuntimeStatus;
   hosts?: HostStatus[];
   compact?: boolean;
+  onDiagnostics?: () => void;
 }) {
   return (
     <>
-      <RuntimeStatusBanner runtime={runtime} hosts={hosts} compact={compact} />
+      <RuntimeStatusBanner
+        runtime={runtime}
+        hosts={hosts}
+        compact={compact}
+        onDiagnostics={onDiagnostics}
+      />
       <HostWarnings hosts={hosts} />
     </>
   );
@@ -53,10 +60,12 @@ function RuntimeStatusBanner({
   runtime,
   hosts,
   compact,
+  onDiagnostics,
 }: {
   runtime: RuntimeStatus;
   hosts: HostStatus[];
   compact?: boolean;
+  onDiagnostics?: () => void;
 }) {
   if (compact && runtime.status === "connected") {
     return (
@@ -91,6 +100,13 @@ function RuntimeStatusBanner({
             order sandbox does. Install one, or set <code>DOCKER_HOST</code> if your socket lives
             somewhere unusual, then press Refresh.
           </p>
+          {onDiagnostics && (
+            <p>
+              <button type="button" onClick={onDiagnostics}>
+                Diagnostics
+              </button>
+            </p>
+          )}
         </section>
       );
     case "detected-only":
@@ -109,6 +125,13 @@ function RuntimeStatusBanner({
             Docker and Podman are supported today. Apple <code>container</code> support arrives with
             milestone M5.
           </p>
+          {onDiagnostics && (
+            <p>
+              <button type="button" onClick={onDiagnostics}>
+                Diagnostics
+              </button>
+            </p>
+          )}
         </section>
       );
     case "unavailable":
@@ -119,6 +142,13 @@ function RuntimeStatusBanner({
           <p className="muted">
             Is the daemon running? On Linux, check that your user may access the socket.
           </p>
+          {onDiagnostics && (
+            <p>
+              <button type="button" onClick={onDiagnostics}>
+                Diagnostics
+              </button>
+            </p>
+          )}
         </section>
       );
     case "connected":
