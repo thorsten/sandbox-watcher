@@ -1,24 +1,24 @@
 {
-  "type": "AllowPreview",
   "samples": [
     {
+      "already_in_global": [
+        "cdn.example.com:443"
+      ],
+      "already_in_project": [],
       "entries": [
         "api.example.com:443",
         "cdn.example.com:443"
       ],
       "global_path": "/Users/dev/.sandbox/config.toml",
-      "project_path": "/Users/dev/projects/web-shop/.sandbox/config.toml",
-      "already_in_global": [
-        "cdn.example.com:443"
-      ],
-      "already_in_project": []
+      "project_path": "/Users/dev/projects/web-shop/.sandbox/config.toml"
     },
     {
+      "already_in_global": [],
+      "already_in_project": [],
       "entries": [],
       "global_path": null,
-      "project_path": null,
-      "already_in_global": [],
-      "already_in_project": []
+      "project_path": null
     }
-  ]
+  ],
+  "type": "AllowPreview"
 }
