@@ -597,10 +597,14 @@ mod tests {
         );
         let r2 = apply(&path, ConfigTarget::Global, &strings(&["api.example.com"])).unwrap();
         assert!(r2.added.is_empty());
-        assert!(
-            std::fs::read_dir(&t.0).unwrap().count() == 1,
-            "no leftovers"
-        );
+        // Only the config itself remains; the lock file DirLock uses where a
+        // directory cannot be locked (Windows) is not a leftover.
+        let leftovers: Vec<_> = std::fs::read_dir(&t.0)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .filter(|n| n != "config.toml" && n != ".config.toml.lock")
+            .collect();
+        assert!(leftovers.is_empty(), "no leftovers: {leftovers:?}");
     }
 
     #[test]
