@@ -175,6 +175,14 @@ impl LiveRuntime {
         self.remotes.set_hosts(hosts);
     }
 
+    /// The SSH session of a connected remote host.
+    pub async fn session_for(
+        &self,
+        alias: &str,
+    ) -> std::result::Result<Arc<dyn crate::remote_hosts::RemoteSession>, String> {
+        self.remotes.session_for(alias).await
+    }
+
     /// Run a shell command line on a connected remote host.
     pub async fn run_on_host(
         &self,

@@ -22,8 +22,8 @@ use sandbox_core::actions::{
 use sandbox_core::activity::ContainerActivity;
 use sandbox_core::adapter::LogOptions;
 use sandbox_core::allowlist::{
-    AllowResult, ConfigTarget, entries_for, existing_entries, inject_allowed_domains,
-    project_config_available, project_config_path, validate_entry,
+    AllowResult, ConfigTarget, entries_for, existing_entries, project_config_available,
+    project_config_path,
 };
 use sandbox_core::detect::{DetectedRuntime, Environment, detect};
 use sandbox_core::diagnostics::DiagnosticsReport;
@@ -530,59 +530,6 @@ fn present_in(entries: &[String], content: &str) -> Vec<String> {
         .collect()
 }
 
-/// One target on a remote host: path, hash and content, or why not.
-struct RemoteTarget {
-    path: Option<String>,
-    hash: Option<String>,
-    content: String,
-    unavailable: Option<String>,
-}
-
-impl RemoteTarget {
-    fn unavailable(path: Option<String>, reason: String) -> Self {
-        RemoteTarget {
-            path,
-            hash: None,
-            content: String::new(),
-            unavailable: Some(reason),
-        }
-    }
-}
-
-async fn remote_target(
-    state: &State<'_, App>,
-    alias: &str,
-    target: ConfigTarget,
-    root: Option<&str>,
-) -> Result<RemoteTarget, String> {
-    use sandbox_core::allowlist_remote::{PreviewReply, parse_preview, preview_script};
-    if target == ConfigTarget::Project && root.is_none() {
-        return Ok(RemoteTarget::unavailable(
-            None,
-            "no project directory".into(),
-        ));
-    }
-    let out = state
-        .run_on_host(alias, &preview_script(target, root), REMOTE_ALLOW_TIMEOUT)
-        .await?;
-    Ok(match parse_preview(&out)? {
-        PreviewReply::Absent => {
-            RemoteTarget::unavailable(None, "this project has no .sandbox directory".into())
-        }
-        PreviewReply::Symlink { path, reason } => RemoteTarget::unavailable(Some(path), reason),
-        PreviewReply::Content {
-            path,
-            hash,
-            content,
-        } => RemoteTarget {
-            path: Some(path),
-            hash: Some(hash),
-            content,
-            unavailable: None,
-        },
-    })
-}
-
 /// What allowing the selected destinations would write, and where.
 #[tauri::command]
 async fn preview_allow(
@@ -618,12 +565,25 @@ async fn preview_allow(
             })
         }
         Host::Remote(alias) => {
+            use sandbox_core::allowlist_remote::preview_remote;
             let root = project_root
                 .as_ref()
                 .map(|p| p.to_string_lossy().into_owned());
-            let global = remote_target(&state, &alias, ConfigTarget::Global, None).await?;
-            let project =
-                remote_target(&state, &alias, ConfigTarget::Project, root.as_deref()).await?;
+            let session = state.session_for(&alias).await?;
+            let global = preview_remote(
+                session.as_ref(),
+                ConfigTarget::Global,
+                None,
+                REMOTE_ALLOW_TIMEOUT,
+            )
+            .await?;
+            let project = preview_remote(
+                session.as_ref(),
+                ConfigTarget::Project,
+                root.as_deref(),
+                REMOTE_ALLOW_TIMEOUT,
+            )
+            .await?;
             Ok(AllowPreview {
                 already_in_global: present_in(&entries, &global.content),
                 already_in_project: present_in(&entries, &project.content),
@@ -667,80 +627,26 @@ async fn apply_allow(
         return sandbox_core::allowlist::apply(&path, target, &entries)
             .map_err(|e| format!("{}: {e}", path.display()));
     };
-    use sandbox_core::allowlist_remote::{
-        ApplyReply, PreviewReply, apply_script, parse_apply, parse_preview, preview_script,
-    };
-    for e in &entries {
-        validate_entry(e)?;
-    }
+    use sandbox_core::allowlist_remote::{RemoteApplyError, apply_remote};
     let expected = expected_hash.ok_or("preview is required before writing to a remote host")?;
     let root = project_root_of(&state, &container_key)
         .await?
         .map(|p| p.to_string_lossy().into_owned());
-    if target == ConfigTarget::Project && root.is_none() {
-        return Err("no project directory".into());
-    }
-    // Re-read, so the content we edit is the one the hash describes.
-    let out = state
-        .run_on_host(
-            &alias,
-            &preview_script(target, root.as_deref()),
-            REMOTE_ALLOW_TIMEOUT,
-        )
-        .await?;
-    let (path, hash, content) = match parse_preview(&out)? {
-        PreviewReply::Content {
-            path,
-            hash,
-            content,
-        } => (path, hash, content),
-        PreviewReply::Absent => return Err("this project has no .sandbox directory".into()),
-        PreviewReply::Symlink { path, reason } => return Err(format!("{path}: {reason}")),
-    };
-    if hash != expected {
-        return Err(format!(
-            "changed: the config on {alias} changed since the preview"
-        ));
-    }
-    let existing = existing_entries(&content)?;
-    let mut already_present: Vec<String> = Vec::new();
-    let mut to_add: Vec<String> = Vec::new();
-    for e in entries {
-        let seen = if existing.contains(&e) {
-            &mut already_present
-        } else {
-            &mut to_add
-        };
-        if !seen.contains(&e) {
-            seen.push(e);
-        }
-    }
-    if to_add.is_empty() {
-        return Ok(AllowResult {
-            path,
-            added: vec![],
-            already_present,
-        });
-    }
-    let new_content = inject_allowed_domains(&content, &to_add)?;
-    let out = state
-        .run_on_host(
-            &alias,
-            &apply_script(target, root.as_deref(), &hash, &new_content),
-            REMOTE_ALLOW_TIMEOUT,
-        )
-        .await?;
-    match parse_apply(&out)? {
-        ApplyReply::Ok => Ok(AllowResult {
-            path,
-            added: to_add,
-            already_present,
-        }),
-        ApplyReply::Changed => Err(format!(
-            "changed: the config on {alias} changed since the preview"
-        )),
-        ApplyReply::Refused(reason) => Err(format!("{path}: {reason}")),
-    }
+    let session = state.session_for(&alias).await?;
+    apply_remote(
+        session.as_ref(),
+        target,
+        root.as_deref(),
+        &expected,
+        &entries,
+        REMOTE_ALLOW_TIMEOUT,
+    )
+    .await
+    .map_err(|e| match e {
+        RemoteApplyError::Changed(msg) => format!("changed: {msg}"),
+        RemoteApplyError::Refused { path, reason } => format!("{path}: {reason}"),
+        RemoteApplyError::Other(e) => e,
+    })
 }
 
 /// Check GitHub Releases for a newer version now.

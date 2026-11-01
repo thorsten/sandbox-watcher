@@ -6,10 +6,15 @@
 //! Every interpolated value is quoted with `ssh::shell_quote`; the new file
 //! content travels base64-encoded.
 
+use std::time::Duration;
+
 use base64::Engine;
 
-use crate::allowlist::ConfigTarget;
+use crate::allowlist::{
+    AllowResult, ConfigTarget, existing_entries, inject_allowed_domains, validate_entry,
+};
 use crate::remote::REMOTE_CONFIG_PATH_SH;
+use crate::remote_hosts::RemoteSession;
 use crate::runner::CommandOutput;
 use crate::ssh::shell_quote;
 
@@ -251,6 +256,163 @@ pub fn parse_apply(output: &CommandOutput) -> std::result::Result<ApplyReply, St
     }
 }
 
+/// One target on a remote host as the Allow dialog shows it: path, hash and
+/// content, or why it cannot be written. A project without a `.sandbox`
+/// directory has neither path nor reason; the dialog hides that target.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RemotePreview {
+    pub path: Option<String>,
+    pub hash: Option<String>,
+    pub content: String,
+    pub unavailable: Option<String>,
+}
+
+impl RemotePreview {
+    fn unavailable(path: Option<String>, reason: Option<String>) -> Self {
+        RemotePreview {
+            path,
+            hash: None,
+            content: String::new(),
+            unavailable: reason,
+        }
+    }
+}
+
+/// Why a remote write did not happen.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RemoteApplyError {
+    /// The file changed since the preview; nothing was written.
+    Changed(String),
+    /// Path rules refused the write.
+    Refused {
+        path: String,
+        reason: String,
+    },
+    Other(String),
+}
+
+async fn read_remote(
+    session: &dyn RemoteSession,
+    target: ConfigTarget,
+    project_root: Option<&str>,
+    timeout: Duration,
+) -> Result<PreviewReply, String> {
+    let out = session
+        .run(&preview_script(target, project_root), timeout)
+        .await
+        .map_err(|e| e.to_string())?;
+    parse_preview(&out)
+}
+
+/// Read one target for the preview.
+pub async fn preview_remote(
+    session: &dyn RemoteSession,
+    target: ConfigTarget,
+    project_root: Option<&str>,
+    timeout: Duration,
+) -> Result<RemotePreview, String> {
+    if target == ConfigTarget::Project && project_root.is_none() {
+        return Ok(RemotePreview::unavailable(
+            None,
+            Some("no project directory".into()),
+        ));
+    }
+    Ok(
+        match read_remote(session, target, project_root, timeout).await? {
+            PreviewReply::Absent => RemotePreview::unavailable(None, None),
+            PreviewReply::Symlink { path, reason } => {
+                RemotePreview::unavailable(Some(path), Some(reason))
+            }
+            PreviewReply::Content {
+                path,
+                hash,
+                content,
+            } => RemotePreview {
+                path: Some(path),
+                hash: Some(hash),
+                content,
+                unavailable: None,
+            },
+        },
+    )
+}
+
+/// Add `entries` to one target if the file still has `expected_hash`. The
+/// file is read again so the content edited here is the one the hash
+/// describes, and the script only replaces it if the hash still matches.
+pub async fn apply_remote(
+    session: &dyn RemoteSession,
+    target: ConfigTarget,
+    project_root: Option<&str>,
+    expected_hash: &str,
+    entries: &[String],
+    timeout: Duration,
+) -> Result<AllowResult, RemoteApplyError> {
+    use RemoteApplyError::{Changed, Other, Refused};
+    for e in entries {
+        validate_entry(e).map_err(Other)?;
+    }
+    if target == ConfigTarget::Project && project_root.is_none() {
+        return Err(Other("no project directory".into()));
+    }
+    let (path, hash, content) = match read_remote(session, target, project_root, timeout)
+        .await
+        .map_err(Other)?
+    {
+        PreviewReply::Content {
+            path,
+            hash,
+            content,
+        } => (path, hash, content),
+        PreviewReply::Absent => {
+            return Err(Other("this project has no .sandbox directory".into()));
+        }
+        PreviewReply::Symlink { path, reason } => return Err(Refused { path, reason }),
+    };
+    let changed = || Changed(format!("{path} changed since the preview"));
+    if hash != expected_hash {
+        return Err(changed());
+    }
+    let existing = existing_entries(&content).map_err(|e| Other(format!("{path}: {e}")))?;
+    let mut already_present: Vec<String> = Vec::new();
+    let mut to_add: Vec<String> = Vec::new();
+    for e in entries {
+        let seen = if existing.contains(e) {
+            &mut already_present
+        } else {
+            &mut to_add
+        };
+        if !seen.contains(e) {
+            seen.push(e.clone());
+        }
+    }
+    if to_add.is_empty() {
+        return Ok(AllowResult {
+            path,
+            added: vec![],
+            already_present,
+        });
+    }
+    let new_content =
+        inject_allowed_domains(&content, &to_add).map_err(|e| Other(format!("{path}: {e}")))?;
+    let out = session
+        .run(
+            &apply_script(target, project_root, &hash, &new_content),
+            timeout,
+        )
+        .await
+        .map_err(|e| Other(e.to_string()))?;
+    match parse_apply(&out).map_err(Other)? {
+        ApplyReply::Ok => Ok(AllowResult {
+            path,
+            added: to_add,
+            already_present,
+        }),
+        ApplyReply::Changed => Err(changed()),
+        ApplyReply::Refused(reason) => Err(Refused { path, reason }),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -263,6 +425,241 @@ mod tests {
             exit_code: 0,
             stdout: stdout.into(),
             stderr: String::new(),
+        }
+    }
+
+    /// Answers `run` from a list of replies and records each command.
+    #[derive(Default)]
+    struct Scripted {
+        replies: std::sync::Mutex<Vec<CommandOutput>>,
+        commands: std::sync::Mutex<Vec<String>>,
+    }
+
+    impl Scripted {
+        fn new(replies: &[&str]) -> Self {
+            Scripted {
+                replies: std::sync::Mutex::new(replies.iter().map(|r| out(r)).collect()),
+                commands: Default::default(),
+            }
+        }
+        fn commands(&self) -> Vec<String> {
+            self.commands.lock().unwrap().clone()
+        }
+    }
+
+    impl RemoteSession for Scripted {
+        fn check(&self) -> futures::future::BoxFuture<'_, bool> {
+            Box::pin(async { true })
+        }
+        fn close(&self) -> futures::future::BoxFuture<'_, ()> {
+            Box::pin(async {})
+        }
+        fn last_error(&self) -> Option<String> {
+            None
+        }
+        fn run(
+            &self,
+            command: &str,
+            _timeout: Duration,
+        ) -> futures::future::BoxFuture<'_, crate::Result<CommandOutput>> {
+            self.commands.lock().unwrap().push(command.to_string());
+            let mut replies = self.replies.lock().unwrap();
+            let next = if replies.is_empty() {
+                CommandOutput {
+                    exit_code: 127,
+                    stdout: String::new(),
+                    stderr: "no reply scripted".into(),
+                }
+            } else {
+                replies.remove(0)
+            };
+            Box::pin(async move { Ok(next) })
+        }
+    }
+
+    const T: Duration = Duration::from_secs(5);
+    const PROJECT: &str = "/p/.sandbox/config.toml";
+
+    fn with_hash(content: &str) -> String {
+        format!("path {PROJECT}\nsha {HASH_A}\n{content}")
+    }
+
+    fn strings(v: &[&str]) -> Vec<String> {
+        v.iter().map(|s| s.to_string()).collect()
+    }
+
+    #[tokio::test]
+    async fn preview_reports_each_reply() {
+        let s = Scripted::new(&[]);
+        let p = preview_remote(&s, ConfigTarget::Project, None, T)
+            .await
+            .unwrap();
+        assert_eq!(p.path, None);
+        assert_eq!(p.unavailable.as_deref(), Some("no project directory"));
+        assert!(s.commands().is_empty());
+
+        let s = Scripted::new(&["path /h/.config/sandbox/config.toml\nmissing\n"]);
+        let p = preview_remote(&s, ConfigTarget::Global, None, T)
+            .await
+            .unwrap();
+        assert_eq!(
+            p,
+            RemotePreview {
+                path: Some("/h/.config/sandbox/config.toml".into()),
+                hash: Some(EMPTY_SHA256.into()),
+                content: String::new(),
+                unavailable: None,
+            }
+        );
+
+        // Absent hides the target: no path and no reason of its own.
+        let s = Scripted::new(&[&format!("path {PROJECT}\nabsent\n")]);
+        let p = preview_remote(&s, ConfigTarget::Project, Some("/p"), T)
+            .await
+            .unwrap();
+        assert_eq!(p, RemotePreview::unavailable(None, None));
+
+        let s = Scripted::new(&[&format!("path {PROJECT}\nsymlink /p/.sandbox is a link\n")]);
+        let p = preview_remote(&s, ConfigTarget::Project, Some("/p"), T)
+            .await
+            .unwrap();
+        assert_eq!(p.path.as_deref(), Some(PROJECT));
+        assert_eq!(p.hash, None);
+        assert_eq!(p.unavailable.as_deref(), Some("/p/.sandbox is a link"));
+
+        let s = Scripted::new(&[&with_hash("a = 1\n")]);
+        let p = preview_remote(&s, ConfigTarget::Project, Some("/p"), T)
+            .await
+            .unwrap();
+        assert_eq!(p.hash.as_deref(), Some(HASH_A));
+        assert_eq!(p.content, "a = 1\n");
+        assert_eq!(p.unavailable, None);
+    }
+
+    #[tokio::test]
+    async fn apply_with_matching_hash_writes_new_entries_only() {
+        let s = Scripted::new(&[&with_hash("allow_network = [\"a.example\"]\n"), "ok\n"]);
+        let entries = strings(&["b.example", "a.example", "b.example"]);
+        let r = apply_remote(&s, ConfigTarget::Project, Some("/p"), HASH_A, &entries, T)
+            .await
+            .unwrap();
+        assert_eq!(r.path, PROJECT);
+        assert_eq!(r.added, strings(&["b.example"]));
+        assert_eq!(r.already_present, strings(&["a.example"]));
+        let commands = s.commands();
+        assert_eq!(commands.len(), 2);
+        assert!(commands[1].contains(HASH_A), "{}", commands[1]);
+    }
+
+    #[tokio::test]
+    async fn apply_with_stale_hash_is_changed_without_writing() {
+        let s = Scripted::new(&[&with_hash("")]);
+        let entries = strings(&["b.example"]);
+        let e = apply_remote(
+            &s,
+            ConfigTarget::Project,
+            Some("/p"),
+            EMPTY_SHA256,
+            &entries,
+            T,
+        )
+        .await
+        .unwrap_err();
+        assert_eq!(
+            e,
+            RemoteApplyError::Changed(format!("{PROJECT} changed since the preview"))
+        );
+        assert_eq!(s.commands().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn apply_maps_script_replies() {
+        let entries = strings(&["b.example"]);
+        let s = Scripted::new(&[&with_hash(""), "changed\n"]);
+        let e = apply_remote(&s, ConfigTarget::Project, Some("/p"), HASH_A, &entries, T)
+            .await
+            .unwrap_err();
+        assert!(matches!(e, RemoteApplyError::Changed(_)), "{e:?}");
+
+        let s = Scripted::new(&[&with_hash(""), "refused cannot replace it\n"]);
+        let e = apply_remote(&s, ConfigTarget::Project, Some("/p"), HASH_A, &entries, T)
+            .await
+            .unwrap_err();
+        assert_eq!(
+            e,
+            RemoteApplyError::Refused {
+                path: PROJECT.into(),
+                reason: "cannot replace it".into(),
+            }
+        );
+
+        let s = Scripted::new(&[&format!("path {PROJECT}\nsymlink /p/.sandbox is a link\n")]);
+        let e = apply_remote(&s, ConfigTarget::Project, Some("/p"), HASH_A, &entries, T)
+            .await
+            .unwrap_err();
+        assert_eq!(
+            e,
+            RemoteApplyError::Refused {
+                path: PROJECT.into(),
+                reason: "/p/.sandbox is a link".into(),
+            }
+        );
+
+        let s = Scripted::new(&[&format!("path {PROJECT}\nabsent\n")]);
+        let e = apply_remote(&s, ConfigTarget::Project, Some("/p"), HASH_A, &entries, T)
+            .await
+            .unwrap_err();
+        assert_eq!(
+            e,
+            RemoteApplyError::Other("this project has no .sandbox directory".into())
+        );
+    }
+
+    #[tokio::test]
+    async fn apply_with_nothing_to_add_sends_no_write() {
+        let s = Scripted::new(&[&with_hash("allow_network = [\"a.example\"]\n")]);
+        let entries = strings(&["a.example"]);
+        let r = apply_remote(&s, ConfigTarget::Project, Some("/p"), HASH_A, &entries, T)
+            .await
+            .unwrap();
+        assert!(r.added.is_empty());
+        assert_eq!(r.already_present, entries);
+        assert_eq!(s.commands().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn apply_checks_entries_and_file_first() {
+        let s = Scripted::new(&[]);
+        let e = apply_remote(
+            &s,
+            ConfigTarget::Global,
+            None,
+            HASH_A,
+            &strings(&["bad host"]),
+            T,
+        )
+        .await
+        .unwrap_err();
+        assert!(matches!(e, RemoteApplyError::Other(_)), "{e:?}");
+        assert!(s.commands().is_empty());
+
+        // A broken file names its path.
+        let s = Scripted::new(&[&with_hash("allow_network = [\n")]);
+        let e = apply_remote(
+            &s,
+            ConfigTarget::Project,
+            Some("/p"),
+            HASH_A,
+            &strings(&["b.example"]),
+            T,
+        )
+        .await
+        .unwrap_err();
+        match e {
+            RemoteApplyError::Other(msg) => {
+                assert!(msg.starts_with(&format!("{PROJECT}: ")), "{msg}")
+            }
+            other => panic!("{other:?}"),
         }
     }
 
