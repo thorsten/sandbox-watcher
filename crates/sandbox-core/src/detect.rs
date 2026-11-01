@@ -322,7 +322,11 @@ mod tests {
         let on_path = |b: &str| b == "podman";
         let (found, trace) = detect_traced(&env("linux", None, &exists, &on_path));
         assert_eq!(found, detect(&env("linux", None, &exists, &on_path)));
-        let names: Vec<&str> = trace.iter().map(|p| p.candidate.as_str()).collect();
+        // Joined paths use the host separator; compare with forward slashes.
+        let names: Vec<String> = trace
+            .iter()
+            .map(|p| p.candidate.replace('\\', "/"))
+            .collect();
         assert_eq!(
             names,
             [
