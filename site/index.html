@@ -278,7 +278,9 @@
             <p>
               Watch sandboxes on a remote host over your own <code>ssh</code>: pick an alias from
               <code>~/.ssh/config</code> or import your <code>ssh://</code> Docker contexts. Key or
-              agent authentication, host keys you accepted yourself, nothing else.
+              agent authentication, host keys you accepted yourself, nothing else. Unix sockets and
+              plain <code>tcp://</code> daemons are forwarded, and the allow list edits the remote
+              host's own sandbox config.
             </p>
           </article>
           <article>
@@ -459,6 +461,15 @@
             </p>
           </details>
           <details>
+            <summary>Nothing shows up. What now?</summary>
+            <p>
+              Open Settings, Diagnostics, and press Run diagnostics. It lists every variable, socket
+              and binary the app checked, locally and on each remote host, with the result and the
+              reason it failed. Copy report puts the same text on your clipboard for an issue.
+              Nothing is sent anywhere.
+            </p>
+          </details>
+          <details>
             <summary>Can it watch sandboxes on another machine?</summary>
             <p>
               Yes, over SSH. Add an alias from <code>~/.ssh/config</code> under Settings, Remote
@@ -466,8 +477,8 @@
               authentication and accept the host key once in a terminal; the app never prompts for
               passwords or accepts host keys. Docker, Podman and Apple <code>container</code> work
               on the remote side. Remote containers can be watched and stopped; terminal, folder and
-              editor stay local; the allow list works on remote hosts too. Remote hosts work from
-              macOS and Linux, not from Windows.
+              editor stay local; the allow list works on remote hosts too. TLS Docker endpoints are
+              not supported. Remote hosts work from macOS and Linux, not from Windows.
             </p>
           </details>
           <details>
