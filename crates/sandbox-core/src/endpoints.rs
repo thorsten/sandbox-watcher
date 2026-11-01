@@ -101,12 +101,28 @@ pub fn normalise_host(value: &str) -> Option<String> {
 /// Endpoint to hand to the adapter for a detected candidate. Binary-only
 /// candidates (`docker`, `podman`) are resolved through their CLI.
 pub async fn resolve(candidate: &DetectedRuntime) -> Option<String> {
+    resolve_traced(candidate).await.ok().map(|(e, _)| e)
+}
+
+/// `resolve` with the reason: which CLI answered, or why nothing did.
+pub async fn resolve_traced(
+    candidate: &DetectedRuntime,
+) -> std::result::Result<(String, String), String> {
     match (candidate.kind, candidate.endpoint.as_str()) {
-        (RuntimeKind::Docker, "docker") => docker_host_from_context(&CommandRunner::Local)
+        (RuntimeKind::Docker, "docker") => Ok(
+            match docker_host_from_context(&CommandRunner::Local).await {
+                Some(host) => (host, "docker context inspect".into()),
+                None => (
+                    "docker".into(),
+                    "docker context inspect gave no endpoint; bollard defaults".into(),
+                ),
+            },
+        ),
+        (RuntimeKind::Podman, "podman") => podman_socket(&CommandRunner::Local)
             .await
-            .or(Some("docker".into())),
-        (RuntimeKind::Podman, "podman") => podman_socket(&CommandRunner::Local).await,
-        _ => Some(candidate.endpoint.clone()),
+            .map(|s| (s, "podman machine inspect or podman info".into()))
+            .ok_or_else(|| "podman machine inspect and podman info gave no socket".to_string()),
+        _ => Ok((candidate.endpoint.clone(), candidate.source.clone())),
     }
 }
 

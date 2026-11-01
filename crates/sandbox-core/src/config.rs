@@ -49,17 +49,22 @@ pub fn parse_runtime(toml_text: &str) -> Option<RuntimeKind> {
     }
 }
 
-/// Load from the real environment. Missing or unreadable files yield defaults.
-pub fn load() -> SandboxUserConfig {
+/// The config file path for the real process environment.
+pub fn current_config_path() -> Option<PathBuf> {
     let home = std::env::var_os("HOME")
         .or_else(|| std::env::var_os("USERPROFILE"))
         .map(PathBuf::from);
-    let path = config_path(
+    config_path(
         std::env::consts::OS,
         std::env::var("XDG_CONFIG_HOME").ok().as_deref(),
         std::env::var("APPDATA").ok().as_deref(),
         home.as_deref(),
-    );
+    )
+}
+
+/// Load from the real environment. Missing or unreadable files yield defaults.
+pub fn load() -> SandboxUserConfig {
+    let path = current_config_path();
     let runtime = path
         .as_ref()
         .and_then(|p| std::fs::read_to_string(p).ok())

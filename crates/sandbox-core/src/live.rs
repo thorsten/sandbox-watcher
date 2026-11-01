@@ -17,6 +17,7 @@ use futures::StreamExt;
 use crate::adapter::RuntimeAdapter;
 use crate::apple::AppleContainerAdapter;
 use crate::detect::{DetectedRuntime, Environment, detect};
+use crate::diagnostics::{Probe, ProbeOutcome};
 use crate::docker::DockerAdapter;
 use crate::endpoints;
 use crate::host::{Host, RuntimeId, container_key, parse_container_key};
@@ -102,15 +103,55 @@ pub fn select_candidates(
 
 /// Build an adapter for a candidate, resolving binary-only endpoints.
 pub async fn connect(candidate: &DetectedRuntime) -> Option<Arc<dyn RuntimeAdapter>> {
-    let endpoint = endpoints::resolve(candidate).await?;
-    match candidate.kind {
-        RuntimeKind::Docker | RuntimeKind::Podman => {
-            DockerAdapter::connect(candidate.kind, &endpoint)
-                .ok()
-                .map(|a| Arc::new(a) as Arc<dyn RuntimeAdapter>)
+    connect_traced(candidate).await.0
+}
+
+/// `connect` with the resolve and connect steps recorded.
+pub async fn connect_traced(
+    candidate: &DetectedRuntime,
+) -> (Option<Arc<dyn RuntimeAdapter>>, Vec<Probe>) {
+    let mut trace = Vec::new();
+    let endpoint = match endpoints::resolve_traced(candidate).await {
+        Ok((endpoint, how)) => {
+            if endpoint != candidate.endpoint {
+                trace.push(Probe {
+                    kind: candidate.kind,
+                    candidate: how,
+                    outcome: ProbeOutcome::Found {
+                        endpoint: endpoint.clone(),
+                    },
+                });
+            }
+            endpoint
         }
-        RuntimeKind::AppleContainer => Some(Arc::new(AppleContainerAdapter::new(endpoint))),
-    }
+        Err(reason) => {
+            trace.push(Probe {
+                kind: candidate.kind,
+                candidate: format!("resolve {}", candidate.endpoint),
+                outcome: ProbeOutcome::Failed { reason },
+            });
+            return (None, trace);
+        }
+    };
+    let adapter: Arc<dyn RuntimeAdapter> = match candidate.kind {
+        RuntimeKind::Docker | RuntimeKind::Podman => {
+            match DockerAdapter::connect(candidate.kind, &endpoint) {
+                Ok(a) => Arc::new(a),
+                Err(e) => {
+                    trace.push(Probe {
+                        kind: candidate.kind,
+                        candidate: format!("connect {endpoint}"),
+                        outcome: ProbeOutcome::Failed {
+                            reason: e.to_string(),
+                        },
+                    });
+                    return (None, trace);
+                }
+            }
+        }
+        RuntimeKind::AppleContainer => Arc::new(AppleContainerAdapter::new(endpoint)),
+    };
+    (Some(adapter), trace)
 }
 
 impl LiveRuntime {

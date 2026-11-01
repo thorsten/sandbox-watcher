@@ -567,6 +567,72 @@ pub fn demo_ssh_contexts() -> Vec<crate::endpoints::SshContext> {
     ]
 }
 
+/// A fixed diagnostics report for the mock app, so its page stays stable.
+pub fn demo_diagnostics(app_version: &str) -> crate::diagnostics::DiagnosticsReport {
+    use crate::diagnostics::{
+        BinaryCheck, DiagnosticsReport, EnvironmentReport, HostReport, Probe, ProbeOutcome,
+    };
+    use crate::remote::{HostState, HostStatus};
+    let probe = |kind, candidate: &str, outcome| Probe {
+        kind,
+        candidate: candidate.into(),
+        outcome,
+    };
+    DiagnosticsReport {
+        generated_at: Utc.with_ymd_and_hms(2026, 11, 1, 12, 0, 0).unwrap(),
+        app_version: app_version.into(),
+        environment: EnvironmentReport {
+            os: "macos".into(),
+            docker_host: None,
+            container_host: None,
+            runtime_override: None,
+            config_runtime: None,
+            config_path: "/Users/me/.config/sandbox/config.toml".into(),
+            binaries: vec![
+                BinaryCheck {
+                    name: "docker".into(),
+                    found: true,
+                },
+                BinaryCheck {
+                    name: "podman".into(),
+                    found: false,
+                },
+                BinaryCheck {
+                    name: "container".into(),
+                    found: true,
+                },
+            ],
+        },
+        local: vec![
+            probe(
+                RuntimeKind::Docker,
+                "/var/run/docker.sock",
+                ProbeOutcome::Found {
+                    endpoint: "unix:///var/run/docker.sock".into(),
+                },
+            ),
+            probe(RuntimeKind::Podman, "podman on PATH", ProbeOutcome::Missing),
+            probe(
+                RuntimeKind::AppleContainer,
+                "container on PATH",
+                ProbeOutcome::Skipped {
+                    reason: "pinned to docker by sandbox config".into(),
+                },
+            ),
+        ],
+        hosts: vec![HostReport {
+            alias: "devbox".into(),
+            status: HostStatus {
+                alias: "devbox".into(),
+                display_name: "devbox".into(),
+                state: HostState::Connected,
+                runtimes: vec![RuntimeKind::Docker],
+                probes: vec!["docker: unix:///var/run/docker.sock".into()],
+            },
+        }],
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
