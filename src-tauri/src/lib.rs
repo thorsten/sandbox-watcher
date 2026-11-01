@@ -493,8 +493,10 @@ async fn preview_allow(
         .map(|r| project_config_path(&r));
     let present = |path: &Option<std::path::PathBuf>| -> Vec<String> {
         let Some(path) = path else { return vec![] };
+        // The preview only marks duplicates; apply() aborts on a broken file.
         let existing = std::fs::read_to_string(path)
-            .map(|c| existing_entries(&c))
+            .ok()
+            .and_then(|c| existing_entries(&c).ok())
             .unwrap_or_default();
         entries
             .iter()
@@ -533,7 +535,8 @@ async fn apply_allow(
             sandbox_core::allowlist::project_config_path(&root)
         }
     };
-    sandbox_core::allowlist::apply(&path, &entries).map_err(|e| format!("{}: {e}", path.display()))
+    sandbox_core::allowlist::apply(&path, target, &entries)
+        .map_err(|e| format!("{}: {e}", path.display()))
 }
 
 /// Check GitHub Releases for a newer version now.

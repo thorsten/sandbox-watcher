@@ -44,7 +44,11 @@ decisions are in `docs/adr/`. Read both before changing architecture.
 - **The only sandbox config edit is the allow list,** and only through the
   Allow dialog: `allowlist.rs` replicates `sandbox network allow`'s file
   rewrite, writes to the two paths sandbox itself would use, and shows the
-  exact lines first. Nothing else touches `config.toml`.
+  exact lines first. Nothing else touches `config.toml`. The write validates
+  every entry, edits the parsed document, treats only a missing file as
+  empty, refuses symlinks for the project config and follows them only to
+  regular files for the global one, and goes through a fresh temporary file
+  under a directory lock; keep these properties when touching it.
 - **Our own execs must not trigger refreshes.** The session probe carries
   `PROBE_SENTINEL`, diagnostics carry `DIAGNOSTIC_COMMAND_PREFIX`; see
   `is_relevant` in `live.rs` before adding another exec.
