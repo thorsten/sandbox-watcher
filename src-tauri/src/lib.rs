@@ -643,7 +643,10 @@ async fn apply_allow(
     )
     .await
     .map_err(|e| match e {
-        RemoteApplyError::Changed(msg) => format!("changed: {msg}"),
+        // The dialog shows the host by its alias, which core does not know.
+        RemoteApplyError::Changed(_) => {
+            format!("changed: the config on {alias} changed since the preview")
+        }
         RemoteApplyError::Refused { path, reason } => format!("{path}: {reason}"),
         RemoteApplyError::Other(e) => e,
     })
