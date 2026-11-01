@@ -75,8 +75,8 @@ pub async fn podman_socket(runner: &CommandRunner) -> Option<String> {
 }
 
 /// Endpoint of a runtime on a remote host, discovered through its CLI there.
-/// Docker falls back to the default socket; TCP endpoints are passed through
-/// and rejected by the caller.
+/// Docker falls back to the default socket; TCP endpoints are forwarded by
+/// the caller and TLS ones are rejected there.
 pub async fn resolve_remote(runner: &CommandRunner, kind: RuntimeKind) -> Option<String> {
     match kind {
         RuntimeKind::Docker => Some(

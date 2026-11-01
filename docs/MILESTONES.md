@@ -243,8 +243,8 @@ with no configuration.
 - ~~Turn-level detail~~: per prompt, the tokens, cost, tool calls and files
   of each turn, read from the whole transcript on request.
 - Remote hosts over SSH (watch and stop): shipped in 0.6.0 with SSH
-  conformance in CI; a real-host run is pending. TCP Docker contexts are not
-  supported.
+  conformance in CI; a real-host run is pending. Unix sockets and plain `tcp://`
+  endpoints are forwarded; TLS Docker endpoints are not supported.
 - Remote hosts follow-ups for 0.7.0: import `ssh://` Docker contexts as
   hosts, allow list on remote hosts.
 - CLI or TUI mode sharing the same core (`sandbox-watcher --tui`).

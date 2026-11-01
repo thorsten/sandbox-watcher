@@ -41,6 +41,11 @@ async fn sh(runner: &CommandRunner, script: &str) -> crate::Result<String> {
         .map(|o| o.stdout)
 }
 
+/// The sandbox config file on a host, as sandbox resolves it: an explicit
+/// `SANDBOX_CONFIG_DIR`, else `$XDG_CONFIG_HOME` or `~/.config`.
+pub const REMOTE_CONFIG_PATH_SH: &str =
+    "${SANDBOX_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/sandbox}/config.toml";
+
 pub async fn detect_remote(runner: &CommandRunner) -> RemoteDetection {
     let mut detection = RemoteDetection::default();
     let found = match sh(
@@ -61,7 +66,7 @@ pub async fn detect_remote(runner: &CommandRunner) -> RemoteDetection {
         .collect();
     let config = sh(
         runner,
-        "cat \"${XDG_CONFIG_HOME:-$HOME/.config}/sandbox/config.toml\" 2>/dev/null; true",
+        &format!("cat \"{REMOTE_CONFIG_PATH_SH}\" 2>/dev/null; true"),
     )
     .await
     .unwrap_or_else(|e| {
@@ -239,8 +244,7 @@ mod tests {
     }
 
     const WHICH: &str = "sh -c command -v docker; command -v podman; command -v container; true";
-    const CONFIG: &str =
-        "sh -c cat \"${XDG_CONFIG_HOME:-$HOME/.config}/sandbox/config.toml\" 2>/dev/null; true";
+    const CONFIG: &str = "sh -c cat \"${SANDBOX_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/sandbox}/config.toml\" 2>/dev/null; true";
 
     #[tokio::test]
     async fn detects_docker_and_podman_in_sandbox_order() {
@@ -281,6 +285,23 @@ mod tests {
         assert_eq!(d.preferred, Some(RuntimeKind::Podman));
         assert_eq!(d.candidates.len(), 1);
         assert_eq!(d.candidates[0].kind, RuntimeKind::Podman);
+    }
+
+    #[tokio::test]
+    async fn config_read_honours_sandbox_config_dir() {
+        let fake = Arc::new(FakeRunner::new(vec![(WHICH, ok("/usr/bin/docker\n"))]));
+        detect_remote(&CommandRunner::Fake(fake.clone())).await;
+        let script = fake
+            .calls()
+            .into_iter()
+            .find(|c| c.contains("config.toml"))
+            .expect("config was read");
+        assert!(
+            script.contains(
+                "${SANDBOX_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/sandbox}/config.toml"
+            ),
+            "{script}"
+        );
     }
 
     #[tokio::test]

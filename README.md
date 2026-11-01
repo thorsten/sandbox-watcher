@@ -142,7 +142,8 @@ Watch containers on another machine over SSH.
 - Accept the host key once in a terminal with `ssh <alias>`. The app never
   accepts host keys.
 - Docker, Podman and Apple `container` are supported on the remote machine.
-  Only Unix-socket endpoints are forwarded; TCP Docker contexts are not.
+  Unix sockets and plain `tcp://` endpoints are forwarded; TLS Docker
+  endpoints are not supported.
 - Remote containers can be watched and stopped. Terminal, folder, editor,
   reveal and the allow list are not available for them.
 - Windows is not supported.

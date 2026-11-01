@@ -234,10 +234,17 @@ async fn real_runtime_adapter_conforms() {
     let runtime = std::env::var("SANDBOX_WATCHER_RUNTIME").unwrap_or_else(|_| "docker".into());
     #[cfg(unix)]
     if let Ok(alias) = std::env::var("SANDBOX_WATCHER_SSH_HOST") {
-        let (session, adapters, _) =
+        let (session, adapters, detection) =
             sandbox_core::remote::connect_host(&alias, Duration::from_secs(20))
                 .await
                 .expect("connect over ssh");
+        if let Ok(expected) = std::env::var("SANDBOX_WATCHER_EXPECT_REMOTE_ENDPOINT") {
+            assert!(
+                detection.probes.iter().any(|p| p.contains(&expected)),
+                "expected a probe mentioning {expected}, got {:?}",
+                detection.probes
+            );
+        }
         let hosted = adapters
             .into_iter()
             .find(|a| a.adapter.kind().as_str() == runtime)

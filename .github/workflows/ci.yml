@@ -75,6 +75,29 @@ jobs:
             docker exec sandbox-watcher-test test -f /tmp/.sandbox-ready && break || sleep 0.5
           done
           cargo test -p sandbox-core --test conformance -- --nocapture
+      - name: Docker conformance over SSH to a tcp:// endpoint
+        if: runner.os == 'Linux'
+        env:
+          SANDBOX_WATCHER_DOCKER_TESTS: "1"
+          SANDBOX_WATCHER_TEST_SLUG: watcher-test
+          SANDBOX_WATCHER_SSH_HOST: localhost
+          SANDBOX_WATCHER_EXPECT_REMOTE_ENDPOINT: tcp://127.0.0.1:2375
+        # socat exposes the Docker socket on plain TCP; sshd hands the remote
+        # shell DOCKER_HOST through ~/.ssh/environment so detection picks it.
+        run: |
+          sudo apt-get install -y socat
+          nohup socat TCP-LISTEN:2375,bind=127.0.0.1,fork,reuseaddr UNIX-CONNECT:/var/run/docker.sock >/tmp/socat.log 2>&1 &
+          for i in $(seq 1 20); do (echo > /dev/tcp/127.0.0.1/2375) 2>/dev/null && break || sleep 0.5; done
+          echo "PermitUserEnvironment yes" | sudo tee -a /etc/ssh/sshd_config
+          sudo systemctl restart ssh
+          echo "DOCKER_HOST=tcp://127.0.0.1:2375" > ~/.ssh/environment
+          ssh -o BatchMode=yes localhost 'echo $DOCKER_HOST' | grep -q tcp://
+          docker start sandbox-watcher-test
+          for i in $(seq 1 20); do
+            docker exec sandbox-watcher-test test -f /tmp/.sandbox-ready && break || sleep 0.5
+          done
+          cargo test -p sandbox-core --test conformance -- --nocapture
+          rm ~/.ssh/environment
       - name: Remove the test container
         if: always() && runner.os == 'Linux'
         run: docker rm -f sandbox-watcher-test || true
