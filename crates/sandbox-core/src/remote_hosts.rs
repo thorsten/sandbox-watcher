@@ -683,7 +683,7 @@ mod tests {
     use super::*;
     use crate::adapter::RuntimeAdapter;
     use crate::mock::MockAdapter;
-    use crate::overview::{DataSource, RuntimeFailure, load_many_with_failures};
+    use crate::overview::{DataSource, RuntimeFailure, StartTimeCache, load_many_with_failures};
 
     #[derive(Default)]
     struct FakeSession {
@@ -778,7 +778,13 @@ mod tests {
     async fn round(remotes: &RemoteHosts) -> (Overview, Vec<HostedAdapter>) {
         remotes
             .refresh(None, |adapters| async move {
-                load_many_with_failures(&adapters, DataSource::Mock, vec![]).await
+                load_many_with_failures(
+                    &adapters,
+                    DataSource::Mock,
+                    vec![],
+                    &StartTimeCache::default(),
+                )
+                .await
             })
             .await
     }
@@ -796,7 +802,13 @@ mod tests {
                         reason: reason.clone(),
                     })
                     .collect();
-                let (overview, _) = load_many_with_failures(&[], DataSource::Mock, vec![]).await;
+                let (overview, _) = load_many_with_failures(
+                    &[],
+                    DataSource::Mock,
+                    vec![],
+                    &StartTimeCache::default(),
+                )
+                .await;
                 (overview, failures)
             })
             .await
@@ -1034,8 +1046,13 @@ mod tests {
     async fn round_docker_fails(remotes: &RemoteHosts) -> (Overview, Vec<HostedAdapter>) {
         remotes
             .refresh(None, |adapters| async move {
-                let (overview, _) =
-                    load_many_with_failures(&adapters, DataSource::Mock, vec![]).await;
+                let (overview, _) = load_many_with_failures(
+                    &adapters,
+                    DataSource::Mock,
+                    vec![],
+                    &StartTimeCache::default(),
+                )
+                .await;
                 let failures = adapters
                     .iter()
                     .filter(|a| a.adapter.kind() == RuntimeKind::Docker)
@@ -1126,7 +1143,13 @@ mod tests {
         let (overview, adapters) = remotes
             .refresh(None, |adapters| async move {
                 tokio::time::sleep(REMOTE_TIMEOUT).await;
-                load_many_with_failures(&adapters, DataSource::Mock, vec![]).await
+                load_many_with_failures(
+                    &adapters,
+                    DataSource::Mock,
+                    vec![],
+                    &StartTimeCache::default(),
+                )
+                .await
             })
             .await;
         assert!(

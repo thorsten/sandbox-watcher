@@ -11,9 +11,9 @@ describe("api command names and arguments", () => {
     ["activity", () => api.getActivity("c1"), "get_activity", { containerKey: "c1" }],
     [
       "turns",
-      () => api.getTurns("c1", "codex"),
+      () => api.getTurns("c1", "codex", 42),
       "get_turns",
-      { containerKey: "c1", agent: "codex" },
+      { containerKey: "c1", agent: "codex", pid: 42 },
     ],
     ["logs default tail", () => api.getLogs("c1"), "get_logs", { containerKey: "c1", tail: 200 }],
     ["logs tail", () => api.getLogs("c1", 50), "get_logs", { containerKey: "c1", tail: 50 }],

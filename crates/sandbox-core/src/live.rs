@@ -19,11 +19,12 @@ use crate::apple::AppleContainerAdapter;
 use crate::detect::{DetectedRuntime, Environment, detect};
 use crate::docker::DockerAdapter;
 use crate::endpoints;
-use crate::host::{Host, RuntimeId, parse_container_key};
+use crate::host::{Host, RuntimeId, container_key, parse_container_key};
 use crate::model::{RuntimeEvent, RuntimeEventKind, RuntimeKind};
 use crate::network::DIAGNOSTIC_COMMAND_PREFIX;
 use crate::overview::{
-    DataSource, HostedAdapter, Overview, RuntimeFailure, RuntimeStatus, load_many_with_failures,
+    DataSource, HostedAdapter, Overview, RuntimeFailure, RuntimeStatus, StartTimeCache,
+    load_many_with_failures,
 };
 use crate::remote_hosts::{RemoteHosts, Wake};
 use crate::sandbox::PROBE_SENTINEL;
@@ -49,6 +50,8 @@ pub struct LiveRuntime {
     /// Runtime pinned by the user's settings; wins over env and sandbox config.
     preferred_override: Mutex<Option<RuntimeKind>>,
     remotes: RemoteHosts,
+    /// Start times of running containers, filled from `inspect` once each.
+    start_times: StartTimeCache,
 }
 
 /// Events worth a UI refresh. Our own probe and diagnostic execs and the
@@ -220,7 +223,17 @@ impl LiveRuntime {
                 reconnect = true;
                 while let Some(item) = stream.next().await {
                     match item {
-                        Ok(event) if is_relevant(&event) => listener(event),
+                        Ok(event) if is_relevant(&event) => {
+                            // A (re)start changes the start time; a stop or
+                            // removal ends it. The next listing inspects again.
+                            if !matches!(event.kind, RuntimeEventKind::ExecCreated(_))
+                                && let Some(live) = weak.upgrade()
+                            {
+                                live.start_times
+                                    .forget(&container_key(&task_id.host, &event.container_id));
+                            }
+                            listener(event)
+                        }
                         Ok(_) => {}
                         Err(_) => {
                             reconnect = false;
@@ -367,7 +380,8 @@ impl LiveRuntime {
             return (overview, vec![]);
         }
         let (overview, failures) =
-            load_many_with_failures(&adapters, DataSource::Live, candidates).await;
+            load_many_with_failures(&adapters, DataSource::Live, candidates, &self.start_times)
+                .await;
 
         // Forget adapters that failed so they are reconnected next time, and
         // remember which adapter owns which container.

@@ -8,12 +8,14 @@ import { FilesList } from "./FilesList";
 interface Props {
   containerKey: string;
   agent: AgentKind;
+  /** Session whose transcript to read; without it, the agent's newest. */
+  pid?: number | null;
   projectDir: string | null;
   now: Date;
 }
 
 /** Loads on request: the whole transcript is read, not just its tail. */
-export function TurnsSection({ containerKey, agent, projectDir, now }: Props) {
+export function TurnsSection({ containerKey, agent, pid = null, projectDir, now }: Props) {
   const [report, setReport] = useState<TurnReport | null | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,7 +23,7 @@ export function TurnsSection({ containerKey, agent, projectDir, now }: Props) {
   const load = () => {
     setLoading(true);
     setError(null);
-    getTurns(containerKey, agent)
+    getTurns(containerKey, agent, pid)
       .then(setReport)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
       .finally(() => setLoading(false));

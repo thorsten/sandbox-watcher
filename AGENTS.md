@@ -54,6 +54,10 @@ decisions are in `docs/adr/`. Read both before changing architecture.
   `is_relevant` in `live.rs` before adding another exec.
 - **Keep `src/types.ts` in sync** when a serialised Rust type changes.
   Serialisation is kebab-case for enums, flat for `ContainerOverview`.
+- **Report partial failures, never swallow them.** `stop_all` returns a
+  `StopReport` with one `StopFailure` per host and runtime whose containers
+  could not be listed; activity and history carry `Coverage` and
+  `Attribution` so incomplete or shared numbers are labelled as such.
 
 ## Commands
 
@@ -116,13 +120,30 @@ fix the parser:
 | Pi          | `~/.pi/agent/sessions/<cwd>/<session>.jsonl`                                            | `message` lines with `toolCall` parts and `toolResult` role                                           |
 | OpenCode    | `~/.local/share/opencode/storage/message/<session>/*.json` plus `part/<message>/*.json` | message and part JSON files; tool parts carry `state.status`                                          |
 
-A transcript is only shown when a session of that agent is running in the
-container, so an old file never reads as current activity.
+`transcripts.rs` decides which running session wrote a transcript, from facts
+the container gives: an open file descriptor in `/proc/<pid>/fd` (Codex holds
+its rollout open), the process start time from `/proc/<pid>/stat`, and the
+first and last line times of the file. One candidate session is a
+`session` attribution; several are an `agent` attribution, which the UI and
+the history show as shared rather than guessing. A file last written before
+every session of its agent started is stale and never read or shown.
 
-Files per session come from the same stores (`files.rs`): the whole
-transcript is pre-filtered with `grep` to tool-call lines, capped at 16 MB,
-then parsed. Codex reads are inferred from simple shell commands (`cat`,
-`sed -n`, `head`, …); everything else comes from explicit file tools.
+Transcripts are read incrementally: `TranscriptCache` keeps the byte offset
+after the last complete line and the running totals per container key and
+path, so a refresh reads only what was appended (4 MiB per round trip, four
+per refresh; the rest follows on the next refresh and `Coverage.complete`
+stays false until then). A new inode or a size below the offset means the
+file was replaced or truncated: it is read again from byte 0, earlier totals
+are kept and `Coverage.restarts` counts it. Lines longer than a chunk are
+skipped and counted in `skipped_bytes`. History records get the lines written
+since the session process started, so a resumed transcript does not count
+twice; the Activity panel shows the whole transcript and, for resumed ones,
+the session's own part next to it. OpenCode's store is rewritten in place and
+is dumped whole each time.
+
+Files per session come from the same transcript lines (`files.rs`). Codex
+reads are inferred from simple shell commands (`cat`, `sed -n`, `head`, …);
+everything else comes from explicit file tools.
 
 ## Known gaps
 
@@ -130,5 +151,15 @@ then parsed. Codex reads are inferred from simple shell commands (`cat`,
 - Fixtures under `fixtures/docker` and `fixtures/sandbox-logs` are
   hand-written from documented formats, not recordings.
 - Persisted data size per project (M4 optional) is not implemented.
+- Docker and Podman start times come from one `inspect` per running
+  container, cached in `StartTimeCache` until a start, stop, die or remove
+  event or until the container leaves the listing. A `docker restart` that
+  happens entirely between two polls on a runtime without events keeps the
+  old start time until the next such event.
+- Session attribution is only as good as the container's facts: a Claude
+  Code `/clear` mid-session creates a second transcript for the same pid
+  (shown as a second block, usage summed in history), and two sessions of
+  one agent that both started long before a transcript was written stay
+  `agent`-level.
 - Price table defaults cover the models known at the time of writing; newer
   model ids show tokens only until added in Settings.

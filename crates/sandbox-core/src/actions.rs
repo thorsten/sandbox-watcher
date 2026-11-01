@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::Result;
 use crate::adapter::{ContainerFilter, RuntimeAdapter};
-use crate::host::container_key;
-use crate::model::MountRole;
+use crate::host::{Host, container_key};
+use crate::model::{MountRole, RuntimeKind};
 use crate::mounts::classify;
 use crate::overview::{HostedAdapter, REMOTE_TIMEOUT, within_budget};
 use crate::paths::annotate_host_paths;
@@ -23,6 +23,30 @@ pub struct StopResult {
     pub error: Option<String>,
 }
 
+/// A runtime whose containers could not even be listed, so none of them was
+/// stopped. Without this the report would look complete when it is not.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StopFailure {
+    pub host: Host,
+    pub runtime: RuntimeKind,
+    pub error: String,
+}
+
+/// Everything "Stop all" did and could not do.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct StopReport {
+    /// One entry per container that was listed, stopped or not.
+    pub results: Vec<StopResult>,
+    /// Runtimes whose listing failed; their containers are not in `results`.
+    pub failures: Vec<StopFailure>,
+}
+
+impl StopReport {
+    pub fn all_ok(&self) -> bool {
+        self.failures.is_empty() && self.results.iter().all(|r| r.ok)
+    }
+}
+
 /// Default grace period before the runtime kills the container.
 pub const STOP_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -30,32 +54,35 @@ pub const STOP_TIMEOUT: Duration = Duration::from_secs(10);
 /// container key, so equal ids on two hosts stay apart. Adapters run at the
 /// same time. On a remote host the listing gets [`REMOTE_TIMEOUT`] and each
 /// stop the grace period plus [`REMOTE_TIMEOUT`]; running out of time is a
-/// failed result, so a stalled host cannot hold up the others.
-pub async fn stop_all(adapters: &[HostedAdapter], timeout: Duration) -> Vec<StopResult> {
+/// failed result, so a stalled host cannot hold up the others. A listing that
+/// fails or times out is a [`StopFailure`] for that host and runtime.
+pub async fn stop_all(adapters: &[HostedAdapter], timeout: Duration) -> StopReport {
     let per_adapter = adapters.iter().map(|hosted| stop_adapter(hosted, timeout));
-    futures::future::join_all(per_adapter)
-        .await
-        .into_iter()
-        .flatten()
-        .collect()
+    let mut report = StopReport::default();
+    for (results, failure) in futures::future::join_all(per_adapter).await {
+        report.results.extend(results);
+        report.failures.extend(failure);
+    }
+    report
 }
 
-async fn stop_adapter(hosted: &HostedAdapter, timeout: Duration) -> Vec<StopResult> {
+async fn stop_adapter(
+    hosted: &HostedAdapter,
+    timeout: Duration,
+) -> (Vec<StopResult>, Option<StopFailure>) {
     let adapter = &hosted.adapter;
     let host = &hosted.host;
     let no_answer = |limit: Duration| format!("no answer from {host} within {}s", limit.as_secs());
+    let failure = |error: String| StopFailure {
+        host: host.clone(),
+        runtime: adapter.kind(),
+        error,
+    };
     let listing = within_budget(host, adapter.list_containers(&ContainerFilter::running())).await;
     let containers = match listing {
         Some(Ok(containers)) => containers,
-        Some(Err(_)) => return vec![],
-        None => {
-            return vec![StopResult {
-                container_id: container_key(host, ""),
-                name: format!("{} containers", adapter.kind()),
-                ok: false,
-                error: Some(no_answer(REMOTE_TIMEOUT)),
-            }];
-        }
+        Some(Err(e)) => return (vec![], Some(failure(e.to_string()))),
+        None => return (vec![], Some(failure(no_answer(REMOTE_TIMEOUT)))),
     };
     let limit = timeout + REMOTE_TIMEOUT;
     let stops = containers.iter().map(|c| {
@@ -78,7 +105,7 @@ async fn stop_adapter(hosted: &HostedAdapter, timeout: Duration) -> Vec<StopResu
             }
         }
     });
-    futures::future::join_all(stops).await
+    (futures::future::join_all(stops).await, None)
 }
 
 /// Host path of the container's project directory, spelled for this OS.
@@ -383,9 +410,9 @@ mod tests {
     async fn stop_all_stops_running_only() {
         let mock = MockAdapter::demo();
         let adapters = vec![HostedAdapter::local(Arc::new(mock.clone()))];
-        let results = stop_all(&adapters, STOP_TIMEOUT).await;
-        assert_eq!(results.len(), 3);
-        assert!(results.iter().all(|r| r.ok));
+        let report = stop_all(&adapters, STOP_TIMEOUT).await;
+        assert_eq!(report.results.len(), 3);
+        assert!(report.all_ok(), "{report:?}");
         let running = mock
             .list_containers(&ContainerFilter::running())
             .await
@@ -399,13 +426,33 @@ mod tests {
             host: Host::Remote("devbox".into()),
             adapter: Arc::new(MockAdapter::demo()),
         }];
-        let results = stop_all(&adapters, STOP_TIMEOUT).await;
+        let report = stop_all(&adapters, STOP_TIMEOUT).await;
         assert!(
-            results
+            report
+                .results
                 .iter()
                 .all(|r| r.container_id.starts_with("devbox/")),
-            "{results:?}"
+            "{report:?}"
         );
+    }
+
+    #[tokio::test]
+    async fn failed_listing_is_reported_per_host_and_runtime() {
+        let adapters = vec![
+            HostedAdapter::local(Arc::new(MockAdapter::demo())),
+            remote(MockAdapter::empty().failing_lists()),
+        ];
+        let report = stop_all(&adapters, STOP_TIMEOUT).await;
+        assert_eq!(report.results.len(), 3, "local containers were stopped");
+        assert!(report.results.iter().all(|r| r.ok));
+        assert_eq!(report.failures.len(), 1);
+        assert_eq!(report.failures[0].host, Host::Remote("devbox".into()));
+        assert_eq!(report.failures[0].runtime, RuntimeKind::Docker);
+        assert!(
+            report.failures[0].error.contains("listing failed"),
+            "{report:?}"
+        );
+        assert!(!report.all_ok());
     }
 
     fn remote(adapter: MockAdapter) -> HostedAdapter {
@@ -416,7 +463,7 @@ mod tests {
     }
 
     /// Fails instead of hanging when `stop_all` has no budget.
-    async fn bounded_stop_all(adapters: &[HostedAdapter]) -> Vec<StopResult> {
+    async fn bounded_stop_all(adapters: &[HostedAdapter]) -> StopReport {
         tokio::time::timeout(Duration::from_secs(600), stop_all(adapters, STOP_TIMEOUT))
             .await
             .expect("stop_all must not wait for a stalled host")
@@ -430,7 +477,7 @@ mod tests {
             HostedAdapter::local(Arc::new(local.clone())),
         ];
         let started = tokio::time::Instant::now();
-        let results = bounded_stop_all(&adapters).await;
+        let report = bounded_stop_all(&adapters).await;
         assert!(
             started.elapsed() <= REMOTE_TIMEOUT + Duration::from_millis(50),
             "{:?}",
@@ -441,32 +488,31 @@ mod tests {
             .await
             .unwrap();
         assert!(running.is_empty(), "local containers are still stopped");
-        let failed: Vec<_> = results.iter().filter(|r| !r.ok).collect();
-        assert_eq!(failed.len(), 1, "{results:?}");
-        assert!(failed[0].container_id.starts_with("devbox/"));
-        assert_eq!(
-            failed[0].error.as_deref(),
-            Some("no answer from devbox within 10s")
-        );
+        assert!(report.results.iter().all(|r| r.ok), "{report:?}");
+        assert_eq!(report.failures.len(), 1, "{report:?}");
+        assert_eq!(report.failures[0].host, Host::Remote("devbox".into()));
+        assert_eq!(report.failures[0].error, "no answer from devbox within 10s");
     }
 
     #[tokio::test(start_paused = true)]
     async fn stalled_remote_stop_fails_after_the_grace_period_and_budget() {
         let adapters = vec![remote(MockAdapter::demo().stalled_stops())];
         let started = tokio::time::Instant::now();
-        let results = bounded_stop_all(&adapters).await;
+        let report = bounded_stop_all(&adapters).await;
         assert!(
             started.elapsed() <= STOP_TIMEOUT + REMOTE_TIMEOUT + Duration::from_millis(50),
             "{:?}",
             started.elapsed()
         );
-        assert_eq!(results.len(), 3);
-        assert!(results.iter().all(|r| !r.ok), "{results:?}");
+        assert_eq!(report.results.len(), 3);
+        assert!(report.failures.is_empty(), "the listing worked");
+        assert!(report.results.iter().all(|r| !r.ok), "{report:?}");
         assert!(
-            results
+            report
+                .results
                 .iter()
                 .all(|r| r.error.as_deref() == Some("no answer from devbox within 20s")),
-            "{results:?}"
+            "{report:?}"
         );
     }
 

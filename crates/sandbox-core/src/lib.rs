@@ -37,6 +37,7 @@ pub mod settings;
 pub mod shell_env;
 pub mod ssh;
 pub mod stats_hub;
+pub mod transcripts;
 pub mod turns;
 pub mod usage;
 

@@ -9,7 +9,7 @@ import type {
   HistoryView,
   ContainerDetails,
   Settings,
-  StopResult,
+  StopReport,
   UpdateInfo,
   DetectedRuntime,
   HostStatus,
@@ -72,8 +72,13 @@ export function getActivity(containerKey: string): Promise<ContainerActivity> {
 }
 
 /** Turn-by-turn detail of an agent's transcript; reads it in full, so on demand only. */
-export function getTurns(containerKey: string, agent: AgentKind): Promise<TurnReport | null> {
-  return invoke<TurnReport | null>("get_turns", { containerKey, agent });
+/** `pid` picks the transcript attributed to that session; otherwise the agent's newest. */
+export function getTurns(
+  containerKey: string,
+  agent: AgentKind,
+  pid: number | null = null,
+): Promise<TurnReport | null> {
+  return invoke<TurnReport | null>("get_turns", { containerKey, agent, pid });
 }
 
 export function getContainerDetails(containerKey: string): Promise<ContainerDetails | null> {
@@ -92,8 +97,8 @@ export function stopContainer(containerKey: string): Promise<void> {
   return invoke<void>("stop_container", { containerKey });
 }
 
-export function stopAll(): Promise<StopResult[]> {
-  return invoke<StopResult[]>("stop_all");
+export function stopAll(): Promise<StopReport> {
+  return invoke<StopReport>("stop_all");
 }
 
 export function getProjectPath(containerKey: string): Promise<string | null> {

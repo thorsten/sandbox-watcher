@@ -174,6 +174,24 @@ export function HistoryView({ onClose }: { onClose: () => void }) {
                               s.usage.cache_write_tokens,
                           )
                         : "–"}
+                      {s.usage_scope === "agent" && (
+                        <span
+                          className="muted"
+                          title="Transcripts that several sessions of this agent could have written are counted here"
+                        >
+                          {" "}
+                          shared
+                        </span>
+                      )}
+                      {s.usage_scope === "pooled" && (
+                        <span
+                          className="muted"
+                          title="Counted in the sibling session marked shared"
+                        >
+                          {" "}
+                          pooled
+                        </span>
+                      )}
                     </td>
                     <td className="num">
                       {s.usage ? formatCost(s.usage.cost_usd, s.usage.cost_source) : "–"}

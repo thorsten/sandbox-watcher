@@ -1,5 +1,6 @@
+import { stopResultLabel } from "./format";
 import { hostLabel, hostsInUse } from "./hosts";
-import type { HostStatus, SandboxContainer } from "./types";
+import { RUNTIME_LABELS, type HostStatus, type SandboxContainer, type StopReport } from "./types";
 
 let confirmStop = true;
 
@@ -44,6 +45,33 @@ export function describeInterruptionByHost(
     host === "local" ? "This machine" : hostLabel(host, hosts),
     ...describeInterruption(containers.filter((c) => c.host === host)),
   ]);
+}
+
+/**
+ * One line for the "Stop all" notice. Containers that could not be stopped
+ * and hosts whose containers could not even be listed are both named, so a
+ * partial stop never reads as a success.
+ */
+export function describeStopReport(report: StopReport, hosts: HostStatus[] = []): string {
+  const failed = report.results.filter((r) => !r.ok);
+  const parts: string[] = [];
+  const stopped = report.results.length - failed.length;
+  if (failed.length === 0 && report.failures.length === 0) {
+    return `Stopped ${stopped} container${stopped === 1 ? "" : "s"}`;
+  }
+  if (stopped > 0) parts.push(`stopped ${stopped}`);
+  if (failed.length > 0) {
+    parts.push(
+      `${failed.length} failed: ${failed
+        .map((f) => `${stopResultLabel(f)} (${f.error ?? "unknown"})`)
+        .join(", ")}`,
+    );
+  }
+  for (const f of report.failures) {
+    const where = f.host === "local" ? "this machine" : hostLabel(f.host, hosts);
+    parts.push(`could not list ${RUNTIME_LABELS[f.runtime]} containers on ${where}: ${f.error}`);
+  }
+  return parts.join("; ");
 }
 
 export function networkLogsCommand(projectDir: string | null, host = "local"): string {

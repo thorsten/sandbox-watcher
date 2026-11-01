@@ -1,4 +1,6 @@
 import type {
+  AgentActivity,
+  ContainerActivity,
   FileTouch,
   NetworkEntry,
   NetworkReport,
@@ -160,6 +162,35 @@ export function turn(partial: Partial<Turn> = {}): Turn {
     tool_calls: 3,
     tool_errors: 0,
     files: [file({ edits: 1 })],
+    ...partial,
+  };
+}
+
+export function agentActivity(partial: Partial<AgentActivity> = {}): AgentActivity {
+  return {
+    agent: "claude-code",
+    source: "/home/sandbox/.claude/projects/-p/s.jsonl",
+    updated_at: "2026-10-30T11:59:00Z",
+    events: [],
+    in_flight: null,
+    usage: usage(),
+    session_usage: null,
+    files: [],
+    attribution: { kind: "session", pid: 4242, evidence: "only-session" },
+    coverage: { complete: true, pending_bytes: 0, skipped_bytes: 0, restarts: 0 },
+    ...partial,
+  };
+}
+
+export function containerActivity(partial: Partial<ContainerActivity> = {}): ContainerActivity {
+  return {
+    container_id: "c1",
+    collected_at: NOW.toISOString(),
+    sessions: [],
+    agents: [],
+    working_tree: null,
+    project_dir: "/Users/dev/web-shop",
+    errors: [],
     ...partial,
   };
 }

@@ -7,6 +7,7 @@
 
 use std::collections::{BTreeMap, HashMap};
 
+use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -252,74 +253,6 @@ pub(crate) fn claude_usage_from_calls(calls: Vec<ClaudeCall>, table: &PriceTable
     usage
 }
 
-/// Extract only the model, message id and usage of each assistant line; the
-/// file can be megabytes, the fragments are a few hundred bytes per line.
-/// `usage` holds nested objects, so its fragment runs to the end of the line
-/// (cut short) and the counters are read from its top level.
-pub fn claude_usage_command(path: &str) -> Vec<String> {
-    let quoted = format!("'{}'", path.replace('\'', "'\\''"));
-    let script = format!(
-        r#"grep -F '"type":"assistant"' {quoted} 2>/dev/null | grep -noE '"model":"[^"]*"|"id":"msg_[^"]*"|"usage":\{{.*' | cut -c1-600"#
-    );
-    vec!["sh".into(), "-c".into(), script, TRANSCRIPT_SENTINEL.into()]
-}
-
-/// First `"key":<number>` in a fragment. Top-level usage counters come before
-/// any nested object, so the first match is the right one.
-fn number_after(fragment: &str, key: &str) -> u64 {
-    let needle = format!("\"{key}\":");
-    fragment
-        .find(&needle)
-        .map(|i| &fragment[i + needle.len()..])
-        .map(|rest| {
-            rest.chars()
-                .take_while(char::is_ascii_digit)
-                .collect::<String>()
-        })
-        .and_then(|digits| digits.parse().ok())
-        .unwrap_or(0)
-}
-
-/// Parse the grep output: `<line>:"model":"x"`, `<line>:"id":"msg_…"` and
-/// `<line>:"usage":{…` fragments, the first of each kind per line counting.
-pub fn parse_claude_usage(output: &str, table: &PriceTable) -> Usage {
-    let mut calls = Vec::new();
-    let mut line_no = "";
-    let mut model = String::from("unknown");
-    let mut model_on_line = false;
-    let mut id: Option<String> = None;
-    for line in output.lines() {
-        let Some((no, fragment)) = line.split_once(':') else {
-            continue;
-        };
-        if no != line_no {
-            line_no = no;
-            model_on_line = false;
-            id = None;
-        }
-        if let Some(rest) = fragment.strip_prefix("\"model\":\"") {
-            if !model_on_line {
-                model = rest.trim_end_matches('"').to_string();
-                model_on_line = true;
-            }
-        } else if let Some(rest) = fragment.strip_prefix("\"id\":\"") {
-            if id.is_none() {
-                id = Some(rest.trim_end_matches('"').to_string());
-            }
-        } else if fragment.starts_with("\"usage\":{") {
-            calls.push(ClaudeCall {
-                id: id.clone(),
-                model: model.clone(),
-                input: number_after(fragment, "input_tokens"),
-                output: number_after(fragment, "output_tokens"),
-                cache_read: number_after(fragment, "cache_read_input_tokens"),
-                cache_write: number_after(fragment, "cache_creation_input_tokens"),
-            });
-        }
-    }
-    claude_usage_from_calls(calls, table)
-}
-
 /// The call recorded on one full transcript line, if it is an assistant line
 /// with usage.
 pub(crate) fn claude_call(line: &Value) -> Option<ClaudeCall> {
@@ -345,15 +278,6 @@ pub(crate) fn claude_call(line: &Value) -> Option<ClaudeCall> {
 // ---------------------------------------------------------------------------
 // Codex: token_count events carry cumulative totals in newer versions.
 // ---------------------------------------------------------------------------
-
-pub fn codex_usage_command(path: &str) -> Vec<String> {
-    let quoted = format!("'{}'", path.replace('\'', "'\\''"));
-    // token_count events without figures (rate limits only) are skipped.
-    let script = format!(
-        r#"grep -o '"model":"[^"]*"' {quoted} 2>/dev/null | head -1; grep '"token_count"' {quoted} 2>/dev/null | grep '"input_tokens"' | tail -1"#
-    );
-    vec!["sh".into(), "-c".into(), script, TRANSCRIPT_SENTINEL.into()]
-}
 
 /// Cumulative totals of one Codex `token_count` line, input still including
 /// cached tokens. `None` for other lines and for counts without figures.
@@ -403,127 +327,100 @@ pub(crate) fn codex_usage_between(
     usage
 }
 
-pub fn parse_codex_usage(output: &str, table: &PriceTable) -> Usage {
-    let mut model = String::from("unknown");
-    let mut last = None;
-    for line in output.lines() {
-        if let Some(rest) = line.strip_prefix("\"model\":\"") {
-            model = rest.trim_end_matches('"').to_string();
-            continue;
-        }
-        if let Ok(v) = serde_json::from_str::<Value>(line)
-            && let Some(totals) = codex_totals(&v)
-        {
-            last = Some(totals);
-        }
-    }
-    let last = last.unwrap_or_else(|| Usage::new(AgentKind::Codex));
-    codex_usage_between(None, &last, &model, table)
-}
-
 // ---------------------------------------------------------------------------
 // Pi: assistant messages carry usage with a cost object.
 // ---------------------------------------------------------------------------
 
-pub fn pi_usage_command(path: &str) -> Vec<String> {
-    let quoted = format!("'{}'", path.replace('\'', "'\\''"));
-    // Whole file, capped: Pi sessions are small and usage sits at the end of a line.
-    let script = format!("head -c 8388608 {quoted} 2>/dev/null");
-    vec!["sh".into(), "-c".into(), script, TRANSCRIPT_SENTINEL.into()]
+/// Tokens, model and reported cost of one assistant message, with the time
+/// it was written. The unit transcripts are summed from, per session or per
+/// turn.
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct Sample {
+    pub at: Option<DateTime<Utc>>,
+    pub model: String,
+    pub input: u64,
+    pub output: u64,
+    pub cache_read: u64,
+    pub cache_write: u64,
+    pub reasoning: u64,
+    /// Cost the agent reported itself, when it does.
+    pub cost: Option<f64>,
 }
 
-pub fn parse_pi_usage(text: &str) -> Usage {
-    let mut usage = Usage::new(AgentKind::Pi);
-    let mut per_model: BTreeMap<String, Usage> = BTreeMap::new();
-    let mut cost = 0.0;
-    let mut reported = false;
-    for line in text.lines() {
-        let Ok(v) = serde_json::from_str::<Value>(line) else {
-            continue;
-        };
-        let Some(message) = v.get("message") else {
-            continue;
-        };
-        if message.get("role").and_then(Value::as_str) != Some("assistant") {
-            continue;
-        }
-        let Some(u) = message.get("usage") else {
-            continue;
-        };
-        let model = message
+/// Pi: `message.usage` of an assistant line, cost under `usage.cost.total`.
+pub(crate) fn pi_sample(line: &Value) -> Option<Sample> {
+    let message = line.get("message")?;
+    if message.get("role").and_then(Value::as_str) != Some("assistant") {
+        return None;
+    }
+    let u = message.get("usage")?;
+    Some(Sample {
+        at: line
+            .get("timestamp")
+            .and_then(Value::as_str)
+            .and_then(|s| DateTime::parse_from_rfc3339(s).ok())
+            .map(Into::into),
+        model: message
             .get("model")
             .and_then(Value::as_str)
             .unwrap_or("unknown")
-            .to_string();
-        let entry = per_model
-            .entry(model)
-            .or_insert_with(|| Usage::new(AgentKind::Pi));
-        entry.input_tokens += u64_of(u.get("input"));
-        entry.output_tokens += u64_of(u.get("output"));
-        entry.cache_read_tokens += u64_of(u.get("cacheRead"));
-        entry.cache_write_tokens += u64_of(u.get("cacheWrite"));
-        entry.turns += 1;
-        if let Some(total) = f64_of(u.pointer("/cost/total")) {
-            cost += total;
-            reported = true;
-        }
-    }
-    for u in per_model.values() {
-        usage.input_tokens += u.input_tokens;
-        usage.output_tokens += u.output_tokens;
-        usage.cache_read_tokens += u.cache_read_tokens;
-        usage.cache_write_tokens += u.cache_write_tokens;
-        usage.turns += u.turns;
-    }
-    usage.models = sort_models(&per_model);
-    if reported {
-        usage.cost_usd = Some(cost);
-        usage.cost_source = CostSource::Reported;
-    }
-    usage
+            .to_string(),
+        input: u64_of(u.get("input")),
+        output: u64_of(u.get("output")),
+        cache_read: u64_of(u.get("cacheRead")),
+        cache_write: u64_of(u.get("cacheWrite")),
+        reasoning: 0,
+        cost: f64_of(u.pointer("/cost/total")),
+    })
 }
 
-// ---------------------------------------------------------------------------
-// OpenCode: assistant message files carry tokens and cost.
-// ---------------------------------------------------------------------------
-
-pub fn opencode_usage_command(session_dir: &str) -> Vec<String> {
-    let quoted = format!("'{}'", session_dir.replace('\'', "'\\''"));
-    let script = format!(
-        r#"for m in {quoted}/*.json; do [ -f "$m" ] && printf '%s\n' "$(tr -d '\n' < "$m")"; done 2>/dev/null"#
-    );
-    vec!["sh".into(), "-c".into(), script, TRANSCRIPT_SENTINEL.into()]
+/// OpenCode: an assistant message file with `tokens` and `cost`.
+pub(crate) fn opencode_sample(message: &Value) -> Option<Sample> {
+    if message.get("role").and_then(Value::as_str) != Some("assistant") {
+        return None;
+    }
+    let t = message.get("tokens")?;
+    Some(Sample {
+        at: message
+            .pointer("/time/created")
+            .and_then(Value::as_i64)
+            .and_then(|ms| Utc.timestamp_millis_opt(ms).single()),
+        model: message
+            .get("modelID")
+            .or_else(|| message.pointer("/model/modelID"))
+            .and_then(Value::as_str)
+            .unwrap_or("unknown")
+            .to_string(),
+        input: u64_of(t.get("input")),
+        output: u64_of(t.get("output")),
+        cache_read: u64_of(t.pointer("/cache/read")),
+        cache_write: u64_of(t.pointer("/cache/write")),
+        reasoning: u64_of(t.get("reasoning")),
+        cost: f64_of(message.get("cost")),
+    })
 }
 
-pub fn parse_opencode_usage(text: &str) -> Usage {
-    let mut usage = Usage::new(AgentKind::OpenCode);
+/// Sum samples of an agent that reports cost itself (Pi, OpenCode). Without a
+/// single reported cost the result shows tokens only.
+pub(crate) fn usage_from_samples<'a>(
+    agent: AgentKind,
+    samples: impl IntoIterator<Item = &'a Sample>,
+) -> Usage {
+    let mut usage = Usage::new(agent);
     let mut per_model: BTreeMap<String, Usage> = BTreeMap::new();
     let mut cost = 0.0;
     let mut reported = false;
-    for line in text.lines() {
-        let Ok(v) = serde_json::from_str::<Value>(line) else {
-            continue;
-        };
-        if v.get("role").and_then(Value::as_str) != Some("assistant") {
-            continue;
-        }
-        let Some(t) = v.get("tokens") else { continue };
-        let model = v
-            .get("modelID")
-            .or_else(|| v.pointer("/model/modelID"))
-            .and_then(Value::as_str)
-            .unwrap_or("unknown")
-            .to_string();
+    for s in samples {
         let entry = per_model
-            .entry(model)
-            .or_insert_with(|| Usage::new(AgentKind::OpenCode));
-        entry.input_tokens += u64_of(t.get("input"));
-        entry.output_tokens += u64_of(t.get("output"));
-        entry.reasoning_tokens += u64_of(t.get("reasoning"));
-        entry.cache_read_tokens += u64_of(t.pointer("/cache/read"));
-        entry.cache_write_tokens += u64_of(t.pointer("/cache/write"));
+            .entry(s.model.clone())
+            .or_insert_with(|| Usage::new(agent));
+        entry.input_tokens += s.input;
+        entry.output_tokens += s.output;
+        entry.cache_read_tokens += s.cache_read;
+        entry.cache_write_tokens += s.cache_write;
+        entry.reasoning_tokens += s.reasoning;
         entry.turns += 1;
-        if let Some(c) = f64_of(v.get("cost")) {
+        if let Some(c) = s.cost {
             cost += c;
             reported = true;
         }
@@ -544,25 +441,36 @@ pub fn parse_opencode_usage(text: &str) -> Usage {
     usage
 }
 
-/// Command that extracts usage for an agent's transcript source.
-pub fn usage_command(agent: AgentKind, source: &str) -> Option<Vec<String>> {
-    match agent {
-        AgentKind::ClaudeCode => Some(claude_usage_command(source)),
-        AgentKind::Codex => Some(codex_usage_command(source)),
-        AgentKind::Pi => Some(pi_usage_command(source)),
-        AgentKind::OpenCode => Some(opencode_usage_command(source)),
-        AgentKind::Shell | AgentKind::Other => None,
-    }
+/// Usage over whole Pi session lines.
+pub fn parse_pi_usage(text: &str) -> Usage {
+    let samples: Vec<Sample> = text
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter_map(|v| pi_sample(&v))
+        .collect();
+    usage_from_samples(AgentKind::Pi, &samples)
 }
 
-pub fn parse_usage(agent: AgentKind, output: &str, table: &PriceTable) -> Option<Usage> {
-    match agent {
-        AgentKind::ClaudeCode => Some(parse_claude_usage(output, table)),
-        AgentKind::Codex => Some(parse_codex_usage(output, table)),
-        AgentKind::Pi => Some(parse_pi_usage(output)),
-        AgentKind::OpenCode => Some(parse_opencode_usage(output)),
-        AgentKind::Shell | AgentKind::Other => None,
-    }
+// ---------------------------------------------------------------------------
+// OpenCode: assistant message files carry tokens and cost.
+// ---------------------------------------------------------------------------
+
+pub fn opencode_usage_command(session_dir: &str) -> Vec<String> {
+    let quoted = format!("'{}'", session_dir.replace('\'', "'\\''"));
+    let script = format!(
+        r#"for m in {quoted}/*.json; do [ -f "$m" ] && printf '%s\n' "$(tr -d '\n' < "$m")"; done 2>/dev/null"#
+    );
+    vec!["sh".into(), "-c".into(), script, TRANSCRIPT_SENTINEL.into()]
+}
+
+/// Usage over the message dump of [`opencode_usage_command`].
+pub fn parse_opencode_usage(text: &str) -> Usage {
+    let samples: Vec<Sample> = text
+        .lines()
+        .filter_map(|line| serde_json::from_str::<Value>(line).ok())
+        .filter_map(|v| opencode_sample(&v))
+        .collect();
+    usage_from_samples(AgentKind::OpenCode, &samples)
 }
 
 #[cfg(test)]
@@ -596,10 +504,27 @@ mod tests {
         assert_eq!(price_for(&t, "claude-fable-5").unwrap().cache_read, 1.0);
     }
 
+    fn call(model: &str, id: &str, input: u64, output: u64, read: u64, write: u64) -> ClaudeCall {
+        ClaudeCall {
+            id: Some(id.into()),
+            model: model.into(),
+            input,
+            output,
+            cache_read: read,
+            cache_write: write,
+        }
+    }
+
     #[test]
     fn claude_usage_sums_per_model_and_estimates_cost() {
-        let out = "1:\"model\":\"claude-sonnet-4-5-20250929\"\n1:\"id\":\"msg_a\"\n1:\"usage\":{\"input_tokens\":1000,\"cache_creation_input_tokens\":2000,\"cache_read_input_tokens\":10000,\"output_tokens\":500}\n2:\"model\":\"claude-sonnet-4-5-20250929\"\n2:\"id\":\"msg_b\"\n2:\"usage\":{\"input_tokens\":100,\"output_tokens\":50}\n";
-        let u = parse_claude_usage(out, &default_prices());
+        let model = "claude-sonnet-4-5-20250929";
+        let u = claude_usage_from_calls(
+            vec![
+                call(model, "msg_a", 1000, 500, 10000, 2000),
+                call(model, "msg_b", 100, 50, 0, 0),
+            ],
+            &default_prices(),
+        );
         assert_eq!(
             (
                 u.input_tokens,
@@ -610,14 +535,14 @@ mod tests {
             (1100, 550, 10000, 2000)
         );
         assert_eq!(u.turns, 2);
-        assert_eq!(u.models, vec!["claude-sonnet-4-5-20250929"]);
+        assert_eq!(u.models, vec![model]);
         assert_eq!(u.cost_source, CostSource::Estimated);
         let expected =
             1100.0 * 3.0 / 1e6 + 550.0 * 15.0 / 1e6 + 10000.0 * 0.3 / 1e6 + 2000.0 * 3.75 / 1e6;
         assert!((u.cost_usd.unwrap() - expected).abs() < 1e-9);
 
-        let unknown = parse_claude_usage(
-            "1:\"model\":\"claude-future-9\"\n1:\"usage\":{\"input_tokens\":10,\"output_tokens\":1}\n",
+        let unknown = claude_usage_from_calls(
+            vec![call("claude-future-9", "msg_c", 10, 1, 0, 0)],
             &default_prices(),
         );
         assert_eq!(unknown.cost_source, CostSource::Unknown);
@@ -625,8 +550,8 @@ mod tests {
     }
 
     /// Current Claude Code: nested objects inside `usage`, one API message
-    /// split over several lines with the same id, and a tool input that
-    /// carries its own `model` key.
+    /// split over several lines with the same id, a synthetic error message
+    /// and a tool input that carries its own `model` key.
     #[test]
     fn claude_usage_reads_nested_usage_once_per_message() {
         let lines = [
@@ -636,9 +561,13 @@ mod tests {
             r#"{"type":"assistant","message":{"model":"<synthetic>","id":"msg_x","content":[{"type":"text","text":"API Error"}],"usage":{"input_tokens":0,"output_tokens":0}}}"#,
             r#"{"type":"assistant","message":{"model":"claude-opus-4-1","id":"msg_2","content":[{"type":"text","text":"done"}],"usage":{"input_tokens":3,"cache_read_input_tokens":5100,"output_tokens":7,"iterations":[{"input_tokens":1,"output_tokens":1}]}}}"#,
         ];
-        // What `claude_usage_command` prints for these lines.
-        let grep = sim_claude_grep(&lines);
-        let u = parse_claude_usage(&grep, &default_prices());
+        let calls: Vec<ClaudeCall> = lines
+            .iter()
+            .filter_map(|l| serde_json::from_str::<Value>(l).ok())
+            .filter_map(|v| claude_call(&v))
+            .collect();
+        assert_eq!(calls.len(), 4, "the tool_result line carries no call");
+        let u = claude_usage_from_calls(calls, &default_prices());
         assert_eq!(
             (
                 u.input_tokens,
@@ -650,47 +579,13 @@ mod tests {
             (5, 47, 10100, 100, 2)
         );
         assert_eq!(u.models, vec!["claude-opus-4-1"]);
-
-        let calls: Vec<ClaudeCall> = lines
-            .iter()
-            .filter_map(|l| serde_json::from_str::<Value>(l).ok())
-            .filter_map(|v| claude_call(&v))
-            .collect();
-        assert_eq!(claude_usage_from_calls(calls, &default_prices()), u);
-    }
-
-    /// Mimic `grep -F '"type":"assistant"' | grep -noE '…' | cut -c1-600`.
-    fn sim_claude_grep(lines: &[&str]) -> String {
-        let mut out = String::new();
-        let assistant = lines.iter().filter(|l| l.contains(r#""type":"assistant""#));
-        for (i, line) in assistant.enumerate() {
-            let mut rest = *line;
-            while !rest.is_empty() {
-                let next = ["\"model\":\"", "\"id\":\"msg_", "\"usage\":{"]
-                    .iter()
-                    .filter_map(|p| rest.find(p).map(|at| (at, *p)))
-                    .min();
-                let Some((at, prefix)) = next else { break };
-                let tail = &rest[at..];
-                let fragment = if prefix == "\"usage\":{" {
-                    tail
-                } else {
-                    let close = tail[prefix.len()..].find('"').unwrap() + prefix.len() + 1;
-                    &tail[..close]
-                };
-                let numbered = format!("{}:{fragment}", i + 1);
-                out.push_str(&numbered.chars().take(600).collect::<String>());
-                out.push('\n');
-                rest = &tail[fragment.len()..];
-            }
-        }
-        out
     }
 
     #[test]
-    fn codex_usage_takes_the_last_cumulative_count() {
-        let out = "\"model\":\"gpt-5-codex\"\n{\"timestamp\":\"t\",\"type\":\"event_msg\",\"payload\":{\"type\":\"token_count\",\"info\":{\"total_token_usage\":{\"input_tokens\":5000,\"cached_input_tokens\":4000,\"output_tokens\":800,\"reasoning_output_tokens\":300,\"total_tokens\":5800}}}}\n";
-        let u = parse_codex_usage(out, &default_prices());
+    fn codex_usage_is_the_difference_of_cumulative_counts() {
+        let line = r#"{"timestamp":"t","type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":5000,"cached_input_tokens":4000,"output_tokens":800,"reasoning_output_tokens":300,"total_tokens":5800}}}}"#;
+        let last = codex_totals(&serde_json::from_str(line).unwrap()).unwrap();
+        let u = codex_usage_between(None, &last, "gpt-5-codex", &default_prices());
         assert_eq!(
             (
                 u.input_tokens,
@@ -703,17 +598,33 @@ mod tests {
         assert_eq!(u.cost_source, CostSource::Estimated);
         let expected = 1000.0 * 1.25 / 1e6 + 800.0 * 10.0 / 1e6 + 4000.0 * 0.125 / 1e6;
         assert!((u.cost_usd.unwrap() - expected).abs() < 1e-9);
+
+        let earlier = r#"{"type":"event_msg","payload":{"type":"token_count","info":{"total_token_usage":{"input_tokens":2000,"cached_input_tokens":1000,"output_tokens":100,"reasoning_output_tokens":0}}}}"#;
+        let since = codex_totals(&serde_json::from_str(earlier).unwrap()).unwrap();
+        let d = codex_usage_between(Some(&since), &last, "gpt-5-codex", &default_prices());
+        assert_eq!(
+            (d.input_tokens, d.cache_read_tokens, d.output_tokens),
+            (0, 3000, 700)
+        );
+        let no_figures =
+            r#"{"type":"event_msg","payload":{"type":"token_count","rate_limits":{}}}"#;
+        assert!(codex_totals(&serde_json::from_str(no_figures).unwrap()).is_none());
     }
 
     #[test]
     fn pi_and_opencode_report_cost_directly() {
-        let pi = "{\"type\":\"message\",\"message\":{\"role\":\"assistant\",\"model\":\"claude-sonnet-4-5\",\"content\":[],\"usage\":{\"input\":100,\"output\":20,\"cacheRead\":5,\"cacheWrite\":0,\"cost\":{\"total\":0.0012}}}}\n{\"type\":\"message\",\"message\":{\"role\":\"user\",\"content\":\"x\"}}\n";
+        let pi = "{\"type\":\"message\",\"timestamp\":\"2026-10-30T10:00:00Z\",\"message\":{\"role\":\"assistant\",\"model\":\"claude-sonnet-4-5\",\"content\":[],\"usage\":{\"input\":100,\"output\":20,\"cacheRead\":5,\"cacheWrite\":0,\"cost\":{\"total\":0.0012}}}}\n{\"type\":\"message\",\"message\":{\"role\":\"user\",\"content\":\"x\"}}\n";
         let u = parse_pi_usage(pi);
         assert_eq!((u.input_tokens, u.output_tokens, u.turns), (100, 20, 1));
+        let first: Value = serde_json::from_str(pi.lines().next().unwrap()).unwrap();
+        assert_eq!(
+            pi_sample(&first).unwrap().at.map(|t| t.timestamp()),
+            Some(1_793_354_400)
+        );
         assert_eq!(u.cost_source, CostSource::Reported);
         assert!((u.cost_usd.unwrap() - 0.0012).abs() < 1e-12);
 
-        let oc = "{\"id\":\"msg_1\",\"role\":\"user\"}\n{\"id\":\"msg_2\",\"role\":\"assistant\",\"modelID\":\"gpt-5\",\"tokens\":{\"input\":300,\"output\":40,\"reasoning\":10,\"cache\":{\"read\":200,\"write\":0}},\"cost\":0.003}\n";
+        let oc = "{\"id\":\"msg_1\",\"role\":\"user\"}\n{\"id\":\"msg_2\",\"role\":\"assistant\",\"time\":{\"created\":1793354400000},\"modelID\":\"gpt-5\",\"tokens\":{\"input\":300,\"output\":40,\"reasoning\":10,\"cache\":{\"read\":200,\"write\":0}},\"cost\":0.003}\n";
         let u = parse_opencode_usage(oc);
         assert_eq!(
             (u.input_tokens, u.cache_read_tokens, u.reasoning_tokens),
@@ -721,6 +632,11 @@ mod tests {
         );
         assert_eq!(u.models, vec!["gpt-5"]);
         assert_eq!(u.cost_source, CostSource::Reported);
+        let second: Value = serde_json::from_str(oc.lines().nth(1).unwrap()).unwrap();
+        assert_eq!(
+            opencode_sample(&second).unwrap().at.map(|t| t.timestamp()),
+            Some(1_793_354_400)
+        );
     }
 
     #[test]

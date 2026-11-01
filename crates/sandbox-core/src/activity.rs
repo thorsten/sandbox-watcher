@@ -6,7 +6,7 @@
 //! any sandbox image. Every script passes a `sandbox-watcher-*` sentinel as
 //! `$0` so our own execs are filtered from the event stream.
 
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use chrono::{DateTime, TimeZone, Utc};
@@ -14,16 +14,19 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::adapter::{ExecRequest, RuntimeAdapter};
-use crate::files::{FileTouch, aggregate, files_command, parse_events};
+use crate::files::FileTouch;
 use crate::model::{AgentKind, MountRole, Session};
 use crate::mounts::classify;
-use crate::sandbox::CONTAINER_HOME;
+pub use crate::transcripts::TRANSCRIPT_SENTINEL;
+use crate::transcripts::{
+    Attribution, Coverage, ListedTranscript, SLACK, SessionStart, TranscriptCache, TranscriptFacts,
+    attribute, clock_command, list_command, parse_clock, parse_listing,
+};
 use crate::turns::{TurnReport, parse_turns, turns_command};
-use crate::usage::{PriceTable, Usage, parse_usage, usage_command};
+use crate::usage::{PriceTable, Usage};
 use crate::{Error, Result};
 
 pub const PS_SENTINEL: &str = "sandbox-watcher-ps";
-pub const TRANSCRIPT_SENTINEL: &str = "sandbox-watcher-transcript";
 pub const GIT_SENTINEL: &str = "sandbox-watcher-git";
 
 /// Bytes read from the end of a transcript.
@@ -182,9 +185,17 @@ pub struct AgentActivity {
     pub in_flight: Option<ActivityEvent>,
     /// Tokens and cost for the whole transcript, when the agent reports them.
     pub usage: Option<Usage>,
+    /// Usage of the lines written since the attributed session started. Set
+    /// when the transcript is older than the session (resumed or continued),
+    /// so `usage` includes earlier sessions.
+    pub session_usage: Option<Usage>,
     /// Files read and changed over the whole transcript, changed first.
     #[serde(default)]
     pub files: Vec<FileTouch>,
+    /// Which running session wrote the transcript.
+    pub attribution: Attribution,
+    /// How much of the transcript the numbers cover.
+    pub coverage: Coverage,
 }
 
 pub(crate) fn truncate(text: &str, max: usize) -> String {
@@ -403,37 +414,8 @@ pub fn in_flight(events: &[ActivityEvent]) -> Option<ActivityEvent> {
 }
 
 // ---------------------------------------------------------------------------
-// Transcript discovery per agent
+// Transcript tail for the timeline
 // ---------------------------------------------------------------------------
-
-pub(crate) fn agent_from_key(key: &str) -> Option<AgentKind> {
-    match key {
-        "claude" => Some(AgentKind::ClaudeCode),
-        "codex" => Some(AgentKind::Codex),
-        "opencode" => Some(AgentKind::OpenCode),
-        "pi" => Some(AgentKind::Pi),
-        _ => None,
-    }
-}
-
-/// Lists the newest transcript per agent as `agent|mtime|path`. For OpenCode
-/// the path is the session's message directory. Locations:
-/// Claude Code `~/.claude/projects/<cwd>/<session>.jsonl`,
-/// Codex `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`,
-/// Pi `~/.pi/agent/sessions/<cwd>/<session>.jsonl`,
-/// OpenCode `~/.local/share/opencode/storage/message/<session>/<message>.json`.
-pub fn transcript_list_command() -> Vec<String> {
-    let home = CONTAINER_HOME;
-    let script = format!(
-        r#"newest() {{ ls -t "$@" 2>/dev/null | head -1; }}
-f=$(newest {home}/.claude/projects/*/*.jsonl); [ -n "$f" ] && printf 'claude|%s|%s\n' "$(stat -c %Y "$f" 2>/dev/null || echo 0)" "$f"
-f=$(newest {home}/.codex/sessions/*/*/*/*.jsonl {home}/.codex/sessions/*.jsonl); [ -n "$f" ] && printf 'codex|%s|%s\n' "$(stat -c %Y "$f" 2>/dev/null || echo 0)" "$f"
-f=$(newest {home}/.pi/agent/sessions/*/*.jsonl); [ -n "$f" ] && printf 'pi|%s|%s\n' "$(stat -c %Y "$f" 2>/dev/null || echo 0)" "$f"
-d=$(ls -td {home}/.local/share/opencode/storage/message/*/ 2>/dev/null | head -1); [ -n "$d" ] && printf 'opencode|%s|%s\n' "$(stat -c %Y "$d" 2>/dev/null || echo 0)" "${{d%/}}"
-exit 0"#
-    );
-    vec!["sh".into(), "-c".into(), script, TRANSCRIPT_SENTINEL.into()]
-}
 
 fn sq(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
@@ -1034,6 +1016,9 @@ pub fn parse_git_status(exit_code: i64, output: &str) -> WorkingTree {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionProcesses {
     pub session: Session,
+    /// When the session process started, on the container's clock.
+    #[serde(default)]
+    pub started_at: Option<DateTime<Utc>>,
     /// Processes below the session, pre-order with depth.
     pub tree: Vec<ProcessInfo>,
     /// Commands executing right now (leaves), newest first.
@@ -1060,58 +1045,188 @@ async fn run(
     Ok((out.exit_code, out.stdout))
 }
 
-/// Tokens and cost for one agent transcript, `None` when unreadable.
-pub async fn read_usage(
-    adapter: &Arc<dyn RuntimeAdapter>,
-    container_id: &str,
-    agent: AgentKind,
-    source: &str,
-    prices: &PriceTable,
-) -> Option<Usage> {
-    let command = usage_command(agent, source)?;
-    match run(adapter, container_id, command).await {
-        Ok((0, out)) => parse_usage(agent, &out, prices),
-        _ => None,
-    }
+/// Everything the container can tell about who is running: the sessions with
+/// their start times and open transcripts, plus the transcript listing.
+struct Discovery {
+    starts: Vec<SessionStart>,
+    listing: Vec<ListedTranscript>,
+    errors: Vec<String>,
 }
 
-/// Files an agent touched over its whole transcript.
-pub async fn read_files(
+async fn discover(
     adapter: &Arc<dyn RuntimeAdapter>,
     container_id: &str,
-    agent: AgentKind,
-    source: &str,
-    project_dir: Option<&str>,
-) -> Vec<FileTouch> {
-    let Some(command) = files_command(agent, source) else {
-        return vec![];
+    sessions: &[Session],
+) -> Discovery {
+    let mut errors = Vec::new();
+    let pids: Vec<u32> = sessions.iter().map(|s| s.pid).collect();
+    let (list_result, clock_result) = futures::join!(
+        run(adapter, container_id, list_command()),
+        run(adapter, container_id, clock_command(&pids)),
+    );
+    let clock = match clock_result {
+        Ok((0, out)) => parse_clock(&out),
+        Ok((code, _)) => {
+            errors.push(format!("session clock exited with {code}"));
+            HashMap::new()
+        }
+        Err(e) => {
+            errors.push(format!("session clock failed: {e}"));
+            HashMap::new()
+        }
     };
-    match run(adapter, container_id, command).await {
-        Ok((0, out)) => aggregate(&parse_events(agent, &out), project_dir),
-        _ => vec![],
+    let starts = sessions
+        .iter()
+        .map(|s| {
+            let c = clock.get(&s.pid).cloned().unwrap_or_default();
+            SessionStart {
+                pid: s.pid,
+                agent: s.agent,
+                started_at: c.started_at,
+                open_files: c.open_files,
+            }
+        })
+        .collect();
+    let listing = match list_result {
+        Ok((0, out)) => parse_listing(&out),
+        Ok((code, _)) => {
+            errors.push(format!("transcript listing exited with {code}"));
+            vec![]
+        }
+        Err(e) => {
+            errors.push(format!("transcript listing failed: {e}"));
+            vec![]
+        }
+    };
+    Discovery {
+        starts,
+        listing,
+        errors,
     }
 }
 
-/// Turn-by-turn detail of the agent's newest transcript. Reads the whole
-/// transcript, so it runs when the user asks for it, not on each refresh.
+/// A transcript that a running session wrote, after reading it.
+struct TranscriptView {
+    listed: ListedTranscript,
+    attribution: Attribution,
+    facts: TranscriptFacts,
+    /// Start of the attributed session(s), less slack: usage since then is
+    /// the session's own.
+    since: Option<DateTime<Utc>>,
+    /// The transcript began before the attributed session(s) started.
+    began_before: bool,
+}
+
+/// Earliest known start among `pids`; `None` when any of them is unknown.
+fn earliest_start(starts: &[SessionStart], pids: &[u32]) -> Option<DateTime<Utc>> {
+    let mut earliest: Option<DateTime<Utc>> = None;
+    for pid in pids {
+        let start = starts.iter().find(|s| s.pid == *pid)?.started_at?;
+        earliest = Some(earliest.map_or(start, |e| e.min(start)));
+    }
+    earliest
+}
+
+/// Read every listed transcript a running session may have written and
+/// decide whose it is. Stale files (last written before every session of
+/// their agent started) are skipped without being read.
+async fn read_transcripts(
+    adapter: &Arc<dyn RuntimeAdapter>,
+    container_id: &str,
+    scope: &str,
+    discovery: &Discovery,
+    cache: &TranscriptCache,
+    errors: &mut Vec<String>,
+) -> Vec<TranscriptView> {
+    let starts = &discovery.starts;
+    let active: HashSet<AgentKind> = starts.iter().map(|s| s.agent).collect();
+    let mut views = Vec::new();
+    let mut kept: Vec<&str> = Vec::new();
+    for listed in &discovery.listing {
+        if !active.contains(&listed.agent) {
+            continue;
+        }
+        kept.push(&listed.path);
+        let agent_pids: Vec<u32> = starts
+            .iter()
+            .filter(|s| s.agent == listed.agent)
+            .map(|s| s.pid)
+            .collect();
+        if let (Some(mtime), Some(earliest)) = (listed.mtime, earliest_start(starts, &agent_pids))
+            && mtime + SLACK < earliest
+        {
+            continue;
+        }
+        let facts = match cache.sync(adapter, container_id, scope, listed).await {
+            Ok(facts) => facts,
+            Err(e) => {
+                errors.push(format!("{} transcript: {e}", listed.agent.label()));
+                continue;
+            }
+        };
+        let last_written = if facts.coverage.complete {
+            facts.last_at.or(listed.mtime)
+        } else {
+            listed.mtime
+        };
+        let Some(attribution) = attribute(
+            listed.agent,
+            &listed.path,
+            facts.first_at,
+            last_written,
+            starts,
+        ) else {
+            continue;
+        };
+        let start = earliest_start(starts, &attribution.pids());
+        let began_before = matches!((facts.first_at, start), (Some(f), Some(s)) if f < s);
+        views.push(TranscriptView {
+            listed: listed.clone(),
+            attribution,
+            facts,
+            since: start.map(|s| s - SLACK),
+            began_before,
+        });
+    }
+    if discovery.listing.is_empty() && !discovery.errors.is_empty() {
+        return views;
+    }
+    cache.retain(scope, &kept);
+    views
+}
+
+/// Turn-by-turn detail of one transcript. `pid` picks the transcript of that
+/// session; without it, or when none is attributed to it, the agent's newest
+/// transcript is read. Reads the whole file, so it runs when the user asks
+/// for it, not on each refresh.
+#[allow(clippy::too_many_arguments)]
 pub async fn read_turns(
     adapter: &Arc<dyn RuntimeAdapter>,
     container_id: &str,
+    scope: &str,
     agent: AgentKind,
+    pid: Option<u32>,
+    sessions: &[Session],
+    cache: &TranscriptCache,
     prices: &PriceTable,
 ) -> Result<Option<TurnReport>> {
-    let (code, listing) = run(adapter, container_id, transcript_list_command()).await?;
-    if code != 0 {
-        return Ok(None);
-    }
-    let source = listing.lines().find_map(|line| {
-        let mut parts = line.splitn(3, '|');
-        let (key, _, path) = (parts.next()?, parts.next()?, parts.next()?);
-        (agent_from_key(key) == Some(agent)).then(|| path.trim().to_string())
-    });
-    let Some(source) = source else {
+    let discovery = discover(adapter, container_id, sessions).await;
+    let mut errors = Vec::new();
+    let views =
+        read_transcripts(adapter, container_id, scope, &discovery, cache, &mut errors).await;
+    let of_agent = views.iter().filter(|v| v.listed.agent == agent);
+    let chosen = pid
+        .and_then(|pid| {
+            of_agent
+                .clone()
+                .filter(|v| v.attribution.pids().contains(&pid))
+                .max_by_key(|v| v.listed.mtime)
+        })
+        .or_else(|| of_agent.max_by_key(|v| v.listed.mtime));
+    let Some(view) = chosen else {
         return Ok(None);
     };
+    let source = view.listed.path.clone();
     let Some(command) = turns_command(agent, &source) else {
         return Ok(None);
     };
@@ -1135,89 +1250,63 @@ pub async fn read_turns(
     )))
 }
 
-/// Usage and files for one agent with a running session.
+/// Usage and files of one transcript a running session wrote, scoped to
+/// that session: lines written since it started.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct AgentInsight {
     pub agent: AgentKind,
+    /// Path of the transcript inside the container.
+    pub source: String,
+    pub attribution: Attribution,
     pub usage: Option<Usage>,
     pub files: Vec<FileTouch>,
+    pub coverage: Coverage,
 }
 
-/// Usage and touched files for every agent with a running session. Used by
-/// the watcher on every refresh to keep the history current.
+/// Usage and touched files for every transcript of a running session. Used
+/// by the watcher on every refresh to keep the history current. Reads only
+/// what was appended since the last refresh.
 pub async fn collect_insights(
     adapter: &Arc<dyn RuntimeAdapter>,
     container_id: &str,
+    scope: &str,
     sessions: &[Session],
+    cache: &TranscriptCache,
     prices: &PriceTable,
 ) -> Vec<AgentInsight> {
-    let active: HashSet<AgentKind> = sessions.iter().map(|s| s.agent).collect();
-    if active.is_empty() {
+    if !sessions.iter().any(|s| s.agent.has_transcripts()) {
+        cache.retain(scope, &[]);
         return vec![];
     }
-    let Ok((0, listing)) = run(adapter, container_id, transcript_list_command()).await else {
-        return vec![];
-    };
-    let project_dir = project_container_dir(adapter, container_id)
-        .await
-        .ok()
-        .flatten();
-    let mut out = Vec::new();
-    for line in listing.lines() {
-        let mut parts = line.splitn(3, '|');
-        let (Some(key), Some(_), Some(path)) = (parts.next(), parts.next(), parts.next()) else {
-            continue;
-        };
-        let Some(agent) = agent_from_key(key) else {
-            continue;
-        };
-        if !active.contains(&agent) {
-            continue;
-        }
-        let path = path.trim();
-        let usage = read_usage(adapter, container_id, agent, path, prices).await;
-        let files = read_files(adapter, container_id, agent, path, project_dir.as_deref()).await;
-        out.push(AgentInsight {
-            agent,
-            usage,
-            files,
-        });
-    }
-    out
+    let (discovery, project_dir) = futures::join!(
+        discover(adapter, container_id, sessions),
+        project_container_dir(adapter, container_id),
+    );
+    let project_dir = project_dir.ok().flatten();
+    let mut errors = Vec::new();
+    let views =
+        read_transcripts(adapter, container_id, scope, &discovery, cache, &mut errors).await;
+    views
+        .into_iter()
+        .map(|v| AgentInsight {
+            agent: v.listed.agent,
+            usage: cache.usage(scope, &v.listed.path, v.since, prices),
+            files: cache.files(scope, &v.listed.path, v.since, project_dir.as_deref()),
+            coverage: v.facts.coverage,
+            attribution: v.attribution,
+            source: v.listed.path,
+        })
+        .collect()
 }
 
-/// Usage for every agent with a running session. Cheap enough to run on each
-/// refresh: a grep per transcript.
-pub async fn collect_usage(
-    adapter: &Arc<dyn RuntimeAdapter>,
-    container_id: &str,
-    sessions: &[Session],
-    prices: &PriceTable,
-) -> Vec<Usage> {
-    let active: HashSet<AgentKind> = sessions.iter().map(|s| s.agent).collect();
-    if active.is_empty() {
-        return vec![];
+impl AgentKind {
+    /// Agents whose session store we know how to read.
+    pub fn has_transcripts(self) -> bool {
+        matches!(
+            self,
+            AgentKind::ClaudeCode | AgentKind::Codex | AgentKind::OpenCode | AgentKind::Pi
+        )
     }
-    let Ok((0, listing)) = run(adapter, container_id, transcript_list_command()).await else {
-        return vec![];
-    };
-    let mut out = Vec::new();
-    for line in listing.lines() {
-        let mut parts = line.splitn(3, '|');
-        let (Some(key), Some(_), Some(path)) = (parts.next(), parts.next(), parts.next()) else {
-            continue;
-        };
-        let Some(agent) = agent_from_key(key) else {
-            continue;
-        };
-        if !active.contains(&agent) {
-            continue;
-        }
-        if let Some(usage) = read_usage(adapter, container_id, agent, path.trim(), prices).await {
-            out.push(usage);
-        }
-    }
-    out
 }
 
 /// Project directory as seen inside the container (identity mount).
@@ -1236,21 +1325,26 @@ pub async fn project_container_dir(
         .map(|m| m.destination.clone()))
 }
 
-/// Gather everything for one running container.
+/// Gather everything for one running container. `scope` keys the transcript
+/// cache (the container key).
+#[allow(clippy::too_many_arguments)]
 pub async fn collect(
     adapter: &Arc<dyn RuntimeAdapter>,
     container_id: &str,
+    scope: &str,
     sessions: &[Session],
     now: DateTime<Utc>,
     prices: &PriceTable,
+    cache: &TranscriptCache,
 ) -> ContainerActivity {
     let mut errors = Vec::new();
 
-    let (ps_result, list_result, project_dir) = futures::join!(
+    let (ps_result, discovery, project_dir) = futures::join!(
         run(adapter, container_id, ps_command()),
-        run(adapter, container_id, transcript_list_command()),
+        discover(adapter, container_id, sessions),
         project_container_dir(adapter, container_id),
     );
+    errors.extend(discovery.errors.iter().cloned());
 
     let processes = match ps_result {
         Ok((0, out)) => parse_ps(&out),
@@ -1271,62 +1365,55 @@ pub async fn collect(
             running_now.sort_by_key(|p| p.elapsed_secs);
             SessionProcesses {
                 session: s.clone(),
+                started_at: discovery
+                    .starts
+                    .iter()
+                    .find(|st| st.pid == s.pid)
+                    .and_then(|st| st.started_at),
                 tree,
                 running_now,
             }
         })
         .collect();
 
-    // Transcripts only for agents that actually have a session here, so a
-    // stale file from last week never looks like current activity.
+    // Transcripts only for agents that actually have a session here, and only
+    // those written since a session started, so a stale file from last week
+    // never looks like current activity.
     let project_dir_ref: Option<&str> = project_dir.as_ref().ok().and_then(|d| d.as_deref());
-    let active_agents: HashSet<AgentKind> = sessions.iter().map(|s| s.agent).collect();
+    let views =
+        read_transcripts(adapter, container_id, scope, &discovery, cache, &mut errors).await;
     let mut agents = Vec::new();
-    if let Ok((0, listing)) = list_result {
-        let mut found: BTreeMap<&str, (AgentKind, Option<DateTime<Utc>>, String)> = BTreeMap::new();
-        for line in listing.lines() {
-            let mut parts = line.splitn(3, '|');
-            let (Some(key), Some(mtime), Some(path)) = (parts.next(), parts.next(), parts.next())
-            else {
-                continue;
-            };
-            let Some(agent) = agent_from_key(key) else {
-                continue;
-            };
-            if !active_agents.contains(&agent) {
-                continue;
+    for view in views {
+        let agent = view.listed.agent;
+        let path = &view.listed.path;
+        match run(adapter, container_id, transcript_tail_command(agent, path)).await {
+            Ok((0, text)) => {
+                let events = parse_transcript(agent, &text);
+                let in_flight = in_flight(&events);
+                let usage = cache.usage(scope, path, None, prices);
+                let session_usage = if view.began_before {
+                    cache.usage(scope, path, view.since, prices)
+                } else {
+                    None
+                };
+                agents.push(AgentActivity {
+                    agent,
+                    source: path.clone(),
+                    updated_at: view.facts.last_at.or(view.listed.mtime),
+                    events,
+                    in_flight,
+                    usage,
+                    session_usage,
+                    files: cache.files(scope, path, None, project_dir_ref),
+                    attribution: view.attribution,
+                    coverage: view.facts.coverage,
+                });
             }
-            let updated_at = mtime
-                .trim()
-                .parse::<i64>()
-                .ok()
-                .and_then(|t| Utc.timestamp_opt(t, 0).single());
-            found.insert(key, (agent, updated_at, path.trim().to_string()));
-        }
-        for (_, (agent, updated_at, path)) in found {
-            match run(adapter, container_id, transcript_tail_command(agent, &path)).await {
-                Ok((0, text)) => {
-                    let events = parse_transcript(agent, &text);
-                    let in_flight = in_flight(&events);
-                    let usage = read_usage(adapter, container_id, agent, &path, prices).await;
-                    let files =
-                        read_files(adapter, container_id, agent, &path, project_dir_ref).await;
-                    agents.push(AgentActivity {
-                        agent,
-                        source: path,
-                        updated_at,
-                        events,
-                        in_flight,
-                        usage,
-                        files,
-                    });
-                }
-                Ok((code, _)) => errors.push(format!(
-                    "{} transcript read exited with {code}",
-                    agent.label()
-                )),
-                Err(e) => errors.push(format!("{} transcript read failed: {e}", agent.label())),
-            }
+            Ok((code, _)) => errors.push(format!(
+                "{} transcript read exited with {code}",
+                agent.label()
+            )),
+            Err(e) => errors.push(format!("{} transcript read failed: {e}", agent.label())),
         }
     }
 
@@ -1552,13 +1639,6 @@ P:{"id":"prt_5","messageID":"msg_2","type":"tool","callID":"call_b","tool":"edit
 
     #[test]
     fn transcript_commands_carry_sentinel_and_quote_paths() {
-        let list = transcript_list_command();
-        assert_eq!(list.last().unwrap(), TRANSCRIPT_SENTINEL);
-        assert!(
-            list[2].contains(".codex/sessions")
-                && list[2].contains(".pi/agent/sessions")
-                && list[2].contains("opencode/storage")
-        );
         let tail =
             transcript_tail_command(AgentKind::Codex, "/home/sandbox/.codex/sessions/it's.jsonl");
         assert!(tail[2].contains("'/home/sandbox/.codex/sessions/it'\\''s.jsonl'"));
@@ -1575,19 +1655,39 @@ P:{"id":"prt_5","messageID":"msg_2","type":"tool","callID":"call_b","tool":"edit
         use crate::sessions::probe_container;
         let adapter: Arc<dyn RuntimeAdapter> = Arc::new(MockAdapter::demo());
         let probe = probe_container(&adapter, "sandbox-web-shop").await.unwrap();
+        let cache = TranscriptCache::default();
         let activity = collect(
             &adapter,
+            "sandbox-web-shop",
             "sandbox-web-shop",
             &probe.sessions,
             Utc::now(),
             &crate::usage::default_prices(),
+            &cache,
         )
         .await;
         assert!(activity.errors.is_empty(), "{:?}", activity.errors);
         assert_eq!(activity.sessions.len(), 2);
         assert_eq!(activity.sessions[0].running_now.len(), 1);
+        assert_eq!(
+            activity.sessions[0].started_at.unwrap().to_rfc3339(),
+            "2026-10-30T09:43:20+00:00",
+            "from the container's clock"
+        );
         assert_eq!(activity.agents.len(), 1);
         assert!(activity.agents[0].in_flight.is_some());
+        assert_eq!(
+            activity.agents[0].attribution,
+            Attribution::Session {
+                pid: 4242,
+                evidence: crate::transcripts::Evidence::OnlySession
+            }
+        );
+        assert!(activity.agents[0].coverage.complete);
+        assert!(
+            activity.agents[0].session_usage.is_none(),
+            "the transcript began after the session started"
+        );
         let usage = activity.agents[0]
             .usage
             .as_ref()
@@ -1611,8 +1711,26 @@ P:{"id":"prt_5","messageID":"msg_2","type":"tool","callID":"call_b","tool":"edit
     async fn reads_turns_from_mock() {
         use crate::mock::MockAdapter;
         let adapter: Arc<dyn RuntimeAdapter> = Arc::new(MockAdapter::demo());
+        use crate::sessions::probe_container;
         let prices = crate::usage::default_prices();
-        let report = read_turns(&adapter, "sandbox-web-shop", AgentKind::ClaudeCode, &prices)
+        let cache = TranscriptCache::default();
+        let sessions = probe_container(&adapter, "sandbox-web-shop")
+            .await
+            .unwrap()
+            .sessions;
+        let turns = |agent, pid| {
+            read_turns(
+                &adapter,
+                "sandbox-web-shop",
+                "sandbox-web-shop",
+                agent,
+                pid,
+                &sessions,
+                &cache,
+                &prices,
+            )
+        };
+        let report = turns(AgentKind::ClaudeCode, Some(4242))
             .await
             .unwrap()
             .expect("demo has a Claude transcript");
@@ -1621,9 +1739,212 @@ P:{"id":"prt_5","messageID":"msg_2","type":"tool","callID":"call_b","tool":"edit
         assert!(report.turns[0].prompt.starts_with("Why does the cart"));
         assert_eq!(report.turns[1].tool_calls, 3);
         assert_eq!(report.turns[1].usage.as_ref().unwrap().turns, 2);
-        let none = read_turns(&adapter, "sandbox-web-shop", AgentKind::Codex, &prices)
+        let none = turns(AgentKind::Codex, None).await.unwrap();
+        assert!(none.is_none());
+        assert!(
+            turns(AgentKind::ClaudeCode, Some(9999))
+                .await
+                .unwrap()
+                .is_some(),
+            "an unknown pid falls back to the agent's newest transcript"
+        );
+    }
+
+    /// Two Claude sessions, one transcript begun long after both started:
+    /// the transcript counts for the agent, not for either session.
+    #[tokio::test]
+    async fn parallel_sessions_of_one_agent_share_an_unattributable_transcript() {
+        use crate::mock::MockAdapter;
+        let adapter: Arc<dyn RuntimeAdapter> = Arc::new(MockAdapter::demo());
+        let sessions = vec![
+            Session {
+                pid: 4242,
+                command: "claude".into(),
+                agent: AgentKind::ClaudeCode,
+            },
+            Session {
+                pid: 4300,
+                command: "claude --resume".into(),
+                agent: AgentKind::ClaudeCode,
+            },
+        ];
+        let cache = TranscriptCache::default();
+        let prices = crate::usage::default_prices();
+        let activity = collect(
+            &adapter,
+            "sandbox-web-shop",
+            "k",
+            &sessions,
+            Utc::now(),
+            &prices,
+            &cache,
+        )
+        .await;
+        assert_eq!(activity.agents.len(), 1);
+        assert_eq!(
+            activity.agents[0].attribution,
+            Attribution::Agent {
+                candidates: vec![4242, 4300]
+            }
+        );
+        let insights = collect_insights(
+            &adapter,
+            "sandbox-web-shop",
+            "k",
+            &sessions,
+            &cache,
+            &prices,
+        )
+        .await;
+        assert_eq!(insights[0].attribution.pids(), vec![4242, 4300]);
+        assert_eq!(insights[0].usage.as_ref().unwrap().turns, 2);
+    }
+
+    /// A session started after the transcript was last written cannot have
+    /// written it: the old file is not shown as current activity and no
+    /// usage is attached to the new session.
+    #[tokio::test]
+    async fn old_transcript_is_not_attributed_to_a_new_session() {
+        use crate::mock::MockAdapter;
+        let adapter: Arc<dyn RuntimeAdapter> = Arc::new(MockAdapter::demo());
+        let sessions = vec![Session {
+            pid: 4400,
+            command: "claude".into(),
+            agent: AgentKind::ClaudeCode,
+        }];
+        let cache = TranscriptCache::default();
+        let prices = crate::usage::default_prices();
+        let activity = collect(
+            &adapter,
+            "sandbox-web-shop",
+            "k",
+            &sessions,
+            Utc::now(),
+            &prices,
+            &cache,
+        )
+        .await;
+        assert!(activity.errors.is_empty(), "{:?}", activity.errors);
+        assert!(activity.agents.is_empty(), "{:?}", activity.agents);
+        assert_eq!(
+            activity.sessions[0].started_at.unwrap().to_rfc3339(),
+            "2026-10-30T10:16:40+00:00"
+        );
+        let insights = collect_insights(
+            &adapter,
+            "sandbox-web-shop",
+            "k",
+            &sessions,
+            &cache,
+            &prices,
+        )
+        .await;
+        assert!(insights.is_empty());
+        assert!(cache.is_empty(), "a stale file is not even read");
+    }
+
+    /// A session that resumed an older transcript: the panel shows the whole
+    /// file, but the session's own usage starts at its start time.
+    #[tokio::test]
+    async fn resumed_transcript_reports_session_usage_separately() {
+        use crate::mock::MockAdapter;
+        let mock = MockAdapter::demo();
+        // Prepend an earlier turn so the transcript predates session 4242.
+        let earlier = r#"{"type":"assistant","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_00","usage":{"input_tokens":5000,"output_tokens":100},"content":[{"type":"text","text":"earlier"}]},"timestamp":"2026-10-30T09:00:00Z"}"#;
+        let current = {
+            let adapter: Arc<dyn RuntimeAdapter> = Arc::new(mock.clone());
+            let (_, text) = run(
+                &adapter,
+                "sandbox-web-shop",
+                transcript_tail_command(AgentKind::ClaudeCode, "x"),
+            )
             .await
             .unwrap();
-        assert!(none.is_none());
+            text
+        };
+        mock.replace_transcript(&format!("{earlier}\n{}", current.trim_end()));
+        let adapter: Arc<dyn RuntimeAdapter> = Arc::new(mock);
+        let sessions = vec![Session {
+            pid: 4242,
+            command: "claude --continue".into(),
+            agent: AgentKind::ClaudeCode,
+        }];
+        let cache = TranscriptCache::default();
+        let prices = crate::usage::default_prices();
+        let activity = collect(
+            &adapter,
+            "sandbox-web-shop",
+            "k",
+            &sessions,
+            Utc::now(),
+            &prices,
+            &cache,
+        )
+        .await;
+        let agent = &activity.agents[0];
+        assert_eq!(agent.usage.as_ref().unwrap().turns, 3, "whole transcript");
+        let own = agent
+            .session_usage
+            .as_ref()
+            .expect("transcript predates the session");
+        assert_eq!(own.turns, 2);
+        assert_eq!(own.input_tokens, 1500);
+        let insights = collect_insights(
+            &adapter,
+            "sandbox-web-shop",
+            "k",
+            &sessions,
+            &cache,
+            &prices,
+        )
+        .await;
+        assert_eq!(
+            insights[0].usage.as_ref().unwrap().input_tokens,
+            1500,
+            "history gets the session's own lines only"
+        );
+    }
+
+    #[tokio::test]
+    async fn insights_are_scoped_to_the_session_that_wrote_them() {
+        use crate::mock::MockAdapter;
+        use crate::sessions::probe_container;
+        let adapter: Arc<dyn RuntimeAdapter> = Arc::new(MockAdapter::demo());
+        let sessions = probe_container(&adapter, "sandbox-web-shop")
+            .await
+            .unwrap()
+            .sessions;
+        let cache = TranscriptCache::default();
+        let prices = crate::usage::default_prices();
+        let insights = collect_insights(
+            &adapter,
+            "sandbox-web-shop",
+            "sandbox-web-shop",
+            &sessions,
+            &cache,
+            &prices,
+        )
+        .await;
+        assert_eq!(insights.len(), 1);
+        assert_eq!(insights[0].attribution.pids(), vec![4242]);
+        assert_eq!(insights[0].usage.as_ref().unwrap().turns, 2);
+        assert_eq!(insights[0].files.len(), 1);
+        assert!(insights[0].coverage.complete);
+        let shell_only: Vec<Session> = sessions
+            .iter()
+            .filter(|s| s.agent == AgentKind::Shell)
+            .cloned()
+            .collect();
+        let none = collect_insights(
+            &adapter,
+            "sandbox-web-shop",
+            "sandbox-web-shop",
+            &shell_only,
+            &cache,
+            &prices,
+        )
+        .await;
+        assert!(none.is_empty());
+        assert!(cache.is_empty(), "no agent session: nothing kept");
     }
 }

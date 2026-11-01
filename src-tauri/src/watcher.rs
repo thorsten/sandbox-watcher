@@ -22,6 +22,7 @@ use sandbox_core::overview::{DataSource, HostedAdapter, Overview, load_many, wit
 use sandbox_core::remote::{HostState, HostStatus};
 use sandbox_core::settings::Settings;
 use sandbox_core::stats_hub::{StatsHub, StatsSet};
+use sandbox_core::transcripts::TranscriptCache;
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_notification::NotificationExt;
 use tokio::sync::{Notify, mpsc};
@@ -57,6 +58,9 @@ pub struct Watcher {
     history: Mutex<History>,
     history_path: Option<PathBuf>,
     history_saved_at: Mutex<Option<Instant>>,
+    /// Read positions and running totals of agent transcripts, shared by the
+    /// history refresh and the activity panel so each byte is read once.
+    transcripts: TranscriptCache,
     app: AppHandle,
 }
 
@@ -98,8 +102,13 @@ impl Watcher {
             history: Mutex::new(history),
             history_path,
             history_saved_at: Mutex::new(None),
+            transcripts: TranscriptCache::default(),
             app,
         })
+    }
+
+    pub fn transcripts(&self) -> &TranscriptCache {
+        &self.transcripts
     }
 
     pub fn settings(&self) -> Settings {
@@ -281,6 +290,15 @@ impl Watcher {
         let _ = self.app.emit(OVERVIEW_UPDATED, &overview);
         tray::update(&self.app, &overview);
 
+        // Transcript state only for containers that are running and reachable.
+        let live_keys: Vec<&str> = overview
+            .containers
+            .iter()
+            .filter(|c| c.container.state.is_running() && c.last_seen_at.is_none())
+            .map(|c| c.key.as_str())
+            .collect();
+        self.transcripts.retain_scopes(&live_keys);
+
         // History: fold the snapshot in, then attach usage for agent sessions.
         if settings.history_enabled {
             let now = Utc::now();
@@ -291,18 +309,25 @@ impl Watcher {
             };
             // Containers run at the same time; on a remote host each gets
             // REMOTE_TIMEOUT, so a host that stalls after its overview loaded
-            // cannot delay notifications or the next round.
+            // cannot delay notifications or the next round. Transcripts are
+            // read from where the last refresh stopped, so a long one is
+            // caught up over a few rounds rather than re-read.
             let insights = overview
                 .containers
                 .iter()
-                .filter(|c| c.container.state.is_running() && !c.sessions.is_empty())
+                .filter(|c| {
+                    c.container.state.is_running()
+                        && c.last_seen_at.is_none()
+                        && !c.sessions.is_empty()
+                })
                 .filter_map(|c| {
                     let (adapter, id) = self.adapter_for(&c.key).ok()?;
                     let prices = &settings.prices;
+                    let cache = &self.transcripts;
                     Some(async move {
                         let insights = within_budget(
                             &c.host,
-                            collect_insights(&adapter, &id, &c.sessions, prices),
+                            collect_insights(&adapter, &id, &c.key, &c.sessions, cache, prices),
                         )
                         .await
                         .unwrap_or_default();
@@ -311,13 +336,7 @@ impl Watcher {
                 });
             for (c, insights) in futures::future::join_all(insights).await {
                 let mut history = self.history.lock().expect("history poisoned");
-                for insight in insights {
-                    if let Some(usage) = &insight.usage {
-                        changed = history.record_usage(&c.key, usage) || changed;
-                    }
-                    changed =
-                        history.record_files(&c.key, insight.agent, &insight.files) || changed;
-                }
+                changed = history.record_insights(&c.key, &insights) || changed;
             }
             self.save_history(changed);
         }

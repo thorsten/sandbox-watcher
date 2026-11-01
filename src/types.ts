@@ -205,6 +205,18 @@ export interface StopResult {
   error: string | null;
 }
 
+/** A runtime whose containers could not be listed, so none was stopped. */
+export interface StopFailure {
+  host: string;
+  runtime: RuntimeKind;
+  error: string;
+}
+
+export interface StopReport {
+  results: StopResult[];
+  failures: StopFailure[];
+}
+
 export type Theme = "system" | "light" | "dark";
 
 export type TerminalChoice =
@@ -268,14 +280,36 @@ export interface ActivityEvent {
   tool_use_id: string | null;
 }
 
+/** Why a transcript is tied to one session. */
+export type Evidence = "open-file" | "only-session" | "start-time";
+
+/** Which running session wrote a transcript. */
+export type Attribution =
+  | { kind: "session"; pid: number; evidence: Evidence }
+  /** Several sessions of the agent could have written it. */
+  | { kind: "agent"; candidates: number[] };
+
+/** How much of a transcript the numbers cover. */
+export interface Coverage {
+  complete: boolean;
+  pending_bytes: number;
+  skipped_bytes: number;
+  restarts: number;
+}
+
 export interface AgentActivity {
   agent: AgentKind;
   source: string;
   updated_at: string | null;
   events: ActivityEvent[];
   in_flight: ActivityEvent | null;
+  /** Whole transcript. */
   usage: Usage | null;
+  /** Lines since the session started; set when the transcript is older than the session. */
+  session_usage: Usage | null;
   files: FileTouch[];
+  attribution: Attribution;
+  coverage: Coverage;
 }
 
 /** One prompt and everything the agent did until the next one. */
@@ -315,6 +349,8 @@ export interface WorkingTree {
 
 export interface SessionProcesses {
   session: Session;
+  /** Process start on the container's clock. */
+  started_at: string | null;
   tree: ProcessInfo[];
   running_now: ProcessInfo[];
 }
@@ -358,7 +394,15 @@ export interface SessionRecord {
   last_seen_at: string;
   usage: Usage | null;
   files: FileTouch[];
+  usage_scope: UsageScope;
 }
+
+/**
+ * What a session record's usage stands for: its own transcripts, the pooled
+ * transcripts several sessions could have written, or nothing because a
+ * sibling record marked `agent` carries them.
+ */
+export type UsageScope = "session" | "agent" | "pooled";
 
 export interface Aggregate {
   key: string;

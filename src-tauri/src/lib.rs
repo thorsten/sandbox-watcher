@@ -13,7 +13,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 use sandbox_core::actions::{
-    MacTerminal, STOP_TIMEOUT, StopResult, TerminalLaunch, custom_terminal_launch,
+    MacTerminal, STOP_TIMEOUT, StopReport, TerminalLaunch, custom_terminal_launch,
     terminal_launches,
 };
 use sandbox_core::activity::ContainerActivity;
@@ -120,26 +120,48 @@ async fn get_activity(
         .map(|c| c.sessions)
         .unwrap_or_default();
     let prices = state.settings().prices;
-    Ok(
-        sandbox_core::activity::collect(&adapter, &container_id, &sessions, Utc::now(), &prices)
-            .await,
+    Ok(sandbox_core::activity::collect(
+        &adapter,
+        &container_id,
+        &container_key,
+        &sessions,
+        Utc::now(),
+        &prices,
+        state.transcripts(),
     )
+    .await)
 }
 
-/// Turn-by-turn detail of one agent's transcript. Reads the whole
-/// transcript, so the UI asks for it on demand only. The transcript path is
-/// found inside the container, never taken from the webview.
+/// Turn-by-turn detail of one agent's transcript: the one attributed to
+/// `pid`, else the agent's newest. Reads the whole transcript, so the UI asks
+/// for it on demand only. The transcript path is found inside the container,
+/// never taken from the webview.
 #[tauri::command]
 async fn get_turns(
     state: State<'_, App>,
     container_key: String,
     agent: AgentKind,
+    pid: Option<u32>,
 ) -> Result<Option<TurnReport>, String> {
     let (adapter, container_id) = state.adapter_for(&container_key)?;
+    let sessions = state
+        .overview()
+        .and_then(|o| o.containers.into_iter().find(|c| c.key == container_key))
+        .map(|c| c.sessions)
+        .unwrap_or_default();
     let prices = state.settings().prices;
-    sandbox_core::activity::read_turns(&adapter, &container_id, agent, &prices)
-        .await
-        .map_err(|e| e.to_string())
+    sandbox_core::activity::read_turns(
+        &adapter,
+        &container_id,
+        &container_key,
+        agent,
+        pid,
+        &sessions,
+        state.transcripts(),
+        &prices,
+    )
+    .await
+    .map_err(|e| e.to_string())
 }
 
 /// Mounts, ports, env names and user of one container, mounts classified
@@ -223,12 +245,14 @@ async fn stop_container(state: State<'_, App>, container_key: String) -> Result<
     Ok(())
 }
 
-/// Stop every running sandbox container across runtimes.
+/// Stop every running sandbox container across runtimes. Hosts whose
+/// containers could not be listed are reported as failures, so the UI never
+/// shows a partial stop as complete.
 #[tauri::command]
-async fn stop_all(state: State<'_, App>) -> Result<Vec<StopResult>, String> {
-    let results = sandbox_core::actions::stop_all(&state.adapters(), STOP_TIMEOUT).await;
+async fn stop_all(state: State<'_, App>) -> Result<StopReport, String> {
+    let report = sandbox_core::actions::stop_all(&state.adapters(), STOP_TIMEOUT).await;
     state.poke();
-    Ok(results)
+    Ok(report)
 }
 
 /// Host path of the container's project directory, if it has a bind-mounted one.

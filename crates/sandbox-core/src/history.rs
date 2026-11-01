@@ -8,10 +8,12 @@ use std::path::Path;
 use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::files::FileTouch;
+use crate::activity::AgentInsight;
+use crate::files::{FileTouch, merge};
 use crate::host::{Host, parse_container_key};
 use crate::model::{AgentKind, RuntimeKind};
 use crate::overview::Overview;
+use crate::transcripts::Attribution;
 use crate::usage::Usage;
 
 const FORMAT_VERSION: u32 = 1;
@@ -29,11 +31,29 @@ pub struct SessionRecord {
     pub started_at: DateTime<Utc>,
     pub ended_at: Option<DateTime<Utc>>,
     pub last_seen_at: DateTime<Utc>,
-    /// Last usage snapshot for this session's agent transcript.
+    /// Last usage snapshot of the transcripts this session wrote, counting
+    /// the lines written since it started.
     pub usage: Option<Usage>,
-    /// Files read and changed, from the agent's transcript.
+    /// Files read and changed, from the same transcripts.
     #[serde(default)]
     pub files: Vec<FileTouch>,
+    /// Whether `usage` and `files` are this session's own.
+    #[serde(default)]
+    pub usage_scope: UsageScope,
+}
+
+/// What a session record's usage stands for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum UsageScope {
+    /// Transcripts attributed to this session alone.
+    #[default]
+    Session,
+    /// This record carries transcripts that could belong to several sessions
+    /// of the agent in the container; the sibling records are `Pooled`.
+    Agent,
+    /// This session's usage is counted in a sibling record marked `Agent`.
+    Pooled,
 }
 
 impl SessionRecord {
@@ -172,6 +192,7 @@ impl History {
                             last_seen_at: now,
                             usage: None,
                             files: vec![],
+                            usage_scope: UsageScope::Session,
                         });
                         changed = true;
                     }
@@ -196,46 +217,97 @@ impl History {
         changed
     }
 
-    /// Attach a usage snapshot to the newest open session of this agent in
-    /// the container. Returns whether it changed.
-    pub fn record_usage(&mut self, container_id: &str, usage: &Usage) -> bool {
-        let Some(record) = self
-            .sessions
-            .iter_mut()
-            .filter(|s| {
-                s.container_id == container_id && s.agent == usage.agent && s.ended_at.is_none()
-            })
-            .max_by_key(|s| s.started_at)
-        else {
-            return false;
-        };
-        if record.usage.as_ref() == Some(usage) {
+    /// Attach what this refresh read from the transcripts of a container to
+    /// its open session records. A transcript attributed to one session goes
+    /// to that session. A transcript several sessions could have written is
+    /// pooled on the newest of them, marked `Agent`, with the others marked
+    /// `Pooled`, so totals stay complete and nothing is counted twice.
+    /// Returns whether anything changed.
+    pub fn record_insights(&mut self, container_id: &str, insights: &[AgentInsight]) -> bool {
+        if insights.is_empty() {
             return false;
         }
-        record.usage = Some(usage.clone());
-        true
-    }
-
-    /// Attach the touched files to the newest open session of this agent.
-    pub fn record_files(
-        &mut self,
-        container_id: &str,
-        agent: crate::model::AgentKind,
-        files: &[FileTouch],
-    ) -> bool {
-        let Some(record) = self
+        // Target pid per insight: the attributed session, or the newest open
+        // candidate for a shared transcript.
+        let mut usage: HashMap<u32, Vec<&Usage>> = HashMap::new();
+        let mut files: HashMap<u32, Vec<Vec<FileTouch>>> = HashMap::new();
+        let mut scope: HashMap<u32, UsageScope> = HashMap::new();
+        for insight in insights {
+            let host = match &insight.attribution {
+                Attribution::Session { pid, .. } => *pid,
+                Attribution::Agent { candidates } => {
+                    let Some(host) = self
+                        .sessions
+                        .iter()
+                        .filter(|s| {
+                            s.container_id == container_id
+                                && s.ended_at.is_none()
+                                && candidates.contains(&s.pid)
+                        })
+                        .max_by_key(|s| (s.started_at, s.pid))
+                        .map(|s| s.pid)
+                    else {
+                        continue;
+                    };
+                    scope.insert(host, UsageScope::Agent);
+                    for pid in candidates.iter().filter(|p| **p != host) {
+                        scope.entry(*pid).or_insert(UsageScope::Pooled);
+                    }
+                    host
+                }
+            };
+            scope.entry(host).or_insert(UsageScope::Session);
+            if let Some(u) = &insight.usage {
+                usage.entry(host).or_default().push(u);
+            }
+            files.entry(host).or_default().push(insight.files.clone());
+        }
+        let mut changed = false;
+        for record in self
             .sessions
             .iter_mut()
-            .filter(|s| s.container_id == container_id && s.agent == agent && s.ended_at.is_none())
-            .max_by_key(|s| s.started_at)
-        else {
-            return false;
-        };
-        if record.files == files {
-            return false;
+            .filter(|s| s.container_id == container_id && s.ended_at.is_none())
+        {
+            let Some(new_scope) = scope.get(&record.pid) else {
+                continue;
+            };
+            let summed = usage.get(&record.pid).map(|list| {
+                let mut total = list[0].clone();
+                for u in &list[1..] {
+                    total.add(u);
+                }
+                total
+            });
+            let merged = files.get(&record.pid).map(|lists| merge(lists));
+            if *new_scope == UsageScope::Pooled {
+                // Its own numbers live in the Agent record now.
+                if record.usage_scope != UsageScope::Pooled
+                    || record.usage.is_some()
+                    || !record.files.is_empty()
+                {
+                    record.usage_scope = UsageScope::Pooled;
+                    record.usage = None;
+                    record.files.clear();
+                    changed = true;
+                }
+                continue;
+            }
+            if record.usage_scope != *new_scope {
+                record.usage_scope = *new_scope;
+                changed = true;
+            }
+            if summed.is_some() && record.usage != summed {
+                record.usage = summed;
+                changed = true;
+            }
+            if let Some(merged) = merged
+                && record.files != merged
+            {
+                record.files = merged;
+                changed = true;
+            }
         }
-        record.files = files.to_vec();
-        true
+        changed
     }
 
     /// Drop closed records older than the retention window.
@@ -452,8 +524,29 @@ mod tests {
         );
     }
 
+    fn insight(attribution: Attribution, input_tokens: u64) -> AgentInsight {
+        let mut usage = crate::usage::parse_pi_usage("");
+        usage.agent = AgentKind::ClaudeCode;
+        usage.input_tokens = input_tokens;
+        AgentInsight {
+            agent: AgentKind::ClaudeCode,
+            source: format!("/t/{input_tokens}.jsonl"),
+            attribution,
+            usage: Some(usage),
+            files: vec![],
+            coverage: crate::transcripts::Coverage::default(),
+        }
+    }
+
+    fn session(pid: u32) -> Attribution {
+        Attribution::Session {
+            pid,
+            evidence: crate::transcripts::Evidence::OnlySession,
+        }
+    }
+
     #[tokio::test]
-    async fn usage_attaches_to_the_newest_open_session() {
+    async fn usage_attaches_to_the_attributed_session() {
         let mock = MockAdapter::demo();
         let t0 = Utc.with_ymd_and_hms(2026, 10, 30, 10, 0, 0).unwrap();
         let mut h = History::default();
@@ -464,16 +557,15 @@ mod tests {
             .iter()
             .find(|c| c.container.name == "sandbox-web-shop")
             .unwrap();
-        let usage = crate::usage::parse_pi_usage("");
-        let mut usage = Usage {
-            agent: AgentKind::ClaudeCode,
-            ..usage
-        };
-        usage.input_tokens = 42;
-        assert!(h.record_usage(&shop.container.id, &usage));
+        let key = shop.key.as_str();
+        assert!(h.record_insights(key, &[insight(session(4242), 42)]));
         assert!(
-            !h.record_usage(&shop.container.id, &usage),
+            !h.record_insights(key, &[insight(session(4242), 42)]),
             "unchanged snapshot is a no-op"
+        );
+        assert!(
+            !h.record_insights(key, &[insight(session(9999), 1)]),
+            "no open record for that pid"
         );
         let view = h.query(
             &HistoryQuery {
@@ -485,6 +577,100 @@ mod tests {
         );
         assert_eq!(view.total.tokens, 42);
         assert!(view.total.cost_incomplete, "tokens without a price");
+        let of = |h: &History, pid: u32| -> SessionRecord {
+            h.sessions
+                .iter()
+                .find(|s| s.pid == pid && s.container_id == key)
+                .cloned()
+                .unwrap()
+        };
+        assert_eq!(of(&h, 4242).usage_scope, UsageScope::Session);
+
+        // Two transcripts of one session (a `/clear`) are summed.
+        assert!(h.record_insights(
+            key,
+            &[insight(session(4242), 42), insight(session(4242), 8)]
+        ));
+        assert_eq!(of(&h, 4242).usage.unwrap().input_tokens, 50);
+    }
+
+    #[tokio::test]
+    async fn shared_transcripts_pool_on_the_newest_candidate() {
+        let mock = MockAdapter::demo();
+        let t0 = Utc.with_ymd_and_hms(2026, 10, 30, 10, 0, 0).unwrap();
+        let mut o = snapshot(&mock).await;
+        let shop = o
+            .containers
+            .iter_mut()
+            .find(|c| c.container.name == "sandbox-web-shop")
+            .unwrap();
+        shop.sessions.push(crate::model::Session {
+            pid: 5000,
+            command: "claude".into(),
+            agent: AgentKind::ClaudeCode,
+        });
+        let key = shop.key.clone();
+        let mut h = History::default();
+        h.observe(&o, t0);
+        // Both Claude sessions are open; the transcript could be either's.
+        let shared = Attribution::Agent {
+            candidates: vec![4242, 5000],
+        };
+        assert!(h.record_insights(&key, &[insight(shared.clone(), 100)]));
+        let of = |h: &History, pid: u32| -> SessionRecord {
+            h.sessions
+                .iter()
+                .find(|s| s.pid == pid && s.container_id == key)
+                .cloned()
+                .unwrap()
+        };
+        let host = of(&h, 5000);
+        assert_eq!(
+            host.usage_scope,
+            UsageScope::Agent,
+            "newest candidate hosts the pool"
+        );
+        assert_eq!(host.usage.as_ref().unwrap().input_tokens, 100);
+        let other = of(&h, 4242);
+        assert_eq!(other.usage_scope, UsageScope::Pooled);
+        assert!(other.usage.is_none());
+        let view = h.query(
+            &HistoryQuery {
+                since: t0,
+                project: None,
+                agent: Some(AgentKind::ClaudeCode),
+            },
+            t0,
+        );
+        assert_eq!(view.total.tokens, 100, "counted once");
+
+        // Later the facts settle: one transcript per session.
+        assert!(h.record_insights(
+            &key,
+            &[insight(session(4242), 30), insight(session(5000), 70)]
+        ));
+        assert!(
+            h.sessions
+                .iter()
+                .filter(|s| s.agent == AgentKind::ClaudeCode && s.container_id == key)
+                .all(|s| s.usage_scope == UsageScope::Session)
+        );
+        let view = h.query(
+            &HistoryQuery {
+                since: t0,
+                project: None,
+                agent: Some(AgentKind::ClaudeCode),
+            },
+            t0,
+        );
+        assert_eq!(view.total.tokens, 100);
+    }
+
+    #[test]
+    fn history_without_usage_scope_loads_as_session_scoped() {
+        let old = r#"{"version":1,"containers":[],"sessions":[{"id":"a:1:0","container_id":"a","container_name":"sandbox-x","project_slug":"x","runtime":"docker","agent":"claude-code","command":"claude","pid":1,"started_at":"2026-10-30T09:00:00Z","ended_at":null,"last_seen_at":"2026-10-30T10:00:00Z","usage":null,"files":[]}]}"#;
+        let history: History = serde_json::from_str(old).expect("0.6 history loads");
+        assert_eq!(history.sessions[0].usage_scope, UsageScope::Session);
     }
 
     #[tokio::test]

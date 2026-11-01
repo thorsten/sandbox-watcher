@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { describeInterruption, describeInterruptionByHost, networkLogsCommand } from "./actions";
-import type { SandboxContainer } from "./types";
+import {
+  describeInterruption,
+  describeInterruptionByHost,
+  describeStopReport,
+  networkLogsCommand,
+} from "./actions";
+import type { HostStatus, SandboxContainer } from "./types";
 
 function container(partial: Partial<SandboxContainer> & { id: string }): SandboxContainer {
   return {
@@ -81,5 +86,54 @@ describe("describeInterruptionByHost", () => {
       "Dev VM",
       "sandbox-b: no active sessions",
     ]);
+  });
+});
+
+const ok = (container_id: string, name: string) => ({ container_id, name, ok: true, error: null });
+
+describe("describeStopReport", () => {
+  const hosts: HostStatus[] = [
+    {
+      state: "connected",
+      alias: "devbox",
+      display_name: "Dev box",
+      runtimes: ["docker"],
+      probes: [],
+    },
+  ];
+
+  it("counts a clean stop", () => {
+    expect(describeStopReport({ results: [ok("a", "sandbox-a")], failures: [] })).toBe(
+      "Stopped 1 container",
+    );
+    expect(describeStopReport({ results: [], failures: [] })).toBe("Stopped 0 containers");
+  });
+
+  it("names failed containers and hosts that could not be listed", () => {
+    const text = describeStopReport(
+      {
+        results: [
+          ok("a", "sandbox-a"),
+          { container_id: "devbox/b", name: "sandbox-b", ok: false, error: "no answer" },
+        ],
+        failures: [
+          { host: "devbox", runtime: "podman", error: "connection refused" },
+          { host: "local", runtime: "docker", error: "500 broken" },
+        ],
+      },
+      hosts,
+    );
+    expect(text).toBe(
+      "stopped 1; 1 failed: devbox: sandbox-b (no answer); could not list Podman containers on Dev box: connection refused; could not list Docker containers on this machine: 500 broken",
+    );
+  });
+
+  it("never reports success when a listing failed", () => {
+    const text = describeStopReport({
+      results: [],
+      failures: [{ host: "local", runtime: "docker", error: "down" }],
+    });
+    expect(text).not.toContain("Stopped");
+    expect(text).toContain("could not list Docker containers on this machine: down");
   });
 });

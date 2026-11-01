@@ -1,7 +1,8 @@
 //! The top-level state the UI renders: which runtimes, which containers, who
 //! is inside them.
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use chrono::{DateTime, Utc};
@@ -154,6 +155,52 @@ struct RuntimeLoad {
     containers: Vec<ContainerOverview>,
 }
 
+/// Start times of running containers, by container key. Docker and Podman
+/// report `StartedAt` only from `inspect`, so each running container is
+/// inspected once and remembered until it stops, dies or is removed (the
+/// live runtime forgets it on those events) or disappears from a listing.
+#[derive(Default)]
+pub struct StartTimeCache {
+    inner: Mutex<HashMap<String, DateTime<Utc>>>,
+}
+
+impl StartTimeCache {
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<String, DateTime<Utc>>> {
+        self.inner.lock().expect("start time cache poisoned")
+    }
+
+    pub fn get(&self, key: &str) -> Option<DateTime<Utc>> {
+        self.lock().get(key).copied()
+    }
+
+    pub fn put(&self, key: &str, started_at: DateTime<Utc>) {
+        self.lock().insert(key.to_string(), started_at);
+    }
+
+    /// Drop one container, e.g. after a start, stop or die event: the next
+    /// listing inspects it again.
+    pub fn forget(&self, key: &str) {
+        self.lock().remove(key);
+    }
+
+    /// Drop every container of `host` that is not in `running`.
+    fn retain_running(&self, host: &Host, running: &[String]) {
+        let prefix = container_key(host, "");
+        self.lock().retain(|key, _| {
+            !(key.starts_with(&prefix) && !running.iter().any(|k| k == key))
+                || key.len() == prefix.len()
+        });
+    }
+
+    pub fn len(&self) -> usize {
+        self.lock().len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.lock().is_empty()
+    }
+}
+
 /// Run one round trip to `host`. On a remote host it gets
 /// [`REMOTE_TIMEOUT`], so a stalled connection cannot hold up the caller;
 /// `None` means it ran out of time. Local round trips run to completion.
@@ -169,13 +216,14 @@ pub async fn within_budget<F: std::future::Future>(host: &Host, fut: F) -> Optio
 async fn load_one(
     hosted: HostedAdapter,
     timeout: Option<Duration>,
+    start_times: &StartTimeCache,
 ) -> std::result::Result<RuntimeLoad, RuntimeFailure> {
     let Some(limit) = timeout else {
-        return load_runtime(hosted).await;
+        return load_runtime(hosted, start_times).await;
     };
     let host = hosted.host.clone();
     let kind = hosted.adapter.kind();
-    tokio::time::timeout(limit, load_runtime(hosted))
+    tokio::time::timeout(limit, load_runtime(hosted, start_times))
         .await
         .unwrap_or_else(|_| {
             Err(RuntimeFailure {
@@ -187,7 +235,37 @@ async fn load_one(
         })
 }
 
-async fn load_runtime(hosted: HostedAdapter) -> std::result::Result<RuntimeLoad, RuntimeFailure> {
+/// When `container` started, from the cache or one `inspect`. `None` when
+/// the runtime does not say or the inspect fails; the UI shows "unknown".
+async fn started_at(
+    adapter: &Arc<dyn RuntimeAdapter>,
+    key: &str,
+    container: &SandboxContainer,
+    start_times: &StartTimeCache,
+) -> Option<DateTime<Utc>> {
+    if !container.state.is_running() {
+        return None;
+    }
+    if let Some(known) = container.started_at {
+        return Some(known);
+    }
+    if let Some(cached) = start_times.get(key) {
+        return Some(cached);
+    }
+    let started = adapter
+        .inspect(&container.id)
+        .await
+        .ok()
+        .flatten()
+        .and_then(|d| d.container.started_at)?;
+    start_times.put(key, started);
+    Some(started)
+}
+
+async fn load_runtime(
+    hosted: HostedAdapter,
+    start_times: &StartTimeCache,
+) -> std::result::Result<RuntimeLoad, RuntimeFailure> {
     let HostedAdapter { host, adapter } = hosted;
     let failure = |endpoint: String, reason: String| RuntimeFailure {
         host: host.clone(),
@@ -204,16 +282,25 @@ async fn load_runtime(hosted: HostedAdapter) -> std::result::Result<RuntimeLoad,
         .await
         .map_err(|e| failure(info.endpoint.clone(), e.to_string()))?;
 
+    let running_keys: Vec<String> = containers
+        .iter()
+        .filter(|c| c.state.is_running())
+        .map(|c| container_key(&host, &c.id))
+        .collect();
+    start_times.retain_running(&host, &running_keys);
     let probes = containers.iter().map(|c| {
         let adapter = adapter.clone();
         let running = c.state.is_running();
-        let id = c.id.clone();
+        let key = container_key(&host, &c.id);
         async move {
             if !running {
-                return Default::default();
+                return (Default::default(), None);
             }
             // A failed probe must not hide the container; it just shows as unknown.
-            probe_container(&adapter, &id).await.unwrap_or_default()
+            futures::join!(
+                async { probe_container(&adapter, &c.id).await.unwrap_or_default() },
+                started_at(&adapter, &key, c, start_times),
+            )
         }
     });
     let probes = futures::future::join_all(probes).await;
@@ -221,14 +308,19 @@ async fn load_runtime(hosted: HostedAdapter) -> std::result::Result<RuntimeLoad,
     let containers = containers
         .into_iter()
         .zip(probes)
-        .map(|(container, probe)| ContainerOverview {
-            key: container_key(&host, &container.id),
-            host: host.clone(),
-            container,
-            runtime: kind,
-            readiness: probe.readiness,
-            sessions: probe.sessions,
-            last_seen_at: None,
+        .map(|(mut container, (probe, started))| {
+            if started.is_some() {
+                container.started_at = started;
+            }
+            ContainerOverview {
+                key: container_key(&host, &container.id),
+                host: host.clone(),
+                container,
+                runtime: kind,
+                readiness: probe.readiness,
+                sessions: probe.sessions,
+                last_seen_at: None,
+            }
         })
         .collect();
     Ok(RuntimeLoad {
@@ -249,7 +341,7 @@ pub async fn load_many(
     source: DataSource,
     candidates: Vec<DetectedRuntime>,
 ) -> Overview {
-    load_many_with_failures(adapters, source, candidates)
+    load_many_with_failures(adapters, source, candidates, &StartTimeCache::default())
         .await
         .0
 }
@@ -262,10 +354,11 @@ pub async fn load_many_with_failures(
     adapters: &[HostedAdapter],
     source: DataSource,
     candidates: Vec<DetectedRuntime>,
+    start_times: &StartTimeCache,
 ) -> (Overview, Vec<RuntimeFailure>) {
     let loads = adapters.iter().cloned().map(|hosted| {
         let timeout = (!hosted.host.is_local()).then_some(REMOTE_TIMEOUT);
-        load_one(hosted, timeout)
+        load_one(hosted, timeout, start_times)
     });
     let results = futures::future::join_all(loads).await;
     let mut runtimes = Vec::new();
@@ -477,7 +570,12 @@ mod tests {
         let started = tokio::time::Instant::now();
         let (overview, failures) = tokio::time::timeout(
             Duration::from_secs(600),
-            load_many_with_failures(&[local, remote], DataSource::Mock, vec![]),
+            load_many_with_failures(
+                &[local, remote],
+                DataSource::Mock,
+                vec![],
+                &StartTimeCache::default(),
+            ),
         )
         .await
         .expect("a stalled remote runtime must not hold up the overview");
@@ -506,6 +604,131 @@ mod tests {
         .await;
         assert_eq!(local, Some(1), "local round trips keep their own limits");
         assert!(started.elapsed() >= REMOTE_TIMEOUT * 2);
+    }
+
+    /// A listing without start times (Docker, Podman) gets them from one
+    /// inspect per running container, remembered for the next round.
+    #[tokio::test]
+    async fn start_times_come_from_inspect_once_and_are_cached() {
+        use crate::adapter::ExecRequest;
+        use crate::mock::MockAdapter;
+
+        /// Lists containers without `started_at`, like Docker's summary, and
+        /// counts inspects.
+        struct Summary {
+            inner: MockAdapter,
+            inspects: std::sync::atomic::AtomicUsize,
+        }
+        #[async_trait::async_trait]
+        impl RuntimeAdapter for Summary {
+            fn kind(&self) -> RuntimeKind {
+                self.inner.kind()
+            }
+            fn capabilities(&self) -> Capabilities {
+                self.inner.capabilities()
+            }
+            async fn ping(&self) -> crate::Result<RuntimeInfo> {
+                self.inner.ping().await
+            }
+            async fn list_containers(
+                &self,
+                filter: &ContainerFilter,
+            ) -> crate::Result<Vec<SandboxContainer>> {
+                let mut list = self.inner.list_containers(filter).await?;
+                for c in &mut list {
+                    c.started_at = None;
+                }
+                Ok(list)
+            }
+            async fn inspect(
+                &self,
+                id: &str,
+            ) -> crate::Result<Option<crate::model::ContainerDetails>> {
+                self.inspects
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                self.inner.inspect(id).await
+            }
+            async fn exec(
+                &self,
+                id: &str,
+                request: ExecRequest,
+            ) -> crate::Result<crate::adapter::ExecOutput> {
+                self.inner.exec(id, request).await
+            }
+            async fn stats(&self, id: &str) -> crate::Result<crate::model::ResourceSample> {
+                self.inner.stats(id).await
+            }
+            async fn logs(
+                &self,
+                id: &str,
+                options: crate::adapter::LogOptions,
+            ) -> crate::Result<String> {
+                self.inner.logs(id, options).await
+            }
+            async fn events(
+                &self,
+            ) -> crate::Result<
+                futures::stream::BoxStream<'static, crate::Result<crate::model::RuntimeEvent>>,
+            > {
+                self.inner.events().await
+            }
+            async fn stop(&self, id: &str, timeout: Option<Duration>) -> crate::Result<()> {
+                self.inner.stop(id, timeout).await
+            }
+        }
+
+        let summary = Arc::new(Summary {
+            inner: MockAdapter::demo(),
+            inspects: Default::default(),
+        });
+        let adapters = vec![HostedAdapter::local(summary.clone())];
+        let cache = StartTimeCache::default();
+        let (overview, _) =
+            load_many_with_failures(&adapters, DataSource::Mock, vec![], &cache).await;
+        let running: Vec<_> = overview
+            .containers
+            .iter()
+            .filter(|c| c.container.state.is_running())
+            .collect();
+        assert_eq!(running.len(), 3);
+        assert!(
+            running.iter().all(|c| c.container.started_at.is_some()),
+            "{running:?}"
+        );
+        assert!(
+            overview
+                .containers
+                .iter()
+                .filter(|c| !c.container.state.is_running())
+                .all(|c| c.container.started_at.is_none())
+        );
+        let inspects = summary.inspects.load(std::sync::atomic::Ordering::SeqCst);
+        assert_eq!(inspects, 3, "one inspect per running container");
+        assert_eq!(cache.len(), 3);
+
+        load_many_with_failures(&adapters, DataSource::Mock, vec![], &cache).await;
+        assert_eq!(
+            summary.inspects.load(std::sync::atomic::Ordering::SeqCst),
+            3,
+            "cached: no inspect on the next round"
+        );
+
+        // Forgetting one (as a start event does) inspects it once more; a
+        // stopped container drops out of the cache.
+        let first = running[0].key.clone();
+        cache.forget(&first);
+        summary
+            .inner
+            .stop(&running[1].container.id, None)
+            .await
+            .unwrap();
+        load_many_with_failures(&adapters, DataSource::Mock, vec![], &cache).await;
+        assert_eq!(
+            summary.inspects.load(std::sync::atomic::Ordering::SeqCst),
+            4
+        );
+        assert_eq!(cache.len(), 2);
+        assert!(cache.get(&running[1].key).is_none());
     }
 
     #[tokio::test]

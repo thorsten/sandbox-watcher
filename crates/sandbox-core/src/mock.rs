@@ -1,6 +1,7 @@
 //! In-memory adapter for tests and for `SANDBOX_WATCHER_MOCK=1` demo mode.
 
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -21,6 +22,7 @@ use crate::model::{
 };
 use crate::network::NetworkSource;
 use crate::sandbox::{CONTAINER_TOOLS_PATH, HASH_LABEL, PROJECT_LABEL};
+use crate::transcripts::{CHUNK_BYTES, CHUNK_SENTINEL, CLOCK_SENTINEL};
 use crate::turns::TURNS_SENTINEL;
 use crate::{Error, Result};
 
@@ -34,10 +36,28 @@ pub struct MockContainer {
     pub network_logs: BTreeMap<NetworkSource, String>,
 }
 
-#[derive(Default)]
 struct State {
     containers: Vec<MockContainer>,
+    /// The Claude transcript every container serves, growable for tests.
+    transcript: String,
+    transcript_inode: u64,
 }
+
+impl Default for State {
+    fn default() -> Self {
+        Self {
+            containers: vec![],
+            transcript: DEMO_TRANSCRIPT.into(),
+            transcript_inode: 7,
+        }
+    }
+}
+
+/// Transcript path reported by the mock listing.
+pub const DEMO_TRANSCRIPT_PATH: &str =
+    "/home/sandbox/.claude/projects/-Users-dev-projects-web-shop/abc.jsonl";
+/// `now` on the mock container's clock: 2026-10-30T10:00:00Z.
+const DEMO_NOW: i64 = 1_793_354_400;
 
 /// Adapter backed by a vector of containers. Clone shares the state.
 #[derive(Clone)]
@@ -49,6 +69,10 @@ pub struct MockAdapter {
     stalled: bool,
     /// Answer everything except `stop`.
     stall_stops: bool,
+    /// Fail every `list_containers`, like a runtime whose API is broken.
+    fail_lists: bool,
+    /// Chunk reads served, to check that transcripts are read incrementally.
+    chunk_reads: Arc<AtomicUsize>,
 }
 
 impl MockAdapter {
@@ -60,6 +84,8 @@ impl MockAdapter {
             events,
             stalled: false,
             stall_stops: false,
+            fail_lists: false,
+            chunk_reads: Arc::default(),
         }
     }
 
@@ -78,6 +104,12 @@ impl MockAdapter {
     /// Hang only in `stop`, after the containers were listed.
     pub fn stalled_stops(mut self) -> Self {
         self.stall_stops = true;
+        self
+    }
+
+    /// Fail every listing with a protocol error.
+    pub fn failing_lists(mut self) -> Self {
+        self.fail_lists = true;
         self
     }
 
@@ -123,6 +155,25 @@ impl MockAdapter {
     /// Simulate a lifecycle event for subscribers of `events()`.
     pub fn emit(&self, event: RuntimeEvent) {
         let _ = self.events.send(event);
+    }
+
+    /// The agent writes one more transcript line.
+    pub fn append_transcript(&self, line: &str) {
+        let mut state = self.state.lock().expect("mock state poisoned");
+        state.transcript.push_str(line);
+        state.transcript.push('\n');
+    }
+
+    /// The transcript file is replaced by a new one with `text`.
+    pub fn replace_transcript(&self, text: &str) {
+        let mut state = self.state.lock().expect("mock state poisoned");
+        state.transcript = format!("{text}\n");
+        state.transcript_inode += 1;
+    }
+
+    /// Chunk reads served so far.
+    pub fn chunk_reads(&self) -> usize {
+        self.chunk_reads.load(Ordering::SeqCst)
     }
 
     fn find(&self, id: &str) -> Option<MockContainer> {
@@ -245,6 +296,9 @@ impl RuntimeAdapter for MockAdapter {
 
     async fn list_containers(&self, filter: &ContainerFilter) -> Result<Vec<SandboxContainer>> {
         self.stall().await;
+        if self.fail_lists {
+            return Err(Error::Protocol("listing failed: 500 broken".into()));
+        }
         let state = self.state.lock().expect("mock state poisoned");
         Ok(state
             .containers
@@ -306,7 +360,7 @@ impl RuntimeAdapter for MockAdapter {
             });
         }
         // Activity scripts are recognised by their `$0` sentinel.
-        if let [sh, flag, script, sentinel] = request.command.as_slice()
+        if let [sh, flag, script, sentinel, args @ ..] = request.command.as_slice()
             && sh == "sh"
             && flag == "-c"
         {
@@ -326,22 +380,60 @@ P|4250|4242|480000|2000|/bin/sh -c npm test\n\
 P|4251|4250|481000|40000|node node_modules/.bin/vitest run\n\
 P|4300|1|420000|1500|zsh -l\n");
                 }
-                TRANSCRIPT_SENTINEL if script.starts_with("tail") => {
-                    return ok(DEMO_TRANSCRIPT);
+                CLOCK_SENTINEL => {
+                    let mut out = format!("C|{DEMO_NOW}|100|5000\n");
+                    for pid in args {
+                        match pid.as_str() {
+                            "4242" => out.push_str("S|4242|400000\n"),
+                            "4300" => out.push_str("S|4300|420000\n"),
+                            // Started at 10:16:40, after the demo transcript's last line.
+                            "4400" => out.push_str("S|4400|600000\n"),
+                            _ => {}
+                        }
+                    }
+                    return ok(&out);
                 }
-                TRANSCRIPT_SENTINEL if script.starts_with("grep -F '\"type\":\"assistant\"'") => {
-                    return ok(DEMO_USAGE);
+                CHUNK_SENTINEL => {
+                    let [path, offset] = args else {
+                        return ok("");
+                    };
+                    if path != DEMO_TRANSCRIPT_PATH {
+                        return Ok(ExecOutput {
+                            exit_code: 3,
+                            stdout: String::new(),
+                            stderr: String::new(),
+                        });
+                    }
+                    self.chunk_reads.fetch_add(1, Ordering::SeqCst);
+                    let state = self.state.lock().expect("mock state poisoned");
+                    let text = &state.transcript;
+                    let from = offset.parse::<usize>().unwrap_or(0).min(text.len());
+                    let to = (from + CHUNK_BYTES).min(text.len());
+                    return ok(&format!(
+                        "S|{}|{}\n{}",
+                        text.len(),
+                        state.transcript_inode,
+                        &text[from..to]
+                    ));
+                }
+                TRANSCRIPT_SENTINEL if script.starts_with("tail") => {
+                    let state = self.state.lock().expect("mock state poisoned");
+                    return ok(&state.transcript);
                 }
                 TRANSCRIPT_SENTINEL => {
-                    return ok(
-                        "claude|1761818400|/home/sandbox/.claude/projects/-Users-dev-projects-web-shop/abc.jsonl\n",
-                    );
+                    let state = self.state.lock().expect("mock state poisoned");
+                    return ok(&format!(
+                        "claude|{DEMO_NOW}|{}|{}|{DEMO_TRANSCRIPT_PATH}\n",
+                        state.transcript.len(),
+                        state.transcript_inode
+                    ));
                 }
                 FILES_SENTINEL => {
-                    return ok(DEMO_TRANSCRIPT);
+                    return ok("");
                 }
                 TURNS_SENTINEL => {
-                    return ok(&format!("{DEMO_EARLIER_TURN}{DEMO_TRANSCRIPT}"));
+                    let state = self.state.lock().expect("mock state poisoned");
+                    return ok(&format!("{DEMO_EARLIER_TURN}{}", state.transcript));
                 }
                 GIT_SENTINEL => {
                     return ok(
@@ -451,8 +543,6 @@ fn tokio_stream_from_broadcast(
 }
 
 /// Usage fragments as the Claude usage grep returns them, for demo mode.
-const DEMO_USAGE: &str = "1:\"model\":\"claude-sonnet-4-5-20250929\"\n1:\"id\":\"msg_01\"\n1:\"usage\":{\"input_tokens\":1200,\"cache_creation_input_tokens\":8000,\"cache_read_input_tokens\":64000,\"output_tokens\":900}\n2:\"model\":\"claude-sonnet-4-5-20250929\"\n2:\"id\":\"msg_02\"\n2:\"usage\":{\"input_tokens\":300,\"cache_read_input_tokens\":72000,\"output_tokens\":1400}\n";
-
 /// An earlier turn in front of [`DEMO_TRANSCRIPT`], for the turns view.
 const DEMO_EARLIER_TURN: &str = r#"{"type":"user","message":{"role":"user","content":"Why does the cart show 9.99 for three items at 3.33?"},"timestamp":"2026-10-30T09:40:00Z"}
 {"type":"assistant","message":{"model":"claude-sonnet-4-5-20250929","id":"msg_00","role":"assistant","content":[{"type":"tool_use","id":"toolu_00","name":"Grep","input":{"pattern":"total","path":"src"}}],"usage":{"input_tokens":900,"cache_creation_input_tokens":6000,"cache_read_input_tokens":12000,"output_tokens":300}},"timestamp":"2026-10-30T09:40:06Z"}

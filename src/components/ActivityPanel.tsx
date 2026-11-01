@@ -1,5 +1,11 @@
 import { useEffect, useState } from "react";
 import { getActivity } from "../api";
+import {
+  describeAttribution,
+  describeCoverage,
+  sessionsWithoutTranscript,
+  transcriptTitle,
+} from "../activity";
 import { AGENT_LABELS } from "../format";
 import { FilesList } from "./FilesList";
 import { TurnsSection } from "./TurnsSection";
@@ -8,10 +14,10 @@ import { formatBytes } from "../sparkline";
 import { formatCost, formatTokens, totalTokens } from "../usageFormat";
 import type {
   ActivityEvent,
-  AgentKind,
   ContainerActivity,
   ProcessInfo,
   SessionProcesses,
+  Usage,
 } from "../types";
 
 const POLL_MS = 3_000;
@@ -35,14 +41,6 @@ const STATUS_LABELS: Record<string, string> = {
   "D ": "deleted",
   R: "renamed",
 };
-
-/** Agents with a running session but no transcript we could read. */
-function missingTranscripts(activity: ContainerActivity): AgentKind[] {
-  const known: AgentKind[] = ["claude-code", "codex", "open-code", "pi"];
-  const have = new Set(activity.agents.map((a) => a.agent));
-  const running = new Set(activity.sessions.map((s) => s.session.agent));
-  return known.filter((a) => running.has(a) && !have.has(a));
-}
 
 export function ActivityPanel({ containerKey, now }: { containerKey: string; now: Date }) {
   const [activity, setActivity] = useState<ContainerActivity | null>(null);
@@ -77,7 +75,7 @@ export function ActivityPanel({ containerKey, now }: { containerKey: string; now
       {activity.agents.map((agent) => (
         <section key={agent.source} className="activity-block">
           <h3>
-            {AGENT_LABELS[agent.agent]}
+            {transcriptTitle(agent)}
             {agent.updated_at && (
               <span className="muted">
                 {" "}
@@ -85,34 +83,19 @@ export function ActivityPanel({ containerKey, now }: { containerKey: string; now
               </span>
             )}
           </h3>
-          {agent.usage && (
-            <div className="usage-line muted">
-              <span title="Input, output, cache read, cache write tokens">
-                {formatTokens(totalTokens(agent.usage))} tokens
-                <span className="small">
-                  {" "}
-                  (in {formatTokens(agent.usage.input_tokens)} · out{" "}
-                  {formatTokens(agent.usage.output_tokens)}
-                  {agent.usage.cache_read_tokens > 0 && (
-                    <> · cache {formatTokens(agent.usage.cache_read_tokens)}</>
-                  )}
-                  )
-                </span>
-              </span>
-              <span
-                title={
-                  agent.usage.cost_source === "estimated"
-                    ? "Estimated from the price table in Settings"
-                    : agent.usage.cost_source === "reported"
-                      ? "Reported by the agent"
-                      : "No price for this model; edit the price table in Settings"
-                }
-              >
-                {formatCost(agent.usage.cost_usd, agent.usage.cost_source)}
-              </span>
-              {agent.usage.models.length > 0 && <code>{agent.usage.models.join(", ")}</code>}
-              <span className="small">{agent.usage.turns} turns</span>
-            </div>
+          <p className="muted small" title={agent.source}>
+            {describeAttribution(agent.attribution)}
+          </p>
+          {describeCoverage(agent.coverage) && (
+            <p className="network-note warn">{describeCoverage(agent.coverage)}</p>
+          )}
+          {agent.usage && <UsageLine usage={agent.usage} label="Whole transcript" />}
+          {agent.session_usage && (
+            <UsageLine
+              usage={agent.session_usage}
+              label="This session"
+              note="The transcript is older than the session; history counts this part only."
+            />
           )}
           {agent.in_flight ? (
             <div className="in-flight">
@@ -140,21 +123,22 @@ export function ActivityPanel({ containerKey, now }: { containerKey: string; now
           <TurnsSection
             containerKey={containerKey}
             agent={agent.agent}
+            pid={agent.attribution.kind === "session" ? agent.attribution.pid : null}
             projectDir={activity.project_dir}
             now={now}
           />
         </section>
       ))}
 
-      {missingTranscripts(activity).map((agent) => (
-        <p key={agent} className="muted small">
-          No {AGENT_LABELS[agent]} transcript found in this container yet. Showing its processes
+      {sessionsWithoutTranscript(activity).map((s) => (
+        <p key={s.pid} className="muted small">
+          No transcript written by {AGENT_LABELS[s.agent]} PID {s.pid} yet. Showing its processes
           only.
         </p>
       ))}
 
       {activity.sessions.map((s) => (
-        <SessionBlock key={s.session.pid} session={s} />
+        <SessionBlock key={s.session.pid} session={s} now={now} />
       ))}
 
       {activity.working_tree && (
@@ -202,6 +186,35 @@ export function ActivityPanel({ containerKey, now }: { containerKey: string; now
   );
 }
 
+function UsageLine({ usage, label, note }: { usage: Usage; label: string; note?: string }) {
+  return (
+    <div className="usage-line muted" title={note}>
+      <span className="small">{label}:</span>
+      <span title="Input, output, cache read, cache write tokens">
+        {formatTokens(totalTokens(usage))} tokens
+        <span className="small">
+          {" "}
+          (in {formatTokens(usage.input_tokens)} · out {formatTokens(usage.output_tokens)}
+          {usage.cache_read_tokens > 0 && <> · cache {formatTokens(usage.cache_read_tokens)}</>})
+        </span>
+      </span>
+      <span
+        title={
+          usage.cost_source === "estimated"
+            ? "Estimated from the price table in Settings"
+            : usage.cost_source === "reported"
+              ? "Reported by the agent"
+              : "No price for this model; edit the price table in Settings"
+        }
+      >
+        {formatCost(usage.cost_usd, usage.cost_source)}
+      </span>
+      {usage.models.length > 0 && <code>{usage.models.join(", ")}</code>}
+      <span className="small">{usage.turns} turns</span>
+    </div>
+  );
+}
+
 function EventRow({ event, now }: { event: ActivityEvent; now: Date }) {
   const icon = {
     "user-message": "›",
@@ -224,7 +237,7 @@ function EventRow({ event, now }: { event: ActivityEvent; now: Date }) {
   );
 }
 
-function SessionBlock({ session }: { session: SessionProcesses }) {
+function SessionBlock({ session, now }: { session: SessionProcesses; now: Date }) {
   const s = session.session;
   return (
     <section className="activity-block">
@@ -232,6 +245,9 @@ function SessionBlock({ session }: { session: SessionProcesses }) {
         <span className={`chip agent-${s.agent}`}>{AGENT_LABELS[s.agent]}</span>
         <code className="muted">{s.command}</code>
         <span className="muted"> · PID {s.pid}</span>
+        {session.started_at && (
+          <span className="muted"> · started {formatRelative(session.started_at, now)}</span>
+        )}
       </h3>
       {session.running_now.length > 0 ? (
         <div className="running-now">

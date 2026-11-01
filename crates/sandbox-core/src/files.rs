@@ -1,7 +1,8 @@
 //! Files an agent read, created, edited or deleted, taken from the tool
 //! calls in its whole transcript (not just the tail the Activity timeline
-//! shows). Each agent writes tool calls differently; the extraction script
-//! pre-filters lines so megabyte transcripts stay cheap to read.
+//! shows). Each agent writes tool calls differently. JSON-lines transcripts
+//! are fed line by line by `transcripts`; OpenCode's message store is dumped
+//! by [`opencode_files_command`].
 
 use std::collections::HashMap;
 
@@ -15,8 +16,9 @@ use crate::model::AgentKind;
 /// shared `sandbox-watcher-` prefix.
 pub const FILES_SENTINEL: &str = "sandbox-watcher-files";
 
-/// Upper bound for one extraction, so a runaway transcript cannot stall a refresh.
-const MAX_BYTES: usize = 16 * 1024 * 1024;
+/// Upper bound for one OpenCode dump, so a runaway store cannot stall a
+/// refresh. Output of that size or more is reported as incomplete.
+pub const OPENCODE_DUMP_CAP: usize = 16 * 1024 * 1024;
 /// Files kept per agent session, changed ones first.
 pub const MAX_FILES: usize = 300;
 
@@ -58,28 +60,13 @@ fn sq(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
-/// Script printing the transcript lines that can contain file tool calls.
-pub fn files_command(agent: AgentKind, source: &str) -> Option<Vec<String>> {
-    let src = sq(source);
-    let script = match agent {
-        AgentKind::ClaudeCode => {
-            format!(r#"grep -F '"tool_use"' {src} 2>/dev/null | head -c {MAX_BYTES}"#)
-        }
-        AgentKind::Codex => format!(
-            r#"grep -E '"(function_call|custom_tool_call|local_shell_call)"' {src} 2>/dev/null | head -c {MAX_BYTES}"#
-        ),
-        AgentKind::Pi => format!(r#"grep -F '"toolCall"' {src} 2>/dev/null | head -c {MAX_BYTES}"#),
-        AgentKind::OpenCode => format!(
-            r#"d={src}; root=$(dirname "$(dirname "$d")"); for m in $(ls "$d" 2>/dev/null); do id=${{m%.json}}; for p in "$root"/part/"$id"/*.json; do [ -f "$p" ] || continue; c=$(tr -d '\n' < "$p"); case "$c" in *'"tool"'*) printf 'P:%s\n' "$c";; esac; done; done | head -c {MAX_BYTES}; exit 0"#
-        ),
-        AgentKind::Shell | AgentKind::Other => return None,
-    };
-    Some(vec![
-        "sh".into(),
-        "-c".into(),
-        script,
-        FILES_SENTINEL.into(),
-    ])
+/// Script printing OpenCode's tool parts of one session as `P:<json>` lines.
+pub fn opencode_files_command(session_dir: &str) -> Vec<String> {
+    let src = sq(session_dir);
+    let script = format!(
+        r#"d={src}; root=$(dirname "$(dirname "$d")"); for m in $(ls "$d" 2>/dev/null); do id=${{m%.json}}; for p in "$root"/part/"$id"/*.json; do [ -f "$p" ] || continue; c=$(tr -d '\n' < "$p"); case "$c" in *'"tool"'*) printf 'P:%s\n' "$c";; esac; done; done | head -c {OPENCODE_DUMP_CAP}; exit 0"#
+    );
+    vec!["sh".into(), "-c".into(), script, FILES_SENTINEL.into()]
 }
 
 fn str_of<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
@@ -369,6 +356,37 @@ pub fn aggregate(events: &[FileEvent], project_dir: Option<&str>) -> Vec<FileTou
     list
 }
 
+/// Combine the touches of several transcripts of one session into one list,
+/// ordered like [`aggregate`].
+pub fn merge(lists: &[Vec<FileTouch>]) -> Vec<FileTouch> {
+    let mut map: HashMap<String, FileTouch> = HashMap::new();
+    for t in lists.iter().flatten() {
+        match map.get_mut(&t.path) {
+            Some(m) => {
+                m.reads += t.reads;
+                m.edits += t.edits;
+                m.created |= t.created;
+                m.deleted |= t.deleted;
+                if t.last_at > m.last_at {
+                    m.last_at = t.last_at;
+                }
+            }
+            None => {
+                map.insert(t.path.clone(), t.clone());
+            }
+        }
+    }
+    let mut list: Vec<FileTouch> = map.into_values().collect();
+    list.sort_by(|a, b| {
+        b.changed()
+            .cmp(&a.changed())
+            .then_with(|| b.last_at.cmp(&a.last_at))
+            .then_with(|| a.path.cmp(&b.path))
+    });
+    list.truncate(MAX_FILES);
+    list
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -497,14 +515,44 @@ P:{"type":"tool","tool":"write","state":{"input":{"filePath":"/x/new.md"}}}"#;
     }
 
     #[test]
-    fn commands_exist_for_agents_only() {
-        assert!(files_command(AgentKind::Shell, "/x").is_none());
-        let c = files_command(
-            AgentKind::ClaudeCode,
-            "/home/sandbox/.claude/projects/p/it's.jsonl",
-        )
-        .unwrap();
+    fn opencode_command_quotes_the_store_and_carries_the_sentinel() {
+        let c = opencode_files_command("/home/sandbox/.local/share/opencode/storage/message/it's");
         assert_eq!(c.last().unwrap(), FILES_SENTINEL);
-        assert!(c[2].contains("'/home/sandbox/.claude/projects/p/it'\\''s.jsonl'"));
+        assert!(c[2].contains("'/home/sandbox/.local/share/opencode/storage/message/it'\\''s'"));
+        assert!(c[2].contains("part/"));
+    }
+
+    #[test]
+    fn merge_adds_counts_per_path() {
+        let t = |s: &str| Some(DateTime::parse_from_rfc3339(s).unwrap().into());
+        let a = aggregate(
+            &[FileEvent {
+                path: "/p/a.ts".into(),
+                op: FileOp::Read,
+                at: t("2026-10-30T10:00:00Z"),
+            }],
+            None,
+        );
+        let b = aggregate(
+            &[
+                FileEvent {
+                    path: "/p/a.ts".into(),
+                    op: FileOp::Edit,
+                    at: t("2026-10-30T10:05:00Z"),
+                },
+                FileEvent {
+                    path: "/p/b.ts".into(),
+                    op: FileOp::Read,
+                    at: t("2026-10-30T10:01:00Z"),
+                },
+            ],
+            None,
+        );
+        let merged = merge(&[a, b]);
+        assert_eq!(merged.len(), 2);
+        assert_eq!(merged[0].path, "/p/a.ts");
+        assert_eq!((merged[0].reads, merged[0].edits), (1, 1));
+        assert_eq!(merged[0].last_at, t("2026-10-30T10:05:00Z"));
+        assert_eq!(merged[1].path, "/p/b.ts");
     }
 }
