@@ -77,12 +77,22 @@ in `.github/workflows/ci.yml` (Docker and Podman) and in the README (Apple).
 
 ## UI tests
 
-Vitest runs in Node without a DOM library. Components are rendered with
+Vitest runs in Node by default. Components are rendered with
 `react-dom/server` (`src/test/render.tsx`) and asserted on markup and text;
 the Tauri bridge is mocked globally in `src/test/tauriMock.ts`, and
 `src/test/fixtures.ts` builds containers, sessions, reports and settings.
-Effects do not run under static rendering, so panels are tested in their
-initial state and their logic lives in pure modules with their own tests.
+Effects do not run under static rendering, so that path covers initial
+states and pure modules.
+
+Behaviour that needs effects, timers or user interaction (polling, Follow,
+scrolling) is tested in jsdom: put `// @vitest-environment jsdom` at the top
+of the file, mount with `src/test/dom.tsx` (`mount`, `rerender`, `unmount`,
+`advance`, `deferred`), fake timers with `vi.useFakeTimers` and answer each
+backend call with a `deferred` promise so slow, late and failing responses
+can be scripted. Polling panels go through `src/usePolling.ts`: one request
+in flight, the next one `intervalMs` after the previous settled, late
+answers dropped after key change, mode change or unmount, last data kept on
+error. Use it instead of `setInterval` for new polling.
 
 ## Verification expectations
 

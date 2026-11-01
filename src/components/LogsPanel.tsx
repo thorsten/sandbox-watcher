@@ -1,38 +1,40 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getLogs } from "../api";
+import { usePolling } from "../usePolling";
 
-const FOLLOW_MS = 2_000;
+export const FOLLOW_MS = 2_000;
 const TAIL = 200;
+/** Distance from the bottom, in pixels, that still counts as "at the end". */
+const BOTTOM_SLACK = 4;
 
+/**
+ * Follow semantics:
+ * - Follow on: the log is re-read every FOLLOW_MS after the previous read finished, and the view
+ *   jumps to the end whenever new text arrives or Follow is switched on.
+ * - Scrolling up by hand while Follow is on switches Follow off, so the position the user chose
+ *   is never taken away. Scrolling back to the end does not switch it on again; the checkbox does.
+ * - Follow off: the log is read once (on container change or when Follow was just switched off)
+ *   and the scroll position is left alone.
+ */
 export function LogsPanel({ containerKey }: { containerKey: string }) {
-  const [text, setText] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
   const [follow, setFollow] = useState(true);
   const [search, setSearch] = useState("");
   const [copied, setCopied] = useState(false);
   const pre = useRef<HTMLPreElement>(null);
 
-  const load = useCallback(async () => {
-    try {
-      setText(await getLogs(containerKey, TAIL));
-      setError(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    }
-  }, [containerKey]);
+  const load = useCallback(() => getLogs(containerKey, TAIL), [containerKey]);
+  const { data: text, error } = usePolling(load, follow ? FOLLOW_MS : null);
 
   useEffect(() => {
-    // load() awaits the Tauri command before setting state; no synchronous setState here.
-    // oxlint-disable-next-line react/set-state-in-effect
-    void load();
-    if (!follow) return;
-    const timer = window.setInterval(() => void load(), FOLLOW_MS);
-    return () => window.clearInterval(timer);
-  }, [load, follow]);
+    if (follow && text !== null && pre.current) pre.current.scrollTop = pre.current.scrollHeight;
+  }, [follow, text]);
 
-  useEffect(() => {
-    if (follow && pre.current) pre.current.scrollTop = pre.current.scrollHeight;
-  }, [follow]);
+  const onScroll = () => {
+    const el = pre.current;
+    if (!el || !follow) return;
+    const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_SLACK;
+    if (!atBottom) setFollow(false);
+  };
 
   const lines = (text ?? "").split("\n");
   const needle = search.trim().toLowerCase();
@@ -72,7 +74,7 @@ export function LogsPanel({ containerKey }: { containerKey: string }) {
       {error && <p className="network-note warn">{error}</p>}
       {text === null && !error && <p className="muted">Reading container log…</p>}
       {text !== null && (
-        <pre ref={pre} className="log-view">
+        <pre ref={pre} className="log-view" onScroll={onScroll}>
           {shown.length === 0 || (shown.length === 1 && shown[0] === "")
             ? "(empty)"
             : shown.join("\n")}

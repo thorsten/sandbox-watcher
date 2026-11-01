@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback } from "react";
 import { getActivity } from "../api";
 import {
   describeAttribution,
@@ -12,15 +12,10 @@ import { TurnsSection } from "./TurnsSection";
 import { formatRelative } from "../network";
 import { formatBytes } from "../sparkline";
 import { formatCost, formatTokens, totalTokens } from "../usageFormat";
-import type {
-  ActivityEvent,
-  ContainerActivity,
-  ProcessInfo,
-  SessionProcesses,
-  Usage,
-} from "../types";
+import { usePolling } from "../usePolling";
+import type { ActivityEvent, ProcessInfo, SessionProcesses, Usage } from "../types";
 
-const POLL_MS = 3_000;
+export const POLL_MS = 3_000;
 
 function formatElapsed(secs: number): string {
   if (secs < 60) return `${secs}s`;
@@ -43,35 +38,16 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export function ActivityPanel({ containerKey, now }: { containerKey: string; now: Date }) {
-  const [activity, setActivity] = useState<ContainerActivity | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const load = useCallback(() => getActivity(containerKey), [containerKey]);
+  const { data: activity, error } = usePolling(load, POLL_MS);
 
-  useEffect(() => {
-    let cancelled = false;
-    const load = async () => {
-      try {
-        const a = await getActivity(containerKey);
-        if (!cancelled) {
-          setActivity(a);
-          setError(null);
-        }
-      } catch (e) {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
-      }
-    };
-    void load();
-    const timer = window.setInterval(() => void load(), POLL_MS);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, [containerKey]);
-
-  if (error) return <p className="network-note warn">{error}</p>;
-  if (!activity) return <div className="activity muted">Looking inside the sandbox…</div>;
+  // A failed refresh keeps the last activity on screen; the note says the data may be stale.
+  const note = error !== null ? <p className="network-note warn">{error}</p> : null;
+  if (!activity) return note ?? <div className="activity muted">Looking inside the sandbox…</div>;
 
   return (
     <div className="activity">
+      {note}
       {activity.agents.map((agent) => (
         <section key={agent.source} className="activity-block">
           <h3>
