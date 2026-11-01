@@ -245,8 +245,9 @@ with no configuration.
 - Remote hosts over SSH (watch and stop): shipped in 0.6.0 with SSH
   conformance in CI; a real-host run is pending. Unix sockets and plain `tcp://`
   endpoints are forwarded; TLS Docker endpoints are not supported.
-- Remote hosts follow-ups for 0.7.0: import `ssh://` Docker contexts as
-  hosts, allow list on remote hosts.
+- ~~Remote hosts follow-ups~~: shipped in 0.8.0: `ssh://` context import
+  (0.7.0), allow list on remote hosts, plain `tcp://` endpoints. TLS Docker
+  endpoints are not supported.
 - CLI or TUI mode sharing the same core (`sandbox-watcher --tui`).
 - Upstream contribution: `sandbox status --json --all` proposed upstream on
   2026-11-01 so the watcher can drop its own session reader and stay
@@ -266,9 +267,9 @@ with no configuration.
   is denied.
 - Apple `container` has no stats API and a different CLI surface. Mitigation:
   feature-flag per adapter, hide what is not available.
-- Rootless Podman and Windows socket paths vary a lot. Mitigation: a
-  "connection" diagnostics page that shows what was probed and why it
-  failed, modelled on `sandbox doctor`.
+- Rootless Podman and Windows socket paths vary a lot. Mitigation: the
+  Diagnostics section in Settings (0.8.0) shows what was probed and why it
+  failed.
 - Three platforms multiply packaging and signing effort. Mitigation: do
   packaging early in M0 as an unsigned build so only signing is left for M7.
 

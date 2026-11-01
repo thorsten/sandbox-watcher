@@ -48,7 +48,10 @@ decisions are in `docs/adr/`. Read both before changing architecture.
   every entry, edits the parsed document, treats only a missing file as
   empty, refuses symlinks for the project config and follows them only to
   regular files for the global one, and goes through a fresh temporary file
-  under a directory lock; keep these properties when touching it.
+  under a directory lock; keep these properties when touching it. On remote
+  hosts `allowlist_remote.rs` runs the same rules as POSIX scripts over the SSH
+  master; the TOML edit stays local and the write is a SHA-256 compare-and-swap
+  under `flock`. Keep both paths in step.
 - **Our own execs must not trigger refreshes.** The session probe carries
   `PROBE_SENTINEL`, diagnostics carry `DIAGNOSTIC_COMMAND_PREFIX`; see
   `is_relevant` in `live.rs` before adding another exec.

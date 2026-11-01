@@ -5,6 +5,10 @@ Sandbox Watcher finds runtimes the way sandbox does: `DOCKER_HOST` or
 or `container` binary on `PATH`. Most problems come down to the app not
 finding a socket, or finding one it is not allowed to use.
 
+Start with Settings, Diagnostics, Run diagnostics. It lists every socket,
+variable and binary the app checked, locally and per remote host, and why each
+failed. Copy report puts the same text on the clipboard for an issue.
+
 ## No containers are shown
 
 - Only containers started by sandbox appear. They carry the

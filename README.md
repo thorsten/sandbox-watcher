@@ -67,7 +67,8 @@ quit from the tray menu. Settings (refresh interval, runtime, terminal,
 notifications, launch at login, theme) are in the window's Settings panel and
 stored as `settings.json` in the app's config directory.
 
-If no containers show up, see [Troubleshooting](docs/TROUBLESHOOTING.md).
+If no containers show up, open Settings, Diagnostics, Run diagnostics, or see
+[Troubleshooting](docs/TROUBLESHOOTING.md).
 
 ## Layout
 
@@ -146,6 +147,9 @@ Watch containers on another machine over SSH.
   endpoints are not supported.
 - Remote containers can be watched and stopped, and their allow list edited.
   Terminal, folder, editor and reveal are not available for them.
+- The Allow dialog edits the remote host's own sandbox config through SSH, with
+  the same path and symlink rules as locally, and refuses to write when the file
+  changed since the preview.
 - Windows is not supported.
 
 Conformance over SSH runs in CI on Linux against `localhost`
