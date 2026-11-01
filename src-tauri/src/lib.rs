@@ -774,17 +774,21 @@ async fn run_diagnostics(state: State<'_, App>) -> Result<DiagnosticsReport, Str
     }
     let settings = state.settings();
     // Name where the pin came from, so the report can say why runtimes were skipped.
+    // settings_store folds SANDBOX_WATCHER_RUNTIME into the override.
+    let from_env = std::env::var("SANDBOX_WATCHER_RUNTIME").ok().and_then(|v| {
+        Settings::default()
+            .with_env_fallbacks(Some(&v), None)
+            .runtime_override
+    });
     let preferred = if let Some(kind) = settings.runtime_override {
-        Some((kind, "Settings".to_string()))
-    } else if let Some(kind) = sandbox_core::live::preferred_runtime() {
-        let label = if std::env::var_os("SANDBOX_WATCHER_RUNTIME").is_some() {
+        let label = if from_env == Some(kind) {
             "SANDBOX_WATCHER_RUNTIME"
         } else {
-            "sandbox config"
+            "Settings"
         };
         Some((kind, label.to_string()))
     } else {
-        None
+        sandbox_core::live::preferred_runtime().map(|kind| (kind, "sandbox config".to_string()))
     };
     Ok(sandbox_core::diagnostics::run(version, preferred, &settings.remote_hosts).await)
 }

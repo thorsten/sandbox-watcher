@@ -5,7 +5,7 @@ use std::fmt::Write as _;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::detect::Environment;
+use crate::detect::{DetectedRuntime, Environment};
 use crate::model::RuntimeKind;
 use crate::remote::{HostState, HostStatus};
 use crate::settings::RemoteHost;
@@ -97,17 +97,9 @@ pub async fn run(
         };
         (found, local, environment)
     };
-    for candidate in &found {
-        if let Some((pinned, label)) = preferred.as_ref().filter(|(k, _)| *k != candidate.kind) {
-            local.push(Probe {
-                kind: candidate.kind,
-                candidate: format!("use {}", candidate.endpoint),
-                outcome: ProbeOutcome::Skipped {
-                    reason: format!("pinned to {pinned} by {label}"),
-                },
-            });
-            continue;
-        }
+    let (candidates, skipped) = plan_candidates(&found, preferred.as_ref());
+    local.extend(skipped);
+    for candidate in &candidates {
         let (adapter, steps) = crate::live::connect_traced(candidate).await;
         local.extend(steps);
         if let Some(adapter) = adapter {
@@ -166,6 +158,42 @@ pub async fn run(
         local,
         hosts: reports,
     }
+}
+
+/// The candidates to connect, following `live::select_candidates`: a pin
+/// applies only when its runtime was detected. The probes say what was
+/// skipped, or that the pin could not apply.
+fn plan_candidates(
+    found: &[DetectedRuntime],
+    pin: Option<&(RuntimeKind, String)>,
+) -> (Vec<DetectedRuntime>, Vec<Probe>) {
+    let selected = crate::live::select_candidates(found.to_vec(), pin.map(|(k, _)| *k));
+    let mut probes = Vec::new();
+    let Some((pinned, label)) = pin else {
+        return (selected, probes);
+    };
+    if found.iter().any(|c| c.kind == *pinned) {
+        for candidate in found.iter().filter(|c| c.kind != *pinned) {
+            probes.push(Probe {
+                kind: candidate.kind,
+                candidate: format!("use {}", candidate.endpoint),
+                outcome: ProbeOutcome::Skipped {
+                    reason: format!("pinned to {pinned} by {label}"),
+                },
+            });
+        }
+    } else {
+        probes.push(Probe {
+            kind: *pinned,
+            candidate: format!("pinned by {label}"),
+            outcome: ProbeOutcome::Skipped {
+                reason: format!(
+                    "pinned to {pinned} by {label}, but {pinned} was not found; trying every runtime"
+                ),
+            },
+        });
+    }
+    (selected, probes)
 }
 
 fn time(t: &DateTime<Utc>) -> String {
@@ -355,6 +383,63 @@ Remote host devbox (Dev VM)
   docker: not found on PATH
 ";
         assert_eq!(text, expected);
+    }
+
+    fn found(kind: RuntimeKind, endpoint: &str) -> DetectedRuntime {
+        DetectedRuntime {
+            kind,
+            endpoint: endpoint.into(),
+            source: "test".into(),
+        }
+    }
+
+    fn both() -> Vec<DetectedRuntime> {
+        vec![
+            found(RuntimeKind::Docker, "/var/run/docker.sock"),
+            found(RuntimeKind::Podman, "/run/podman/podman.sock"),
+        ]
+    }
+
+    #[test]
+    fn detected_pin_skips_the_other_runtimes() {
+        let pin = (RuntimeKind::Docker, "Settings".to_string());
+        let (candidates, probes) = plan_candidates(&both(), Some(&pin));
+        assert_eq!(candidates, vec![both()[0].clone()]);
+        assert_eq!(
+            probes,
+            vec![Probe {
+                kind: RuntimeKind::Podman,
+                candidate: "use /run/podman/podman.sock".into(),
+                outcome: ProbeOutcome::Skipped {
+                    reason: "pinned to docker by Settings".into(),
+                },
+            }]
+        );
+    }
+
+    #[test]
+    fn undetected_pin_tries_every_runtime() {
+        let pin = (RuntimeKind::AppleContainer, "sandbox config".to_string());
+        let (candidates, probes) = plan_candidates(&both(), Some(&pin));
+        assert_eq!(candidates, both());
+        assert_eq!(probes.len(), 1);
+        assert_eq!(probes[0].kind, RuntimeKind::AppleContainer);
+        let pinned = RuntimeKind::AppleContainer;
+        assert_eq!(
+            probes[0].outcome,
+            ProbeOutcome::Skipped {
+                reason: format!(
+                    "pinned to {pinned} by sandbox config, but {pinned} was not found; trying every runtime"
+                ),
+            }
+        );
+    }
+
+    #[test]
+    fn no_pin_uses_every_candidate() {
+        let (candidates, probes) = plan_candidates(&both(), None);
+        assert_eq!(candidates, both());
+        assert!(probes.is_empty());
     }
 
     #[tokio::test]
