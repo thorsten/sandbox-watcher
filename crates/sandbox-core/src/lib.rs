@@ -13,6 +13,7 @@ pub mod allowlist_remote;
 pub mod apple;
 pub mod config;
 pub mod detect;
+pub mod diagnostics;
 pub mod docker;
 pub mod docker_compat;
 pub mod editor;

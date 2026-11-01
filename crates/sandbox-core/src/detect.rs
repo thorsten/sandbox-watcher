@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
 
+use crate::diagnostics::{Probe, ProbeOutcome};
 use crate::model::RuntimeKind;
 
 /// A runtime candidate found on the machine.
@@ -70,27 +71,57 @@ impl Environment<'_> {
 
 /// Detect runtimes in sandbox's order. Each kind appears at most once.
 pub fn detect(env: &Environment<'_>) -> Vec<DetectedRuntime> {
-    let mut found = Vec::new();
-    if let Some(r) = detect_docker(env) {
-        found.push(r);
-    }
-    if let Some(r) = detect_podman(env) {
-        found.push(r);
-    }
-    if let Some(r) = detect_apple_container(env) {
-        found.push(r);
-    }
-    found
+    detect_traced(env).0
 }
 
-fn detect_docker(env: &Environment<'_>) -> Option<DetectedRuntime> {
-    if let Some(host) = &env.docker_host {
-        return Some(DetectedRuntime {
-            kind: RuntimeKind::Docker,
-            endpoint: host.clone(),
-            source: "DOCKER_HOST".into(),
-        });
+/// Detection with every candidate recorded, for the diagnostics page. A
+/// kind stops at its first hit, like `detect`.
+pub fn detect_traced(env: &Environment<'_>) -> (Vec<DetectedRuntime>, Vec<Probe>) {
+    let mut trace = Vec::new();
+    let mut found = Vec::new();
+    for detect_kind in [detect_docker, detect_podman, detect_apple_container] {
+        if let Some(r) = detect_kind(env, &mut trace) {
+            found.push(r);
+        }
     }
+    (found, trace)
+}
+
+fn hit(
+    trace: &mut Vec<Probe>,
+    kind: RuntimeKind,
+    candidate: &str,
+    endpoint: &str,
+    source: &str,
+) -> Option<DetectedRuntime> {
+    trace.push(Probe {
+        kind,
+        candidate: candidate.into(),
+        outcome: ProbeOutcome::Found {
+            endpoint: endpoint.into(),
+        },
+    });
+    Some(DetectedRuntime {
+        kind,
+        endpoint: endpoint.into(),
+        source: source.into(),
+    })
+}
+
+fn miss(trace: &mut Vec<Probe>, kind: RuntimeKind, candidate: &str) {
+    trace.push(Probe {
+        kind,
+        candidate: candidate.into(),
+        outcome: ProbeOutcome::Missing,
+    });
+}
+
+fn detect_docker(env: &Environment<'_>, trace: &mut Vec<Probe>) -> Option<DetectedRuntime> {
+    let kind = RuntimeKind::Docker;
+    if let Some(host) = &env.docker_host {
+        return hit(trace, kind, "DOCKER_HOST", host, "DOCKER_HOST");
+    }
+    miss(trace, kind, "DOCKER_HOST");
     let candidates: Vec<(PathBuf, &str)> = match env.os {
         "windows" => vec![(
             PathBuf::from(r"\\.\pipe\docker_engine"),
@@ -120,32 +151,31 @@ fn detect_docker(env: &Environment<'_>) -> Option<DetectedRuntime> {
         }
     };
     for (path, source) in candidates {
+        let shown = path.to_string_lossy().into_owned();
         if (env.path_exists)(&path) {
-            return Some(DetectedRuntime {
-                kind: RuntimeKind::Docker,
-                endpoint: path.to_string_lossy().into_owned(),
-                source: source.into(),
-            });
+            return hit(trace, kind, &shown, &shown, source);
         }
+        miss(trace, kind, &shown);
     }
     if (env.binary_on_path)("docker") {
-        return Some(DetectedRuntime {
-            kind: RuntimeKind::Docker,
-            endpoint: "docker".into(),
-            source: "docker binary on PATH, no socket found".into(),
-        });
+        return hit(
+            trace,
+            kind,
+            "docker on PATH",
+            "docker",
+            "docker binary on PATH, no socket found",
+        );
     }
+    miss(trace, kind, "docker on PATH");
     None
 }
 
-fn detect_podman(env: &Environment<'_>) -> Option<DetectedRuntime> {
+fn detect_podman(env: &Environment<'_>, trace: &mut Vec<Probe>) -> Option<DetectedRuntime> {
+    let kind = RuntimeKind::Podman;
     if let Some(host) = &env.container_host {
-        return Some(DetectedRuntime {
-            kind: RuntimeKind::Podman,
-            endpoint: host.clone(),
-            source: "CONTAINER_HOST".into(),
-        });
+        return hit(trace, kind, "CONTAINER_HOST", host, "CONTAINER_HOST");
     }
+    miss(trace, kind, "CONTAINER_HOST");
     let mut candidates: Vec<(PathBuf, &str)> = Vec::new();
     match env.os {
         "windows" => candidates.push((
@@ -168,33 +198,51 @@ fn detect_podman(env: &Environment<'_>) -> Option<DetectedRuntime> {
         }
     }
     for (path, source) in candidates {
+        let shown = path.to_string_lossy().into_owned();
         if (env.path_exists)(&path) {
-            return Some(DetectedRuntime {
-                kind: RuntimeKind::Podman,
-                endpoint: path.to_string_lossy().into_owned(),
-                source: source.into(),
-            });
+            return hit(trace, kind, &shown, &shown, source);
         }
+        miss(trace, kind, &shown);
     }
     if (env.binary_on_path)("podman") {
-        return Some(DetectedRuntime {
-            kind: RuntimeKind::Podman,
-            endpoint: "podman".into(),
-            source: "podman binary on PATH, no socket found".into(),
-        });
+        return hit(
+            trace,
+            kind,
+            "podman on PATH",
+            "podman",
+            "podman binary on PATH, no socket found",
+        );
     }
+    miss(trace, kind, "podman on PATH");
     None
 }
 
-fn detect_apple_container(env: &Environment<'_>) -> Option<DetectedRuntime> {
+fn detect_apple_container(
+    env: &Environment<'_>,
+    trace: &mut Vec<Probe>,
+) -> Option<DetectedRuntime> {
+    let kind = RuntimeKind::AppleContainer;
     if env.os != "macos" {
+        trace.push(Probe {
+            kind,
+            candidate: "container on PATH".into(),
+            outcome: ProbeOutcome::Skipped {
+                reason: format!("Apple container exists on macOS only, this is {}", env.os),
+            },
+        });
         return None;
     }
-    (env.binary_on_path)("container").then(|| DetectedRuntime {
-        kind: RuntimeKind::AppleContainer,
-        endpoint: "container".into(),
-        source: "container binary on PATH".into(),
-    })
+    if (env.binary_on_path)("container") {
+        return hit(
+            trace,
+            kind,
+            "container on PATH",
+            "container",
+            "container binary on PATH",
+        );
+    }
+    miss(trace, kind, "container on PATH");
+    None
 }
 
 #[cfg(test)]
@@ -265,5 +313,55 @@ mod tests {
             .map(|r| r.kind)
             .collect();
         assert_eq!(kinds, vec![RuntimeKind::Docker, RuntimeKind::Podman]);
+    }
+
+    #[test]
+    fn trace_lists_every_candidate_in_order() {
+        use crate::diagnostics::ProbeOutcome;
+        let exists = |p: &Path| p == Path::new("/home/me/.docker/desktop/docker.sock");
+        let on_path = |b: &str| b == "podman";
+        let (found, trace) = detect_traced(&env("linux", None, &exists, &on_path));
+        assert_eq!(found, detect(&env("linux", None, &exists, &on_path)));
+        let names: Vec<&str> = trace.iter().map(|p| p.candidate.as_str()).collect();
+        assert_eq!(
+            names,
+            [
+                "DOCKER_HOST",
+                "/var/run/docker.sock",
+                "/home/me/.docker/desktop/docker.sock",
+                "CONTAINER_HOST",
+                "/run/user/1000/podman/podman.sock",
+                "/run/podman/podman.sock",
+                "podman on PATH",
+                "container on PATH",
+            ]
+        );
+        assert!(matches!(trace[2].outcome, ProbeOutcome::Found { .. }));
+        assert!(matches!(trace[6].outcome, ProbeOutcome::Found { .. }));
+        assert!(
+            matches!(trace[7].outcome, ProbeOutcome::Skipped { .. }),
+            "{:?}",
+            trace[7]
+        );
+        assert_eq!(
+            trace
+                .iter()
+                .filter(|p| matches!(p.outcome, ProbeOutcome::Missing))
+                .count(),
+            5
+        );
+    }
+
+    #[test]
+    fn trace_stops_a_kind_at_its_first_hit() {
+        let yes = |_: &Path| true;
+        let all = |_: &str| true;
+        let (_, trace) = detect_traced(&env("macos", Some("tcp://x:1"), &yes, &all));
+        let docker: Vec<_> = trace
+            .iter()
+            .filter(|p| p.kind == RuntimeKind::Docker)
+            .collect();
+        assert_eq!(docker.len(), 1);
+        assert_eq!(docker[0].candidate, "DOCKER_HOST");
     }
 }
