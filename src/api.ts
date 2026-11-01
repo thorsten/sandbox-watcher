@@ -15,9 +15,10 @@ import type {
   HostStatus,
   NetworkReport,
   Overview,
-  ResourceSample,
   SshContext,
+  StatsSnapshot,
   TurnReport,
+  UpdateProgress,
 } from "./types";
 
 export function getOverview(): Promise<Overview> {
@@ -63,8 +64,8 @@ export function getNetworkOverview(): Promise<NetworkReport[]> {
   return invoke<NetworkReport[]>("get_network_overview");
 }
 
-export function getStats(): Promise<Record<string, ResourceSample[]>> {
-  return invoke<Record<string, ResourceSample[]>>("get_stats");
+export function getStats(): Promise<StatsSnapshot> {
+  return invoke<StatsSnapshot>("get_stats");
 }
 
 export function getActivity(containerKey: string): Promise<ContainerActivity> {
@@ -154,12 +155,8 @@ export function onUpdateAvailable(handler: (info: UpdateInfo) => void): Promise<
   return listen<UpdateInfo>("update-available", (e) => handler(e.payload));
 }
 
-export function onUpdateProgress(
-  handler: (p: { downloaded: number; total: number | null }) => void,
-): Promise<UnlistenFn> {
-  return listen<{ downloaded: number; total: number | null }>("update-progress", (e) =>
-    handler(e.payload),
-  );
+export function onUpdateProgress(handler: (p: UpdateProgress) => void): Promise<UnlistenFn> {
+  return listen<UpdateProgress>("update-progress", (e) => handler(e.payload));
 }
 
 /** Open the project (no path) or a file inside it in the configured editor. */

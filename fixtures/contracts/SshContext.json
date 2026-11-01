@@ -1,0 +1,19 @@
+{
+  "samples": [
+    {
+      "alias": "dev@staging",
+      "endpoint": "ssh://dev@staging",
+      "name": "staging",
+      "reason": null,
+      "snippet": null
+    },
+    {
+      "alias": null,
+      "endpoint": "ssh://me@build-vm:2222",
+      "name": "build-vm",
+      "reason": "the endpoint has a port; add an alias to ~/.ssh/config",
+      "snippet": "Host build-vm\n  HostName build-vm\n  User me\n  Port 2222\n"
+    }
+  ],
+  "type": "SshContext"
+}

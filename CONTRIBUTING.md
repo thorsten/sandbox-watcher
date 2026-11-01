@@ -47,11 +47,14 @@ Run these before you push; the pre-commit hook runs the web ones.
 cargo fmt --all --check
 cargo clippy -p sandbox-core --all-targets -- -D warnings
 cargo test -p sandbox-core
-pnpm lint && pnpm format:check && pnpm test && pnpm build
+pnpm lint && pnpm format:check && pnpm check:contracts && pnpm test && pnpm build
 ```
 
 New behaviour needs tests. UI tests run in Node with static rendering; see
-the "UI tests" section in `AGENTS.md`.
+the "UI tests" section in `AGENTS.md`. If you change a serialised Rust type,
+regenerate `fixtures/contracts/` as described in
+[`docs/CHECKS.md`](docs/CHECKS.md), which also covers the dependency audits,
+the pinned GitHub Actions and the performance budgets.
 
 ## Commits and pull requests
 
@@ -61,6 +64,8 @@ the "UI tests" section in `AGENTS.md`.
 - Keep a pull request to one topic. Describe what changed, why, and how you
   tested it, including which runtime and OS you ran it against.
 - CI must be green. It runs the Rust tests on macOS, Linux and Windows, the
-  conformance tests against Docker and Podman, and the web checks.
+  conformance tests against Docker and Podman, the web checks, the
+  Rust/TypeScript contract check, the performance budgets and, when a
+  manifest or lock file changes, the dependency audits.
 
 Contributions are released under the [MIT License](LICENSE).

@@ -1,0 +1,43 @@
+# Keeps the SHA-pinned GitHub Actions and the two dependency trees current.
+# Action pins are updated SHA plus version comment together; see
+# scripts/check-action-pins.mjs and docs/CHECKS.md.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: "ci"
+
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    groups:
+      cargo-minor:
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "build"
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    groups:
+      npm-minor:
+        update-types: ["minor", "patch"]
+    commit-message:
+      prefix: "build"

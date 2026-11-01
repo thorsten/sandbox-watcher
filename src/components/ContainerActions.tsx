@@ -3,11 +3,11 @@ import { getProjectPath, openInEditor, openProject, openTerminal, stopContainer 
 import { confirmStopEnabled, copyText, describeInterruption, networkLogsCommand } from "../actions";
 import { isRemote } from "../hosts";
 import { disableConfirmStop } from "../settingsActions";
-import type { SandboxContainer } from "../types";
+import type { ContainerOverview } from "../types";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 interface Props {
-  container: SandboxContainer;
+  container: ContainerOverview;
   onChanged: () => void;
 }
 

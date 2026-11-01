@@ -2,7 +2,7 @@ import { useState } from "react";
 import { stopAll } from "../api";
 import { confirmStopEnabled, describeInterruptionByHost, describeStopReport } from "../actions";
 import { disableConfirmStop } from "../settingsActions";
-import type { HostStatus, SandboxContainer } from "../types";
+import type { HostStatus, ContainerOverview } from "../types";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 export function StopAllButton({
@@ -10,7 +10,7 @@ export function StopAllButton({
   hosts = [],
   onChanged,
 }: {
-  running: SandboxContainer[];
+  running: ContainerOverview[];
   hosts?: HostStatus[];
   onChanged: () => void;
 }) {

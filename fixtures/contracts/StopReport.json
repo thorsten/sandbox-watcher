@@ -1,0 +1,37 @@
+{
+  "samples": [
+    {
+      "failures": [
+        {
+          "error": "connection refused",
+          "host": "local",
+          "runtime": "podman"
+        },
+        {
+          "error": "ssh exited with 255",
+          "host": "devbox",
+          "runtime": "docker"
+        }
+      ],
+      "results": [
+        {
+          "container_id": "0000000000000000000000000000000000000000000000000000000000000000",
+          "error": null,
+          "name": "sandbox-web-shop",
+          "ok": true
+        },
+        {
+          "container_id": "devbox/0000000000000000000000000000000000000000000000000000000000000001",
+          "error": "timed out after 10s",
+          "name": "sandbox-ml-pipeline",
+          "ok": false
+        }
+      ]
+    },
+    {
+      "failures": [],
+      "results": []
+    }
+  ],
+  "type": "StopReport"
+}

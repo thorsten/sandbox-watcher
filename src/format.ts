@@ -1,4 +1,4 @@
-import type { AgentKind, SandboxContainer, StopResult } from "./types";
+import type { AgentKind, ContainerOverview, StopResult } from "./types";
 
 /** Same buckets as `sandbox status` (container-status.ts, getContainerUptime). */
 export function formatUptime(startedAt: string | null, now: Date = new Date()): string {
@@ -15,8 +15,8 @@ export function formatUptime(startedAt: string | null, now: Date = new Date()): 
 }
 
 /** Group containers by project slug, keeping the incoming order inside a group. */
-export function groupByProject(containers: SandboxContainer[]): Map<string, SandboxContainer[]> {
-  const groups = new Map<string, SandboxContainer[]>();
+export function groupByProject(containers: ContainerOverview[]): Map<string, ContainerOverview[]> {
+  const groups = new Map<string, ContainerOverview[]>();
   for (const container of containers) {
     const group = groups.get(container.project_slug);
     if (group) group.push(container);
@@ -26,9 +26,9 @@ export function groupByProject(containers: SandboxContainer[]): Map<string, Sand
 }
 
 /** Hashes that differ inside one project on one host mean one container is stale. Returns container keys. */
-export function staleHashes(containers: SandboxContainer[]): Set<string> {
+export function staleHashes(containers: ContainerOverview[]): Set<string> {
   const stale = new Set<string>();
-  const groups = new Map<string, SandboxContainer[]>();
+  const groups = new Map<string, ContainerOverview[]>();
   for (const c of containers) {
     const id = `${c.host}\u0000${c.project_slug}`;
     const group = groups.get(id);
@@ -69,7 +69,7 @@ export interface Summary {
 }
 
 /** Totals for the dashboard header. Agents are ordered by count, then label. */
-export function summarize(containers: SandboxContainer[]): Summary {
+export function summarize(containers: ContainerOverview[]): Summary {
   const byAgent = new Map<AgentKind, number>();
   let sessions = 0;
   let running = 0;

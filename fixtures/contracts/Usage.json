@@ -1,0 +1,45 @@
+{
+  "samples": [
+    {
+      "agent": "claude-code",
+      "cache_read_tokens": 64000,
+      "cache_write_tokens": 8000,
+      "cost_source": "reported",
+      "cost_usd": 0.0425,
+      "input_tokens": 0,
+      "models": [],
+      "output_tokens": 900,
+      "reasoning_tokens": 0,
+      "turns": 3
+    },
+    {
+      "agent": "codex",
+      "cache_read_tokens": 64000,
+      "cache_write_tokens": 8000,
+      "cost_source": "estimated",
+      "cost_usd": 0.0425,
+      "input_tokens": 1200,
+      "models": [
+        "claude-sonnet-4-5-20250929"
+      ],
+      "output_tokens": 900,
+      "reasoning_tokens": 0,
+      "turns": 3
+    },
+    {
+      "agent": "open-code",
+      "cache_read_tokens": 64000,
+      "cache_write_tokens": 8000,
+      "cost_source": "unknown",
+      "cost_usd": null,
+      "input_tokens": 2400,
+      "models": [
+        "claude-sonnet-4-5-20250929"
+      ],
+      "output_tokens": 900,
+      "reasoning_tokens": 0,
+      "turns": 3
+    }
+  ],
+  "type": "Usage"
+}

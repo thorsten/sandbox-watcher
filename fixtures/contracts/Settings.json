@@ -1,0 +1,216 @@
+{
+  "samples": [
+    {
+      "blocked_burst_threshold": 5,
+      "blocked_burst_window_secs": 60,
+      "check_for_updates": true,
+      "close_to_tray": true,
+      "confirm_stop": true,
+      "editor": {
+        "kind": "system"
+      },
+      "history_enabled": true,
+      "history_retention_days": 30,
+      "launch_at_login": false,
+      "notifications": {
+        "blocked_burst": true,
+        "container_died": true,
+        "container_started": true,
+        "container_stopped": true,
+        "enabled": true,
+        "session_ended": false,
+        "session_started": true,
+        "stale_container": true
+      },
+      "poll_interval_secs": 10,
+      "prices": {
+        "claude-3-5-haiku": {
+          "cache_read": 0.08,
+          "cache_write": 1.0,
+          "input": 0.8,
+          "output": 4.0
+        },
+        "claude-fable-5": {
+          "cache_read": 1.0,
+          "cache_write": 12.5,
+          "input": 10.0,
+          "output": 50.0
+        },
+        "claude-fable-5-1": {
+          "cache_read": 0.25,
+          "cache_write": 12.5,
+          "input": 10.0,
+          "output": 50.0
+        },
+        "claude-haiku-4": {
+          "cache_read": 0.1,
+          "cache_write": 1.25,
+          "input": 1.0,
+          "output": 5.0
+        },
+        "claude-haiku-5-5": {
+          "cache_read": 0.01,
+          "cache_write": 0.125,
+          "input": 0.1,
+          "output": 0.5
+        },
+        "claude-opus-4": {
+          "cache_read": 1.5,
+          "cache_write": 18.75,
+          "input": 15.0,
+          "output": 75.0
+        },
+        "claude-opus-4-5": {
+          "cache_read": 0.5,
+          "cache_write": 6.25,
+          "input": 5.0,
+          "output": 25.0
+        },
+        "claude-opus-4-6": {
+          "cache_read": 0.5,
+          "cache_write": 6.25,
+          "input": 5.0,
+          "output": 25.0
+        },
+        "claude-opus-4-7": {
+          "cache_read": 0.5,
+          "cache_write": 6.25,
+          "input": 5.0,
+          "output": 25.0
+        },
+        "claude-opus-4-8": {
+          "cache_read": 0.5,
+          "cache_write": 6.25,
+          "input": 5.0,
+          "output": 25.0
+        },
+        "claude-opus-5": {
+          "cache_read": 0.5,
+          "cache_write": 6.25,
+          "input": 5.0,
+          "output": 25.0
+        },
+        "claude-opus-5-5": {
+          "cache_read": 0.2,
+          "cache_write": 5.0,
+          "input": 4.0,
+          "output": 20.0
+        },
+        "claude-sonnet-4": {
+          "cache_read": 0.3,
+          "cache_write": 3.75,
+          "input": 3.0,
+          "output": 15.0
+        },
+        "claude-sonnet-5": {
+          "cache_read": 0.2,
+          "cache_write": 2.5,
+          "input": 2.0,
+          "output": 10.0
+        },
+        "gpt-4.1": {
+          "cache_read": 0.5,
+          "cache_write": 0.0,
+          "input": 2.0,
+          "output": 8.0
+        },
+        "gpt-4.1-mini": {
+          "cache_read": 0.1,
+          "cache_write": 0.0,
+          "input": 0.4,
+          "output": 1.6
+        },
+        "gpt-5": {
+          "cache_read": 0.125,
+          "cache_write": 0.0,
+          "input": 1.25,
+          "output": 10.0
+        },
+        "gpt-5-mini": {
+          "cache_read": 0.025,
+          "cache_write": 0.0,
+          "input": 0.25,
+          "output": 2.0
+        },
+        "gpt-5-nano": {
+          "cache_read": 0.005,
+          "cache_write": 0.0,
+          "input": 0.05,
+          "output": 0.4
+        },
+        "o3": {
+          "cache_read": 0.5,
+          "cache_write": 0.0,
+          "input": 2.0,
+          "output": 8.0
+        },
+        "o4-mini": {
+          "cache_read": 0.275,
+          "cache_write": 0.0,
+          "input": 1.1,
+          "output": 4.4
+        }
+      },
+      "remote_hosts": [],
+      "runtime_override": null,
+      "start_minimized": false,
+      "terminal": {
+        "kind": "auto"
+      },
+      "theme": "system"
+    },
+    {
+      "blocked_burst_threshold": 10,
+      "blocked_burst_window_secs": 60,
+      "check_for_updates": false,
+      "close_to_tray": false,
+      "confirm_stop": false,
+      "editor": {
+        "command": "subl {path}",
+        "kind": "custom"
+      },
+      "history_enabled": false,
+      "history_retention_days": 30,
+      "launch_at_login": true,
+      "notifications": {
+        "blocked_burst": false,
+        "container_died": true,
+        "container_started": true,
+        "container_stopped": false,
+        "enabled": true,
+        "session_ended": false,
+        "session_started": true,
+        "stale_container": true
+      },
+      "poll_interval_secs": 5,
+      "prices": {
+        "claude-sonnet-4-5": {
+          "cache_read": 0.3,
+          "cache_write": 3.75,
+          "input": 3.0,
+          "output": 15.0
+        }
+      },
+      "remote_hosts": [
+        {
+          "alias": "devbox",
+          "display_name": "Dev box",
+          "enabled": true
+        },
+        {
+          "alias": "build-vm",
+          "display_name": null,
+          "enabled": false
+        }
+      ],
+      "runtime_override": "podman",
+      "start_minimized": true,
+      "terminal": {
+        "command": "wezterm start --cwd {dir}",
+        "kind": "custom"
+      },
+      "theme": "dark"
+    }
+  ],
+  "type": "Settings"
+}

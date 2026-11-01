@@ -6,14 +6,14 @@ import {
   type HostStatus,
   type NetworkReport,
   type RuntimeStatus,
-  type SandboxContainer,
+  type ContainerOverview,
 } from "../types";
 import { RuntimeBanner } from "./RuntimeBanner";
 
 const thisMachine = navigator.platform.toLowerCase().includes("mac") ? "This Mac" : "This machine";
 
 interface Props {
-  containers: SandboxContainer[];
+  containers: ContainerOverview[];
   runtime: RuntimeStatus;
   hosts: HostStatus[];
   /** Hosts to offer in the filter; defaults to those of `containers`. Pass the unfiltered set. */
@@ -125,7 +125,7 @@ function ContainerCard({
   now,
   onSelect,
 }: {
-  container: SandboxContainer;
+  container: ContainerOverview;
   selected: boolean;
   stale: boolean;
   blocked: number;

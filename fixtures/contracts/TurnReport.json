@@ -1,0 +1,106 @@
+{
+  "samples": [
+    {
+      "agent": "claude-code",
+      "source": "/home/sandbox/.claude/projects/-Users-dev-projects-web-shop/abc.jsonl",
+      "truncated": true,
+      "turns": [
+        {
+          "ended_at": "2026-10-30T10:00:01Z",
+          "files": [
+            {
+              "created": false,
+              "deleted": false,
+              "edits": 1,
+              "last_at": "2026-10-30T10:00:03Z",
+              "path": "src/cart.ts",
+              "reads": 2
+            },
+            {
+              "created": true,
+              "deleted": true,
+              "edits": 0,
+              "last_at": null,
+              "path": "src/cart.test.ts",
+              "reads": 0
+            }
+          ],
+          "index": 0,
+          "prompt": "Fix the cart total rounding bug",
+          "started_at": "2026-10-30T10:00:00Z",
+          "tool_calls": 4,
+          "tool_errors": 1,
+          "usage": {
+            "agent": "claude-code",
+            "cache_read_tokens": 64000,
+            "cache_write_tokens": 8000,
+            "cost_source": "reported",
+            "cost_usd": 0.0425,
+            "input_tokens": 0,
+            "models": [],
+            "output_tokens": 900,
+            "reasoning_tokens": 0,
+            "turns": 3
+          }
+        },
+        {
+          "ended_at": null,
+          "files": [],
+          "index": 1,
+          "prompt": "Fix the cart total rounding bug",
+          "started_at": null,
+          "tool_calls": 4,
+          "tool_errors": 1,
+          "usage": null
+        },
+        {
+          "ended_at": "2026-10-30T10:00:03Z",
+          "files": [
+            {
+              "created": false,
+              "deleted": false,
+              "edits": 1,
+              "last_at": "2026-10-30T10:00:03Z",
+              "path": "src/cart.ts",
+              "reads": 2
+            },
+            {
+              "created": true,
+              "deleted": true,
+              "edits": 0,
+              "last_at": null,
+              "path": "src/cart.test.ts",
+              "reads": 0
+            }
+          ],
+          "index": 2,
+          "prompt": "Fix the cart total rounding bug",
+          "started_at": "2026-10-30T10:00:02Z",
+          "tool_calls": 4,
+          "tool_errors": 1,
+          "usage": {
+            "agent": "open-code",
+            "cache_read_tokens": 64000,
+            "cache_write_tokens": 8000,
+            "cost_source": "unknown",
+            "cost_usd": null,
+            "input_tokens": 2400,
+            "models": [
+              "claude-sonnet-4-5-20250929"
+            ],
+            "output_tokens": 900,
+            "reasoning_tokens": 0,
+            "turns": 3
+          }
+        }
+      ]
+    },
+    {
+      "agent": "codex",
+      "source": "/home/sandbox/.codex/sessions/2026/10/30/rollout-1.jsonl",
+      "truncated": false,
+      "turns": []
+    }
+  ],
+  "type": "TurnReport"
+}

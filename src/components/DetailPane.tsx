@@ -6,7 +6,7 @@ import {
   type NetworkReport,
   RUNTIME_LABELS,
   type RuntimeStatus,
-  type SandboxContainer,
+  type ContainerOverview,
 } from "../types";
 import { ActivityPanel } from "./ActivityPanel";
 import { ContainerActions } from "./ContainerActions";
@@ -25,7 +25,7 @@ const TABS: { id: Tab; label: string }[] = [
 ];
 
 interface Props {
-  container: SandboxContainer;
+  container: ContainerOverview;
   runtime: RuntimeStatus;
   report: NetworkReport | undefined;
   now: Date;

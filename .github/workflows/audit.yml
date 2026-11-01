@@ -1,0 +1,74 @@
+name: Dependency audit
+
+# Advisories, licences and sources for Cargo (cargo-deny) and known
+# vulnerabilities for pnpm (pnpm audit). Runs on pull requests that touch a
+# manifest or lock file, on main, every Monday for new advisories against an
+# unchanged tree, and on demand. Exceptions live in deny.toml and in
+# package.json (pnpm.auditConfig) with a reason and a re-check date; the
+# procedure is in docs/CHECKS.md.
+
+on:
+  pull_request:
+    paths:
+      - Cargo.toml
+      - Cargo.lock
+      - "crates/**/Cargo.toml"
+      - src-tauri/Cargo.toml
+      - deny.toml
+      - package.json
+      - pnpm-lock.yaml
+      - .github/workflows/audit.yml
+  push:
+    branches: [main]
+  schedule:
+    - cron: "23 5 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audit-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cargo:
+    name: cargo-deny
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          command: check
+          arguments: --all-features
+          rust-version: stable
+
+  pnpm:
+    name: pnpm audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      # Version comes from packageManager in package.json.
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Moderate and above fails, for all dependency groups: the dev tools
+      # produce the bundle that ships. Ignored advisories come from
+      # pnpm.auditConfig.ignoreGhsas in package.json.
+      - run: pnpm audit --audit-level moderate
+
+  actions:
+    name: Action pins
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - name: Pins resolve to the commented release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/check-action-pins.mjs --verify

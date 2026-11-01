@@ -1,4 +1,7 @@
-// Mirrors crates/sandbox-core/src/model.rs and overview.rs. Rust is the source of truth.
+// Mirrors the serialised Rust types in crates/sandbox-core (model.rs, overview.rs,
+// activity.rs, history.rs, settings.rs, ...) and src-tauri. Rust is the source of
+// truth; `pnpm check:contracts` type-checks fixtures/contracts/*.json against this
+// file, see docs/CHECKS.md.
 
 export type RuntimeKind = "docker" | "podman" | "apple-container";
 
@@ -21,14 +24,9 @@ export interface Session {
   agent: AgentKind;
 }
 
+/** A container as the runtime reports it; `crates/sandbox-core/src/model.rs`. */
 export interface SandboxContainer {
   id: string;
-  /** `local` or the SSH alias of the remote host. */
-  host: string;
-  /** Identity across hosts: `<id>` locally, `<alias>/<id>` remotely. Pass this to commands. */
-  key: string;
-  /** Set while the container's host is unreachable: when it was last seen. */
-  last_seen_at: string | null;
   name: string;
   project_slug: string;
   image: string;
@@ -37,12 +35,22 @@ export interface SandboxContainer {
   started_at: string | null;
   config_hash: string | null;
   labels: Record<string, string>;
+}
+
+/** A container in the overview; `overview.rs` flattens `SandboxContainer` into it. */
+export type ContainerOverview = SandboxContainer & {
+  /** `local` or the SSH alias of the remote host. */
+  host: string;
+  /** Identity across hosts: `<id>` locally, `<alias>/<id>` remotely. Pass this to commands. */
+  key: string;
+  /** Set while the container's host is unreachable: when it was last seen. */
+  last_seen_at: string | null;
   /** Which runtime listed this container. */
   runtime: RuntimeKind;
   /** Only meaningful for running containers. */
   readiness: Readiness;
   sessions: Session[];
-}
+};
 
 export type RuntimeEventKind =
   | { kind: "created" | "started" | "stopped" | "died" | "removed" }
@@ -101,7 +109,7 @@ export type DataSource = "mock" | "live";
 export interface Overview {
   source: DataSource;
   runtime: RuntimeStatus;
-  containers: SandboxContainer[];
+  containers: ContainerOverview[];
   tested_sandbox_version: string;
   /** Configured remote hosts and their connection state. */
   hosts: HostStatus[];
@@ -158,6 +166,9 @@ export interface NetworkReport {
   failed_sources: NetworkSource[];
 }
 
+/** `get_stats`: resource history per container key, oldest sample first. */
+export type StatsSnapshot = Record<string, ResourceSample[]>;
+
 export interface ResourceSample {
   container_id: string;
   at: string;
@@ -189,6 +200,7 @@ export interface PortBinding {
 }
 
 export interface ContainerDetails {
+  container: SandboxContainer;
   readiness: Readiness;
   mounts: Mount[];
   ports: PortBinding[];
@@ -442,6 +454,12 @@ export interface ModelPrice {
   output: number;
   cache_read: number;
   cache_write: number;
+}
+
+/** Payload of the `update-progress` event while an update downloads. */
+export interface UpdateProgress {
+  downloaded: number;
+  total: number | null;
 }
 
 export interface UpdateInfo {

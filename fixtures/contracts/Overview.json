@@ -1,0 +1,604 @@
+{
+  "samples": [
+    {
+      "containers": [
+        {
+          "config_hash": "a1b2c3d4e5f6",
+          "created_at": "2026-10-30T10:00:00Z",
+          "host": "local",
+          "id": "0000000000000000000000000000000000000000000000000000000000000000",
+          "image": "sandbox-project-0:latest",
+          "key": "0000000000000000000000000000000000000000000000000000000000000000",
+          "labels": {
+            "sandbox.hash": "a1b2c3d4e5f6",
+            "sandbox.project": "project-0"
+          },
+          "last_seen_at": null,
+          "name": "sandbox-project-0",
+          "project_slug": "project-0",
+          "readiness": "starting",
+          "runtime": "docker",
+          "sessions": [],
+          "started_at": null,
+          "state": "created"
+        },
+        {
+          "config_hash": null,
+          "created_at": null,
+          "host": "local",
+          "id": "0000000000000000000000000000000000000000000000000000000000000001",
+          "image": "sandbox-project-1:latest",
+          "key": "0000000000000000000000000000000000000000000000000000000000000001",
+          "labels": {
+            "sandbox.project": "project-1"
+          },
+          "last_seen_at": null,
+          "name": "sandbox-project-1",
+          "project_slug": "project-1",
+          "readiness": "ready",
+          "runtime": "podman",
+          "sessions": [
+            {
+              "agent": "claude-code",
+              "command": "claudecode",
+              "pid": 4000
+            },
+            {
+              "agent": "codex",
+              "command": "codex",
+              "pid": 4001
+            },
+            {
+              "agent": "open-code",
+              "command": "opencode",
+              "pid": 4002
+            },
+            {
+              "agent": "pi",
+              "command": "pi",
+              "pid": 4003
+            },
+            {
+              "agent": "shell",
+              "command": "shell",
+              "pid": 4004
+            },
+            {
+              "agent": "other",
+              "command": "other",
+              "pid": 4005
+            }
+          ],
+          "started_at": null,
+          "state": "running"
+        },
+        {
+          "config_hash": "a1b2c3d4e5f6",
+          "created_at": "2026-10-30T10:00:00Z",
+          "host": "devbox",
+          "id": "0000000000000000000000000000000000000000000000000000000000000002",
+          "image": "sandbox-project-2:latest",
+          "key": "devbox/0000000000000000000000000000000000000000000000000000000000000002",
+          "labels": {
+            "sandbox.hash": "a1b2c3d4e5f6",
+            "sandbox.project": "project-2"
+          },
+          "last_seen_at": "2026-10-30T10:00:02Z",
+          "name": "sandbox-project-2",
+          "project_slug": "project-2",
+          "readiness": "unknown",
+          "runtime": "apple-container",
+          "sessions": [
+            {
+              "agent": "claude-code",
+              "command": "claudecode",
+              "pid": 4000
+            },
+            {
+              "agent": "codex",
+              "command": "codex",
+              "pid": 4001
+            },
+            {
+              "agent": "open-code",
+              "command": "opencode",
+              "pid": 4002
+            },
+            {
+              "agent": "pi",
+              "command": "pi",
+              "pid": 4003
+            },
+            {
+              "agent": "shell",
+              "command": "shell",
+              "pid": 4004
+            },
+            {
+              "agent": "other",
+              "command": "other",
+              "pid": 4005
+            }
+          ],
+          "started_at": "2026-10-30T10:00:01Z",
+          "state": "paused"
+        },
+        {
+          "config_hash": null,
+          "created_at": null,
+          "host": "local",
+          "id": "0000000000000000000000000000000000000000000000000000000000000003",
+          "image": "sandbox-project-3:latest",
+          "key": "0000000000000000000000000000000000000000000000000000000000000003",
+          "labels": {
+            "sandbox.project": "project-3"
+          },
+          "last_seen_at": null,
+          "name": "sandbox-project-3",
+          "project_slug": "project-3",
+          "readiness": "starting",
+          "runtime": "docker",
+          "sessions": [],
+          "started_at": null,
+          "state": "stopping"
+        },
+        {
+          "config_hash": "a1b2c3d4e5f6",
+          "created_at": "2026-10-30T10:00:00Z",
+          "host": "local",
+          "id": "0000000000000000000000000000000000000000000000000000000000000004",
+          "image": "sandbox-project-4:latest",
+          "key": "0000000000000000000000000000000000000000000000000000000000000004",
+          "labels": {
+            "sandbox.hash": "a1b2c3d4e5f6",
+            "sandbox.project": "project-4"
+          },
+          "last_seen_at": null,
+          "name": "sandbox-project-4",
+          "project_slug": "project-4",
+          "readiness": "ready",
+          "runtime": "podman",
+          "sessions": [],
+          "started_at": null,
+          "state": "exited"
+        },
+        {
+          "config_hash": null,
+          "created_at": null,
+          "host": "devbox",
+          "id": "0000000000000000000000000000000000000000000000000000000000000005",
+          "image": "sandbox-project-5:latest",
+          "key": "devbox/0000000000000000000000000000000000000000000000000000000000000005",
+          "labels": {
+            "sandbox.project": "project-5"
+          },
+          "last_seen_at": "2026-10-30T10:00:02Z",
+          "name": "sandbox-project-5",
+          "project_slug": "project-5",
+          "readiness": "unknown",
+          "runtime": "apple-container",
+          "sessions": [],
+          "started_at": null,
+          "state": "dead"
+        },
+        {
+          "config_hash": "a1b2c3d4e5f6",
+          "created_at": "2026-10-30T10:00:00Z",
+          "host": "local",
+          "id": "0000000000000000000000000000000000000000000000000000000000000006",
+          "image": "sandbox-project-6:latest",
+          "key": "0000000000000000000000000000000000000000000000000000000000000006",
+          "labels": {
+            "sandbox.hash": "a1b2c3d4e5f6",
+            "sandbox.project": "project-6"
+          },
+          "last_seen_at": null,
+          "name": "sandbox-project-6",
+          "project_slug": "project-6",
+          "readiness": "starting",
+          "runtime": "docker",
+          "sessions": [],
+          "started_at": null,
+          "state": "unknown"
+        }
+      ],
+      "hosts": [],
+      "runtime": {
+        "status": "not-detected"
+      },
+      "source": "mock",
+      "tested_sandbox_version": "0.73.1"
+    },
+    {
+      "containers": [],
+      "hosts": [
+        {
+          "alias": "host0",
+          "display_name": "Host 0",
+          "probes": [],
+          "runtimes": [
+            "docker",
+            "podman",
+            "apple-container"
+          ],
+          "state": "disabled"
+        },
+        {
+          "alias": "host1",
+          "display_name": "Host 1",
+          "probes": [
+            "docker version"
+          ],
+          "runtimes": [],
+          "state": "connecting"
+        },
+        {
+          "alias": "host2",
+          "display_name": "Host 2",
+          "probes": [],
+          "runtimes": [
+            "docker",
+            "podman",
+            "apple-container"
+          ],
+          "state": "connected"
+        },
+        {
+          "alias": "host3",
+          "display_name": "Host 3",
+          "probes": [
+            "docker version"
+          ],
+          "reason": "ssh: connect to host devbox port 22: No route to host",
+          "runtimes": [],
+          "since": "2026-10-30T10:00:01Z",
+          "state": "unreachable"
+        }
+      ],
+      "runtime": {
+        "candidates": [
+          {
+            "endpoint": "/var/run/docker.sock",
+            "kind": "docker",
+            "source": "DOCKER_HOST"
+          },
+          {
+            "endpoint": "/var/run/podman.sock",
+            "kind": "podman",
+            "source": "DOCKER_HOST"
+          },
+          {
+            "endpoint": "/var/run/apple-container.sock",
+            "kind": "apple-container",
+            "source": "DOCKER_HOST"
+          }
+        ],
+        "status": "detected-only"
+      },
+      "source": "live",
+      "tested_sandbox_version": "0.73.1"
+    },
+    {
+      "containers": [
+        {
+          "config_hash": "a1b2c3d4e5f6",
+          "created_at": "2026-10-30T10:00:00Z",
+          "host": "local",
+          "id": "0000000000000000000000000000000000000000000000000000000000000000",
+          "image": "sandbox-project-0:latest",
+          "key": "0000000000000000000000000000000000000000000000000000000000000000",
+          "labels": {
+            "sandbox.hash": "a1b2c3d4e5f6",
+            "sandbox.project": "project-0"
+          },
+          "last_seen_at": null,
+          "name": "sandbox-project-0",
+          "project_slug": "project-0",
+          "readiness": "starting",
+          "runtime": "docker",
+          "sessions": [],
+          "started_at": null,
+          "state": "created"
+        },
+        {
+          "config_hash": null,
+          "created_at": null,
+          "host": "local",
+          "id": "0000000000000000000000000000000000000000000000000000000000000001",
+          "image": "sandbox-project-1:latest",
+          "key": "0000000000000000000000000000000000000000000000000000000000000001",
+          "labels": {
+            "sandbox.project": "project-1"
+          },
+          "last_seen_at": null,
+          "name": "sandbox-project-1",
+          "project_slug": "project-1",
+          "readiness": "ready",
+          "runtime": "podman",
+          "sessions": [
+            {
+              "agent": "claude-code",
+              "command": "claudecode",
+              "pid": 4000
+            },
+            {
+              "agent": "codex",
+              "command": "codex",
+              "pid": 4001
+            },
+            {
+              "agent": "open-code",
+              "command": "opencode",
+              "pid": 4002
+            },
+            {
+              "agent": "pi",
+              "command": "pi",
+              "pid": 4003
+            },
+            {
+              "agent": "shell",
+              "command": "shell",
+              "pid": 4004
+            },
+            {
+              "agent": "other",
+              "command": "other",
+              "pid": 4005
+            }
+          ],
+          "started_at": null,
+          "state": "running"
+        },
+        {
+          "config_hash": "a1b2c3d4e5f6",
+          "created_at": "2026-10-30T10:00:00Z",
+          "host": "devbox",
+          "id": "0000000000000000000000000000000000000000000000000000000000000002",
+          "image": "sandbox-project-2:latest",
+          "key": "devbox/0000000000000000000000000000000000000000000000000000000000000002",
+          "labels": {
+            "sandbox.hash": "a1b2c3d4e5f6",
+            "sandbox.project": "project-2"
+          },
+          "last_seen_at": "2026-10-30T10:00:02Z",
+          "name": "sandbox-project-2",
+          "project_slug": "project-2",
+          "readiness": "unknown",
+          "runtime": "apple-container",
+          "sessions": [
+            {
+              "agent": "claude-code",
+              "command": "claudecode",
+              "pid": 4000
+            },
+            {
+              "agent": "codex",
+              "command": "codex",
+              "pid": 4001
+            },
+            {
+              "agent": "open-code",
+              "command": "opencode",
+              "pid": 4002
+            },
+            {
+              "agent": "pi",
+              "command": "pi",
+              "pid": 4003
+            },
+            {
+              "agent": "shell",
+              "command": "shell",
+              "pid": 4004
+            },
+            {
+              "agent": "other",
+              "command": "other",
+              "pid": 4005
+            }
+          ],
+          "started_at": "2026-10-30T10:00:01Z",
+          "state": "paused"
+        },
+        {
+          "config_hash": null,
+          "created_at": null,
+          "host": "local",
+          "id": "0000000000000000000000000000000000000000000000000000000000000003",
+          "image": "sandbox-project-3:latest",
+          "key": "0000000000000000000000000000000000000000000000000000000000000003",
+          "labels": {
+            "sandbox.project": "project-3"
+          },
+          "last_seen_at": null,
+          "name": "sandbox-project-3",
+          "project_slug": "project-3",
+          "readiness": "starting",
+          "runtime": "docker",
+          "sessions": [],
+          "started_at": null,
+          "state": "stopping"
+        },
+        {
+          "config_hash": "a1b2c3d4e5f6",
+          "created_at": "2026-10-30T10:00:00Z",
+          "host": "local",
+          "id": "0000000000000000000000000000000000000000000000000000000000000004",
+          "image": "sandbox-project-4:latest",
+          "key": "0000000000000000000000000000000000000000000000000000000000000004",
+          "labels": {
+            "sandbox.hash": "a1b2c3d4e5f6",
+            "sandbox.project": "project-4"
+          },
+          "last_seen_at": null,
+          "name": "sandbox-project-4",
+          "project_slug": "project-4",
+          "readiness": "ready",
+          "runtime": "podman",
+          "sessions": [],
+          "started_at": null,
+          "state": "exited"
+        },
+        {
+          "config_hash": null,
+          "created_at": null,
+          "host": "devbox",
+          "id": "0000000000000000000000000000000000000000000000000000000000000005",
+          "image": "sandbox-project-5:latest",
+          "key": "devbox/0000000000000000000000000000000000000000000000000000000000000005",
+          "labels": {
+            "sandbox.project": "project-5"
+          },
+          "last_seen_at": "2026-10-30T10:00:02Z",
+          "name": "sandbox-project-5",
+          "project_slug": "project-5",
+          "readiness": "unknown",
+          "runtime": "apple-container",
+          "sessions": [],
+          "started_at": null,
+          "state": "dead"
+        },
+        {
+          "config_hash": "a1b2c3d4e5f6",
+          "created_at": "2026-10-30T10:00:00Z",
+          "host": "local",
+          "id": "0000000000000000000000000000000000000000000000000000000000000006",
+          "image": "sandbox-project-6:latest",
+          "key": "0000000000000000000000000000000000000000000000000000000000000006",
+          "labels": {
+            "sandbox.hash": "a1b2c3d4e5f6",
+            "sandbox.project": "project-6"
+          },
+          "last_seen_at": null,
+          "name": "sandbox-project-6",
+          "project_slug": "project-6",
+          "readiness": "starting",
+          "runtime": "docker",
+          "sessions": [],
+          "started_at": null,
+          "state": "unknown"
+        }
+      ],
+      "hosts": [],
+      "runtime": {
+        "failures": [
+          {
+            "endpoint": "/run/podman/podman.sock",
+            "host": "local",
+            "kind": "podman",
+            "reason": "connection refused"
+          },
+          {
+            "endpoint": "ssh://devbox",
+            "host": "devbox",
+            "kind": "docker",
+            "reason": "timed out"
+          }
+        ],
+        "runtimes": [
+          {
+            "capabilities": {
+              "events": true,
+              "exec": true,
+              "logs": true,
+              "stats": true,
+              "stop": true
+            },
+            "endpoint": "/var/run/docker.sock",
+            "host": "local",
+            "kind": "docker",
+            "version": "27.3.1"
+          },
+          {
+            "capabilities": {
+              "events": false,
+              "exec": false,
+              "logs": false,
+              "stats": false,
+              "stop": false
+            },
+            "endpoint": "/usr/local/bin/container",
+            "host": "devbox",
+            "kind": "apple-container",
+            "version": null
+          }
+        ],
+        "status": "connected"
+      },
+      "source": "mock",
+      "tested_sandbox_version": "0.73.1"
+    },
+    {
+      "containers": [],
+      "hosts": [
+        {
+          "alias": "host0",
+          "display_name": "Host 0",
+          "probes": [],
+          "runtimes": [
+            "docker",
+            "podman",
+            "apple-container"
+          ],
+          "state": "disabled"
+        },
+        {
+          "alias": "host1",
+          "display_name": "Host 1",
+          "probes": [
+            "docker version"
+          ],
+          "runtimes": [],
+          "state": "connecting"
+        },
+        {
+          "alias": "host2",
+          "display_name": "Host 2",
+          "probes": [],
+          "runtimes": [
+            "docker",
+            "podman",
+            "apple-container"
+          ],
+          "state": "connected"
+        },
+        {
+          "alias": "host3",
+          "display_name": "Host 3",
+          "probes": [
+            "docker version"
+          ],
+          "reason": "ssh: connect to host devbox port 22: No route to host",
+          "runtimes": [],
+          "since": "2026-10-30T10:00:01Z",
+          "state": "unreachable"
+        }
+      ],
+      "runtime": {
+        "candidates": [
+          {
+            "endpoint": "/var/run/docker.sock",
+            "kind": "docker",
+            "source": "DOCKER_HOST"
+          },
+          {
+            "endpoint": "/var/run/podman.sock",
+            "kind": "podman",
+            "source": "DOCKER_HOST"
+          },
+          {
+            "endpoint": "/var/run/apple-container.sock",
+            "kind": "apple-container",
+            "source": "DOCKER_HOST"
+          }
+        ],
+        "reason": "permission denied",
+        "status": "unavailable"
+      },
+      "source": "live",
+      "tested_sandbox_version": "0.73.1"
+    }
+  ],
+  "type": "Overview"
+}

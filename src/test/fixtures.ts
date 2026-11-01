@@ -5,7 +5,7 @@ import type {
   NetworkEntry,
   NetworkReport,
   RuntimeStatus,
-  SandboxContainer,
+  ContainerOverview,
   Session,
   Settings,
   Turn,
@@ -20,8 +20,8 @@ export function session(partial: Partial<Session> = {}): Session {
 }
 
 export function container(
-  partial: Partial<SandboxContainer> & { id?: string } = {},
-): SandboxContainer {
+  partial: Partial<ContainerOverview> & { id?: string } = {},
+): ContainerOverview {
   const id = partial.id ?? "c1";
   return {
     id,

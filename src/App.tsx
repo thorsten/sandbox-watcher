@@ -26,9 +26,9 @@ import { AGENT_LABELS, summarize } from "./format";
 import { filterByHost, hostsInUse, pickSelected } from "./hosts";
 import { recentBlockedCount } from "./network";
 import { applyTheme } from "./theme";
-import type { NetworkReport, Overview, SandboxContainer, Settings, UpdateInfo } from "./types";
+import type { NetworkReport, Overview, ContainerOverview, Settings, UpdateInfo } from "./types";
 
-const EMPTY: SandboxContainer[] = [];
+const EMPTY: ContainerOverview[] = [];
 
 type LoadState =
   | { phase: "loading" }

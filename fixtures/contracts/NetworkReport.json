@@ -1,0 +1,46 @@
+{
+  "samples": [
+    {
+      "collected_at": "2026-10-30T10:00:20Z",
+      "container_id": "0000000000000000000000000000000000000000000000000000000000000000",
+      "entries": [
+        {
+          "container_id": "0000000000000000000000000000000000000000000000000000000000000000",
+          "count": 12,
+          "destination": "api.anthropic.com",
+          "dst_ip": "93.184.216.34",
+          "last_seen": "2026-10-30T10:00:19Z",
+          "port": 443,
+          "status": "allowed"
+        },
+        {
+          "container_id": "0000000000000000000000000000000000000000000000000000000000000000",
+          "count": 12,
+          "destination": "api.anthropic.com",
+          "dst_ip": null,
+          "last_seen": null,
+          "port": 0,
+          "status": "blocked"
+        }
+      ],
+      "failed_sources": [],
+      "unparsed_sources": [
+        "firewall",
+        "dns",
+        "proxy-access"
+      ]
+    },
+    {
+      "collected_at": "2026-10-30T10:00:21Z",
+      "container_id": "0000000000000000000000000000000000000000000000000000000000000001",
+      "entries": [],
+      "failed_sources": [
+        "firewall",
+        "dns",
+        "proxy-access"
+      ],
+      "unparsed_sources": []
+    }
+  ],
+  "type": "NetworkReport"
+}

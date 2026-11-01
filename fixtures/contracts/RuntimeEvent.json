@@ -1,0 +1,49 @@
+{
+  "samples": [
+    {
+      "at": "2026-10-30T10:00:00Z",
+      "container_id": "0000000000000000000000000000000000000000000000000000000000000000",
+      "container_name": "sandbox-project-0",
+      "kind": "created"
+    },
+    {
+      "at": "2026-10-30T10:00:01Z",
+      "container_id": "0000000000000000000000000000000000000000000000000000000000000001",
+      "container_name": null,
+      "kind": "started"
+    },
+    {
+      "at": "2026-10-30T10:00:02Z",
+      "container_id": "0000000000000000000000000000000000000000000000000000000000000002",
+      "container_name": "sandbox-project-2",
+      "kind": "stopped"
+    },
+    {
+      "at": "2026-10-30T10:00:03Z",
+      "container_id": "0000000000000000000000000000000000000000000000000000000000000003",
+      "container_name": null,
+      "kind": "died"
+    },
+    {
+      "at": "2026-10-30T10:00:04Z",
+      "container_id": "0000000000000000000000000000000000000000000000000000000000000004",
+      "container_name": "sandbox-project-4",
+      "detail": "sh -c ls",
+      "kind": "exec-created"
+    },
+    {
+      "at": "2026-10-30T10:00:05Z",
+      "container_id": "0000000000000000000000000000000000000000000000000000000000000005",
+      "container_name": null,
+      "kind": "removed"
+    },
+    {
+      "at": "2026-10-30T10:00:06Z",
+      "container_id": "0000000000000000000000000000000000000000000000000000000000000006",
+      "container_name": "sandbox-project-6",
+      "detail": "rename",
+      "kind": "other"
+    }
+  ],
+  "type": "RuntimeEvent"
+}

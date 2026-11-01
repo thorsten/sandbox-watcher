@@ -1,0 +1,24 @@
+{
+  "samples": [
+    {
+      "kind": "system"
+    },
+    {
+      "kind": "vs-code"
+    },
+    {
+      "kind": "cursor"
+    },
+    {
+      "kind": "zed"
+    },
+    {
+      "kind": "jet-brains"
+    },
+    {
+      "command": "subl {path}",
+      "kind": "custom"
+    }
+  ],
+  "type": "EditorChoice"
+}

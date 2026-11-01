@@ -1,0 +1,1056 @@
+{
+  "samples": [
+    {
+      "agents": [
+        {
+          "agent": "claude-code",
+          "attribution": {
+            "evidence": "open-file",
+            "kind": "session",
+            "pid": 4242
+          },
+          "coverage": {
+            "complete": true,
+            "pending_bytes": 0,
+            "restarts": 0,
+            "skipped_bytes": 0
+          },
+          "events": [
+            {
+              "at": "2026-10-30T10:00:00Z",
+              "detail": "/Users/dev/projects/web-shop/src/cart.ts",
+              "kind": "user-message",
+              "label": "Read",
+              "tool_use_id": null
+            },
+            {
+              "at": null,
+              "detail": "/Users/dev/projects/web-shop/src/cart.ts",
+              "kind": "assistant-text",
+              "label": "Read",
+              "tool_use_id": "toolu_01"
+            },
+            {
+              "at": "2026-10-30T10:00:02Z",
+              "detail": "/Users/dev/projects/web-shop/src/cart.ts",
+              "kind": "tool-use",
+              "label": "Read",
+              "tool_use_id": null
+            },
+            {
+              "at": null,
+              "detail": "/Users/dev/projects/web-shop/src/cart.ts",
+              "kind": "tool-result",
+              "label": "Read",
+              "tool_use_id": "toolu_03"
+            },
+            {
+              "at": "2026-10-30T10:00:04Z",
+              "detail": "/Users/dev/projects/web-shop/src/cart.ts",
+              "kind": "tool-error",
+              "label": "Read",
+              "tool_use_id": null
+            }
+          ],
+          "files": [
+            {
+              "created": false,
+              "deleted": false,
+              "edits": 1,
+              "last_at": "2026-10-30T10:00:03Z",
+              "path": "src/cart.ts",
+              "reads": 2
+            },
+            {
+              "created": true,
+              "deleted": true,
+              "edits": 0,
+              "last_at": null,
+              "path": "src/cart.test.ts",
+              "reads": 0
+            }
+          ],
+          "in_flight": {
+            "at": "2026-10-30T10:00:02Z",
+            "detail": "/Users/dev/projects/web-shop/src/cart.ts",
+            "kind": "tool-use",
+            "label": "Read",
+            "tool_use_id": null
+          },
+          "session_usage": null,
+          "source": "/home/sandbox/.claude/projects/-Users-dev-projects-web-shop/abc.jsonl",
+          "updated_at": "2026-10-30T10:00:05Z",
+          "usage": {
+            "agent": "claude-code",
+            "cache_read_tokens": 64000,
+            "cache_write_tokens": 8000,
+            "cost_source": "reported",
+            "cost_usd": 0.0425,
+            "input_tokens": 0,
+            "models": [],
+            "output_tokens": 900,
+            "reasoning_tokens": 0,
+            "turns": 3
+          }
+        },
+        {
+          "agent": "codex",
+          "attribution": {
+            "evidence": "only-session",
+            "kind": "session",
+            "pid": 4242
+          },
+          "coverage": {
+            "complete": false,
+            "pending_bytes": 4194304,
+            "restarts": 1,
+            "skipped_bytes": 12
+          },
+          "events": [],
+          "files": [],
+          "in_flight": null,
+          "session_usage": {
+            "agent": "codex",
+            "cache_read_tokens": 64000,
+            "cache_write_tokens": 8000,
+            "cost_source": "estimated",
+            "cost_usd": 0.0425,
+            "input_tokens": 1200,
+            "models": [
+              "claude-sonnet-4-5-20250929"
+            ],
+            "output_tokens": 900,
+            "reasoning_tokens": 0,
+            "turns": 3
+          },
+          "source": "/home/sandbox/.claude/projects/-Users-dev-projects-web-shop/abc.jsonl",
+          "updated_at": null,
+          "usage": null
+        },
+        {
+          "agent": "open-code",
+          "attribution": {
+            "evidence": "start-time",
+            "kind": "session",
+            "pid": 4242
+          },
+          "coverage": {
+            "complete": true,
+            "pending_bytes": 0,
+            "restarts": 0,
+            "skipped_bytes": 0
+          },
+          "events": [
+            {
+              "at": "2026-10-30T10:00:00Z",
+              "detail": "/Users/dev/projects/web-shop/src/cart.ts",
+              "kind": "user-message",
+              "label": "Read",
+              "tool_use_id": null
+            },
+            {
+              "at": null,
+              "detail": "/Users/dev/projects/web-shop/src/cart.ts",
+              "kind": "assistant-text",
+              "label": "Read",
+              "tool_use_id": "toolu_01"
+            },
+            {
+              "at": "2026-10-30T10:00:02Z",
+              "detail": "/Users/dev/projects/web-shop/src/cart.ts",
+              "kind": "tool-use",
+              "label": "Read",
+              "tool_use_id": null
+            },
+            {
+              "at": null,
+              "detail": "/Users/dev/projects/web-shop/src/cart.ts",
+              "kind": "tool-result",
+              "label": "Read",
+              "tool_use_id": "toolu_03"
+            },
+            {
+              "at": "2026-10-30T10:00:04Z",
+              "detail": "/Users/dev/projects/web-shop/src/cart.ts",
+              "kind": "tool-error",
+              "label": "Read",
+              "tool_use_id": null
+            }
+          ],
+          "files": [
+            {
+              "created": false,
+              "deleted": false,
+              "edits": 1,
+              "last_at": "2026-10-30T10:00:03Z",
+              "path": "src/cart.ts",
+              "reads": 2
+            },
+            {
+              "created": true,
+              "deleted": true,
+              "edits": 0,
+              "last_at": null,
+              "path": "src/cart.test.ts",
+              "reads": 0
+            }
+          ],
+          "in_flight": {
+            "at": "2026-10-30T10:00:02Z",
+            "detail": "/Users/dev/projects/web-shop/src/cart.ts",
+            "kind": "tool-use",
+            "label": "Read",
+            "tool_use_id": null
+          },
+          "session_usage": null,
+          "source": "/home/sandbox/.claude/projects/-Users-dev-projects-web-shop/abc.jsonl",
+          "updated_at": "2026-10-30T10:00:05Z",
+          "usage": {
+            "agent": "open-code",
+            "cache_read_tokens": 64000,
+            "cache_write_tokens": 8000,
+            "cost_source": "unknown",
+            "cost_usd": null,
+            "input_tokens": 2400,
+            "models": [
+              "claude-sonnet-4-5-20250929"
+            ],
+            "output_tokens": 900,
+            "reasoning_tokens": 0,
+            "turns": 3
+          }
+        },
+        {
+          "agent": "pi",
+          "attribution": {
+            "candidates": [
+              4242,
+              4300
+            ],
+            "kind": "agent"
+          },
+          "coverage": {
+            "complete": false,
+            "pending_bytes": 4194304,
+            "restarts": 1,
+            "skipped_bytes": 12
+          },
+          "events": [],
+          "files": [],
+          "in_flight": null,
+          "session_usage": {
+            "agent": "claude-code",
+            "cache_read_tokens": 64000,
+            "cache_write_tokens": 8000,
+            "cost_source": "reported",
+            "cost_usd": 0.0425,
+            "input_tokens": 0,
+            "models": [],
+            "output_tokens": 900,
+            "reasoning_tokens": 0,
+            "turns": 3
+          },
+          "source": "/home/sandbox/.claude/projects/-Users-dev-projects-web-shop/abc.jsonl",
+          "updated_at": null,
+          "usage": null
+        }
+      ],
+      "collected_at": "2026-10-30T10:00:10Z",
+      "container_id": "0000000000000000000000000000000000000000000000000000000000000000",
+      "errors": [],
+      "project_dir": "/Users/dev/projects/web-shop",
+      "sessions": [
+        {
+          "running_now": [
+            {
+              "command": "node node_modules/.bin/vitest run",
+              "depth": 1,
+              "elapsed_secs": 10,
+              "pid": 4251,
+              "ppid": 4242,
+              "rss_bytes": 40960000
+            }
+          ],
+          "session": {
+            "agent": "claude-code",
+            "command": "claudecode",
+            "pid": 4000
+          },
+          "started_at": "2026-10-30T10:00:00Z",
+          "tree": [
+            {
+              "command": "claude --dangerously-skip-permissions",
+              "depth": 0,
+              "elapsed_secs": 4000,
+              "pid": 4242,
+              "ppid": 1,
+              "rss_bytes": 61440000
+            },
+            {
+              "command": "node node_modules/.bin/vitest run",
+              "depth": 1,
+              "elapsed_secs": 10,
+              "pid": 4251,
+              "ppid": 4242,
+              "rss_bytes": 40960000
+            }
+          ]
+        },
+        {
+          "running_now": [
+            {
+              "command": "node node_modules/.bin/vitest run",
+              "depth": 1,
+              "elapsed_secs": 10,
+              "pid": 4251,
+              "ppid": 4242,
+              "rss_bytes": 40960000
+            }
+          ],
+          "session": {
+            "agent": "codex",
+            "command": "codex",
+            "pid": 4001
+          },
+          "started_at": null,
+          "tree": [
+            {
+              "command": "claude --dangerously-skip-permissions",
+              "depth": 0,
+              "elapsed_secs": 4000,
+              "pid": 4242,
+              "ppid": 1,
+              "rss_bytes": 61440000
+            },
+            {
+              "command": "node node_modules/.bin/vitest run",
+              "depth": 1,
+              "elapsed_secs": 10,
+              "pid": 4251,
+              "ppid": 4242,
+              "rss_bytes": 40960000
+            }
+          ]
+        },
+        {
+          "running_now": [
+            {
+              "command": "node node_modules/.bin/vitest run",
+              "depth": 1,
+              "elapsed_secs": 10,
+              "pid": 4251,
+              "ppid": 4242,
+              "rss_bytes": 40960000
+            }
+          ],
+          "session": {
+            "agent": "open-code",
+            "command": "opencode",
+            "pid": 4002
+          },
+          "started_at": "2026-10-30T10:00:02Z",
+          "tree": [
+            {
+              "command": "claude --dangerously-skip-permissions",
+              "depth": 0,
+              "elapsed_secs": 4000,
+              "pid": 4242,
+              "ppid": 1,
+              "rss_bytes": 61440000
+            },
+            {
+              "command": "node node_modules/.bin/vitest run",
+              "depth": 1,
+              "elapsed_secs": 10,
+              "pid": 4251,
+              "ppid": 4242,
+              "rss_bytes": 40960000
+            }
+          ]
+        },
+        {
+          "running_now": [
+            {
+              "command": "node node_modules/.bin/vitest run",
+              "depth": 1,
+              "elapsed_secs": 10,
+              "pid": 4251,
+              "ppid": 4242,
+              "rss_bytes": 40960000
+            }
+          ],
+          "session": {
+            "agent": "pi",
+            "command": "pi",
+            "pid": 4003
+          },
+          "started_at": null,
+          "tree": [
+            {
+              "command": "claude --dangerously-skip-permissions",
+              "depth": 0,
+              "elapsed_secs": 4000,
+              "pid": 4242,
+              "ppid": 1,
+              "rss_bytes": 61440000
+            },
+            {
+              "command": "node node_modules/.bin/vitest run",
+              "depth": 1,
+              "elapsed_secs": 10,
+              "pid": 4251,
+              "ppid": 4242,
+              "rss_bytes": 40960000
+            }
+          ]
+        },
+        {
+          "running_now": [
+            {
+              "command": "node node_modules/.bin/vitest run",
+              "depth": 1,
+              "elapsed_secs": 10,
+              "pid": 4251,
+              "ppid": 4242,
+              "rss_bytes": 40960000
+            }
+          ],
+          "session": {
+            "agent": "shell",
+            "command": "shell",
+            "pid": 4004
+          },
+          "started_at": "2026-10-30T10:00:04Z",
+          "tree": [
+            {
+              "command": "claude --dangerously-skip-permissions",
+              "depth": 0,
+              "elapsed_secs": 4000,
+              "pid": 4242,
+              "ppid": 1,
+              "rss_bytes": 61440000
+            },
+            {
+              "command": "node node_modules/.bin/vitest run",
+              "depth": 1,
+              "elapsed_secs": 10,
+              "pid": 4251,
+              "ppid": 4242,
+              "rss_bytes": 40960000
+            }
+          ]
+        },
+        {
+          "running_now": [
+            {
+              "command": "node node_modules/.bin/vitest run",
+              "depth": 1,
+              "elapsed_secs": 10,
+              "pid": 4251,
+              "ppid": 4242,
+              "rss_bytes": 40960000
+            }
+          ],
+          "session": {
+            "agent": "other",
+            "command": "other",
+            "pid": 4005
+          },
+          "started_at": null,
+          "tree": [
+            {
+              "command": "claude --dangerously-skip-permissions",
+              "depth": 0,
+              "elapsed_secs": 4000,
+              "pid": 4242,
+              "ppid": 1,
+              "rss_bytes": 61440000
+            },
+            {
+              "command": "node node_modules/.bin/vitest run",
+              "depth": 1,
+              "elapsed_secs": 10,
+              "pid": 4251,
+              "ppid": 4242,
+              "rss_bytes": 40960000
+            }
+          ]
+        }
+      ],
+      "working_tree": {
+        "branch": "feature/cart-totals",
+        "changes": [
+          {
+            "path": "src/cart.ts",
+            "status": " M"
+          },
+          {
+            "path": "src/cart.test.ts",
+            "status": "??"
+          }
+        ],
+        "is_repo": true,
+        "shortstat": " 1 file changed, 14 insertions(+), 3 deletions(-)",
+        "truncated": true
+      }
+    },
+    {
+      "agents": [],
+      "collected_at": "2026-10-30T10:00:10Z",
+      "container_id": "0000000000000000000000000000000000000000000000000000000000000001",
+      "errors": [
+        "process listing exited with 1"
+      ],
+      "project_dir": null,
+      "sessions": [
+        {
+          "running_now": [],
+          "session": {
+            "agent": "claude-code",
+            "command": "claudecode",
+            "pid": 4000
+          },
+          "started_at": "2026-10-30T10:00:00Z",
+          "tree": []
+        },
+        {
+          "running_now": [],
+          "session": {
+            "agent": "codex",
+            "command": "codex",
+            "pid": 4001
+          },
+          "started_at": null,
+          "tree": []
+        },
+        {
+          "running_now": [],
+          "session": {
+            "agent": "open-code",
+            "command": "opencode",
+            "pid": 4002
+          },
+          "started_at": "2026-10-30T10:00:02Z",
+          "tree": []
+        },
+        {
+          "running_now": [],
+          "session": {
+            "agent": "pi",
+            "command": "pi",
+            "pid": 4003
+          },
+          "started_at": null,
+          "tree": []
+        },
+        {
+          "running_now": [],
+          "session": {
+            "agent": "shell",
+            "command": "shell",
+            "pid": 4004
+          },
+          "started_at": "2026-10-30T10:00:04Z",
+          "tree": []
+        },
+        {
+          "running_now": [],
+          "session": {
+            "agent": "other",
+            "command": "other",
+            "pid": 4005
+          },
+          "started_at": null,
+          "tree": []
+        }
+      ],
+      "working_tree": {
+        "branch": null,
+        "changes": [],
+        "is_repo": true,
+        "shortstat": null,
+        "truncated": false
+      }
+    },
+    {
+      "agents": [
+        {
+          "agent": "claude-code",
+          "attribution": {
+            "evidence": "open-file",
+            "kind": "session",
+            "pid": 4242
+          },
+          "coverage": {
+            "complete": true,
+            "pending_bytes": 0,
+            "restarts": 0,
+            "skipped_bytes": 0
+          },
+          "events": [
+            {
+              "at": "2026-10-30T10:00:00Z",
+              "detail": "/Users/dev/projects/web-shop/src/cart.ts",
+              "kind": "user-message",
+              "label": "Read",
+              "tool_use_id": null
+            },
+            {
+              "at": null,
+              "detail": "/Users/dev/projects/web-shop/src/cart.ts",
+              "kind": "assistant-text",
+              "label": "Read",
+              "tool_use_id": "toolu_01"
+            },
+            {
+              "at": "2026-10-30T10:00:02Z",
+              "detail": "/Users/dev/projects/web-shop/src/cart.ts",
+              "kind": "tool-use",
+              "label": "Read",
+              "tool_use_id": null
+            },
+            {
+              "at": null,
+              "detail": "/Users/dev/projects/web-shop/src/cart.ts",
+              "kind": "tool-result",
+              "label": "Read",
+              "tool_use_id": "toolu_03"
+            },
+            {
+              "at": "2026-10-30T10:00:04Z",
+              "detail": "/Users/dev/projects/web-shop/src/cart.ts",
+              "kind": "tool-error",
+              "label": "Read",
+              "tool_use_id": null
+            }
+          ],
+          "files": [
+            {
+              "created": false,
+              "deleted": false,
+              "edits": 1,
+              "last_at": "2026-10-30T10:00:03Z",
+              "path": "src/cart.ts",
+              "reads": 2
+            },
+            {
+              "created": true,
+              "deleted": true,
+              "edits": 0,
+              "last_at": null,
+              "path": "src/cart.test.ts",
+              "reads": 0
+            }
+          ],
+          "in_flight": {
+            "at": "2026-10-30T10:00:02Z",
+            "detail": "/Users/dev/projects/web-shop/src/cart.ts",
+            "kind": "tool-use",
+            "label": "Read",
+            "tool_use_id": null
+          },
+          "session_usage": null,
+          "source": "/home/sandbox/.claude/projects/-Users-dev-projects-web-shop/abc.jsonl",
+          "updated_at": "2026-10-30T10:00:05Z",
+          "usage": {
+            "agent": "claude-code",
+            "cache_read_tokens": 64000,
+            "cache_write_tokens": 8000,
+            "cost_source": "reported",
+            "cost_usd": 0.0425,
+            "input_tokens": 0,
+            "models": [],
+            "output_tokens": 900,
+            "reasoning_tokens": 0,
+            "turns": 3
+          }
+        },
+        {
+          "agent": "codex",
+          "attribution": {
+            "evidence": "only-session",
+            "kind": "session",
+            "pid": 4242
+          },
+          "coverage": {
+            "complete": false,
+            "pending_bytes": 4194304,
+            "restarts": 1,
+            "skipped_bytes": 12
+          },
+          "events": [],
+          "files": [],
+          "in_flight": null,
+          "session_usage": {
+            "agent": "codex",
+            "cache_read_tokens": 64000,
+            "cache_write_tokens": 8000,
+            "cost_source": "estimated",
+            "cost_usd": 0.0425,
+            "input_tokens": 1200,
+            "models": [
+              "claude-sonnet-4-5-20250929"
+            ],
+            "output_tokens": 900,
+            "reasoning_tokens": 0,
+            "turns": 3
+          },
+          "source": "/home/sandbox/.claude/projects/-Users-dev-projects-web-shop/abc.jsonl",
+          "updated_at": null,
+          "usage": null
+        },
+        {
+          "agent": "open-code",
+          "attribution": {
+            "evidence": "start-time",
+            "kind": "session",
+            "pid": 4242
+          },
+          "coverage": {
+            "complete": true,
+            "pending_bytes": 0,
+            "restarts": 0,
+            "skipped_bytes": 0
+          },
+          "events": [
+            {
+              "at": "2026-10-30T10:00:00Z",
+              "detail": "/Users/dev/projects/web-shop/src/cart.ts",
+              "kind": "user-message",
+              "label": "Read",
+              "tool_use_id": null
+            },
+            {
+              "at": null,
+              "detail": "/Users/dev/projects/web-shop/src/cart.ts",
+              "kind": "assistant-text",
+              "label": "Read",
+              "tool_use_id": "toolu_01"
+            },
+            {
+              "at": "2026-10-30T10:00:02Z",
+              "detail": "/Users/dev/projects/web-shop/src/cart.ts",
+              "kind": "tool-use",
+              "label": "Read",
+              "tool_use_id": null
+            },
+            {
+              "at": null,
+              "detail": "/Users/dev/projects/web-shop/src/cart.ts",
+              "kind": "tool-result",
+              "label": "Read",
+              "tool_use_id": "toolu_03"
+            },
+            {
+              "at": "2026-10-30T10:00:04Z",
+              "detail": "/Users/dev/projects/web-shop/src/cart.ts",
+              "kind": "tool-error",
+              "label": "Read",
+              "tool_use_id": null
+            }
+          ],
+          "files": [
+            {
+              "created": false,
+              "deleted": false,
+              "edits": 1,
+              "last_at": "2026-10-30T10:00:03Z",
+              "path": "src/cart.ts",
+              "reads": 2
+            },
+            {
+              "created": true,
+              "deleted": true,
+              "edits": 0,
+              "last_at": null,
+              "path": "src/cart.test.ts",
+              "reads": 0
+            }
+          ],
+          "in_flight": {
+            "at": "2026-10-30T10:00:02Z",
+            "detail": "/Users/dev/projects/web-shop/src/cart.ts",
+            "kind": "tool-use",
+            "label": "Read",
+            "tool_use_id": null
+          },
+          "session_usage": null,
+          "source": "/home/sandbox/.claude/projects/-Users-dev-projects-web-shop/abc.jsonl",
+          "updated_at": "2026-10-30T10:00:05Z",
+          "usage": {
+            "agent": "open-code",
+            "cache_read_tokens": 64000,
+            "cache_write_tokens": 8000,
+            "cost_source": "unknown",
+            "cost_usd": null,
+            "input_tokens": 2400,
+            "models": [
+              "claude-sonnet-4-5-20250929"
+            ],
+            "output_tokens": 900,
+            "reasoning_tokens": 0,
+            "turns": 3
+          }
+        },
+        {
+          "agent": "pi",
+          "attribution": {
+            "candidates": [
+              4242,
+              4300
+            ],
+            "kind": "agent"
+          },
+          "coverage": {
+            "complete": false,
+            "pending_bytes": 4194304,
+            "restarts": 1,
+            "skipped_bytes": 12
+          },
+          "events": [],
+          "files": [],
+          "in_flight": null,
+          "session_usage": {
+            "agent": "claude-code",
+            "cache_read_tokens": 64000,
+            "cache_write_tokens": 8000,
+            "cost_source": "reported",
+            "cost_usd": 0.0425,
+            "input_tokens": 0,
+            "models": [],
+            "output_tokens": 900,
+            "reasoning_tokens": 0,
+            "turns": 3
+          },
+          "source": "/home/sandbox/.claude/projects/-Users-dev-projects-web-shop/abc.jsonl",
+          "updated_at": null,
+          "usage": null
+        }
+      ],
+      "collected_at": "2026-10-30T10:00:10Z",
+      "container_id": "0000000000000000000000000000000000000000000000000000000000000002",
+      "errors": [],
+      "project_dir": "/Users/dev/projects/web-shop",
+      "sessions": [
+        {
+          "running_now": [
+            {
+              "command": "node node_modules/.bin/vitest run",
+              "depth": 1,
+              "elapsed_secs": 10,
+              "pid": 4251,
+              "ppid": 4242,
+              "rss_bytes": 40960000
+            }
+          ],
+          "session": {
+            "agent": "claude-code",
+            "command": "claudecode",
+            "pid": 4000
+          },
+          "started_at": "2026-10-30T10:00:00Z",
+          "tree": [
+            {
+              "command": "claude --dangerously-skip-permissions",
+              "depth": 0,
+              "elapsed_secs": 4000,
+              "pid": 4242,
+              "ppid": 1,
+              "rss_bytes": 61440000
+            },
+            {
+              "command": "node node_modules/.bin/vitest run",
+              "depth": 1,
+              "elapsed_secs": 10,
+              "pid": 4251,
+              "ppid": 4242,
+              "rss_bytes": 40960000
+            }
+          ]
+        },
+        {
+          "running_now": [
+            {
+              "command": "node node_modules/.bin/vitest run",
+              "depth": 1,
+              "elapsed_secs": 10,
+              "pid": 4251,
+              "ppid": 4242,
+              "rss_bytes": 40960000
+            }
+          ],
+          "session": {
+            "agent": "codex",
+            "command": "codex",
+            "pid": 4001
+          },
+          "started_at": null,
+          "tree": [
+            {
+              "command": "claude --dangerously-skip-permissions",
+              "depth": 0,
+              "elapsed_secs": 4000,
+              "pid": 4242,
+              "ppid": 1,
+              "rss_bytes": 61440000
+            },
+            {
+              "command": "node node_modules/.bin/vitest run",
+              "depth": 1,
+              "elapsed_secs": 10,
+              "pid": 4251,
+              "ppid": 4242,
+              "rss_bytes": 40960000
+            }
+          ]
+        },
+        {
+          "running_now": [
+            {
+              "command": "node node_modules/.bin/vitest run",
+              "depth": 1,
+              "elapsed_secs": 10,
+              "pid": 4251,
+              "ppid": 4242,
+              "rss_bytes": 40960000
+            }
+          ],
+          "session": {
+            "agent": "open-code",
+            "command": "opencode",
+            "pid": 4002
+          },
+          "started_at": "2026-10-30T10:00:02Z",
+          "tree": [
+            {
+              "command": "claude --dangerously-skip-permissions",
+              "depth": 0,
+              "elapsed_secs": 4000,
+              "pid": 4242,
+              "ppid": 1,
+              "rss_bytes": 61440000
+            },
+            {
+              "command": "node node_modules/.bin/vitest run",
+              "depth": 1,
+              "elapsed_secs": 10,
+              "pid": 4251,
+              "ppid": 4242,
+              "rss_bytes": 40960000
+            }
+          ]
+        },
+        {
+          "running_now": [
+            {
+              "command": "node node_modules/.bin/vitest run",
+              "depth": 1,
+              "elapsed_secs": 10,
+              "pid": 4251,
+              "ppid": 4242,
+              "rss_bytes": 40960000
+            }
+          ],
+          "session": {
+            "agent": "pi",
+            "command": "pi",
+            "pid": 4003
+          },
+          "started_at": null,
+          "tree": [
+            {
+              "command": "claude --dangerously-skip-permissions",
+              "depth": 0,
+              "elapsed_secs": 4000,
+              "pid": 4242,
+              "ppid": 1,
+              "rss_bytes": 61440000
+            },
+            {
+              "command": "node node_modules/.bin/vitest run",
+              "depth": 1,
+              "elapsed_secs": 10,
+              "pid": 4251,
+              "ppid": 4242,
+              "rss_bytes": 40960000
+            }
+          ]
+        },
+        {
+          "running_now": [
+            {
+              "command": "node node_modules/.bin/vitest run",
+              "depth": 1,
+              "elapsed_secs": 10,
+              "pid": 4251,
+              "ppid": 4242,
+              "rss_bytes": 40960000
+            }
+          ],
+          "session": {
+            "agent": "shell",
+            "command": "shell",
+            "pid": 4004
+          },
+          "started_at": "2026-10-30T10:00:04Z",
+          "tree": [
+            {
+              "command": "claude --dangerously-skip-permissions",
+              "depth": 0,
+              "elapsed_secs": 4000,
+              "pid": 4242,
+              "ppid": 1,
+              "rss_bytes": 61440000
+            },
+            {
+              "command": "node node_modules/.bin/vitest run",
+              "depth": 1,
+              "elapsed_secs": 10,
+              "pid": 4251,
+              "ppid": 4242,
+              "rss_bytes": 40960000
+            }
+          ]
+        },
+        {
+          "running_now": [
+            {
+              "command": "node node_modules/.bin/vitest run",
+              "depth": 1,
+              "elapsed_secs": 10,
+              "pid": 4251,
+              "ppid": 4242,
+              "rss_bytes": 40960000
+            }
+          ],
+          "session": {
+            "agent": "other",
+            "command": "other",
+            "pid": 4005
+          },
+          "started_at": null,
+          "tree": [
+            {
+              "command": "claude --dangerously-skip-permissions",
+              "depth": 0,
+              "elapsed_secs": 4000,
+              "pid": 4242,
+              "ppid": 1,
+              "rss_bytes": 61440000
+            },
+            {
+              "command": "node node_modules/.bin/vitest run",
+              "depth": 1,
+              "elapsed_secs": 10,
+              "pid": 4251,
+              "ppid": 4242,
+              "rss_bytes": 40960000
+            }
+          ]
+        }
+      ],
+      "working_tree": null
+    }
+  ],
+  "type": "ContainerActivity"
+}

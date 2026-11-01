@@ -1,0 +1,177 @@
+{
+  "samples": [
+    {
+      "by_agent": [
+        {
+          "cost_incomplete": false,
+          "cost_usd": 1.25,
+          "key": "claude-code",
+          "seconds": 1800,
+          "sessions": 3,
+          "tokens": 250000
+        },
+        {
+          "cost_incomplete": true,
+          "cost_usd": null,
+          "key": "codex",
+          "seconds": 60,
+          "sessions": 1,
+          "tokens": 0
+        }
+      ],
+      "by_project": [
+        {
+          "cost_incomplete": false,
+          "cost_usd": 1.25,
+          "key": "claude-code",
+          "seconds": 1800,
+          "sessions": 3,
+          "tokens": 250000
+        },
+        {
+          "cost_incomplete": true,
+          "cost_usd": null,
+          "key": "codex",
+          "seconds": 60,
+          "sessions": 1,
+          "tokens": 0
+        }
+      ],
+      "projects": [
+        "project-0",
+        "project-1"
+      ],
+      "sessions": [
+        {
+          "agent": "claude-code",
+          "command": "claude",
+          "container_id": "0000000000000000000000000000000000000000000000000000000000000000",
+          "container_name": "sandbox-project-0",
+          "ended_at": "2026-10-30T10:00:50Z",
+          "files": [
+            {
+              "created": false,
+              "deleted": false,
+              "edits": 1,
+              "last_at": "2026-10-30T10:00:03Z",
+              "path": "src/cart.ts",
+              "reads": 2
+            },
+            {
+              "created": true,
+              "deleted": true,
+              "edits": 0,
+              "last_at": null,
+              "path": "src/cart.test.ts",
+              "reads": 0
+            }
+          ],
+          "id": "session-0",
+          "last_seen_at": "2026-10-30T10:00:50Z",
+          "pid": 4242,
+          "project_slug": "project-0",
+          "runtime": "docker",
+          "started_at": "2026-10-30T10:00:40Z",
+          "usage": {
+            "agent": "claude-code",
+            "cache_read_tokens": 64000,
+            "cache_write_tokens": 8000,
+            "cost_source": "reported",
+            "cost_usd": 0.0425,
+            "input_tokens": 0,
+            "models": [],
+            "output_tokens": 900,
+            "reasoning_tokens": 0,
+            "turns": 3
+          },
+          "usage_scope": "session"
+        },
+        {
+          "agent": "codex",
+          "command": "claude",
+          "container_id": "0000000000000000000000000000000000000000000000000000000000000001",
+          "container_name": "sandbox-project-1",
+          "ended_at": null,
+          "files": [],
+          "id": "session-1",
+          "last_seen_at": "2026-10-30T10:00:50Z",
+          "pid": 4243,
+          "project_slug": "project-1",
+          "runtime": "podman",
+          "started_at": "2026-10-30T10:00:40Z",
+          "usage": null,
+          "usage_scope": "agent"
+        },
+        {
+          "agent": "open-code",
+          "command": "claude",
+          "container_id": "0000000000000000000000000000000000000000000000000000000000000002",
+          "container_name": "sandbox-project-2",
+          "ended_at": "2026-10-30T10:00:50Z",
+          "files": [
+            {
+              "created": false,
+              "deleted": false,
+              "edits": 1,
+              "last_at": "2026-10-30T10:00:03Z",
+              "path": "src/cart.ts",
+              "reads": 2
+            },
+            {
+              "created": true,
+              "deleted": true,
+              "edits": 0,
+              "last_at": null,
+              "path": "src/cart.test.ts",
+              "reads": 0
+            }
+          ],
+          "id": "session-2",
+          "last_seen_at": "2026-10-30T10:00:50Z",
+          "pid": 4244,
+          "project_slug": "project-2",
+          "runtime": "apple-container",
+          "started_at": "2026-10-30T10:00:40Z",
+          "usage": {
+            "agent": "open-code",
+            "cache_read_tokens": 64000,
+            "cache_write_tokens": 8000,
+            "cost_source": "unknown",
+            "cost_usd": null,
+            "input_tokens": 2400,
+            "models": [
+              "claude-sonnet-4-5-20250929"
+            ],
+            "output_tokens": 900,
+            "reasoning_tokens": 0,
+            "turns": 3
+          },
+          "usage_scope": "pooled"
+        }
+      ],
+      "total": {
+        "cost_incomplete": false,
+        "cost_usd": 1.25,
+        "key": "claude-code",
+        "seconds": 1800,
+        "sessions": 3,
+        "tokens": 250000
+      }
+    },
+    {
+      "by_agent": [],
+      "by_project": [],
+      "projects": [],
+      "sessions": [],
+      "total": {
+        "cost_incomplete": true,
+        "cost_usd": null,
+        "key": "codex",
+        "seconds": 60,
+        "sessions": 1,
+        "tokens": 0
+      }
+    }
+  ],
+  "type": "HistoryView"
+}

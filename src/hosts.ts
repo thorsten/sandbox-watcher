@@ -1,6 +1,6 @@
-import type { HostStatus, SandboxContainer } from "./types";
+import type { HostStatus, ContainerOverview } from "./types";
 
-export function isRemote(c: SandboxContainer): boolean {
+export function isRemote(c: ContainerOverview): boolean {
   return c.host !== "local";
 }
 
@@ -9,7 +9,7 @@ export function hostLabel(host: string, hosts: HostStatus[]): string {
   return hosts.find((h) => h.alias === host)?.display_name || host;
 }
 
-export function filterByHost(cs: SandboxContainer[], host: string): SandboxContainer[] {
+export function filterByHost(cs: ContainerOverview[], host: string): ContainerOverview[] {
   return host === "all" ? cs : cs.filter((c) => c.host === host);
 }
 
@@ -20,9 +20,9 @@ export function filterByHost(cs: SandboxContainer[], host: string): SandboxConta
  * automatically when nothing else is visible.
  */
 export function pickSelected(
-  visible: SandboxContainer[],
+  visible: ContainerOverview[],
   selectedId: string | null,
-): SandboxContainer | null {
+): ContainerOverview | null {
   const live = visible.filter((c) => !c.last_seen_at);
   return (
     visible.find((c) => c.key === selectedId) ??
@@ -34,7 +34,7 @@ export function pickSelected(
 }
 
 /** Hosts that have containers: local first, then aliases sorted. */
-export function hostsInUse(cs: SandboxContainer[]): string[] {
+export function hostsInUse(cs: ContainerOverview[]): string[] {
   const remote = [...new Set(cs.map((c) => c.host).filter((h) => h !== "local"))].toSorted();
   return cs.some((c) => c.host === "local") ? ["local", ...remote] : remote;
 }

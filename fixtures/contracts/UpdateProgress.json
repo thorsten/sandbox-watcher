@@ -1,0 +1,13 @@
+{
+  "type": "UpdateProgress",
+  "samples": [
+    {
+      "downloaded": 1048576,
+      "total": 12582912
+    },
+    {
+      "downloaded": 0,
+      "total": null
+    }
+  ]
+}

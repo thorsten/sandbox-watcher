@@ -1,6 +1,6 @@
 import { stopResultLabel } from "./format";
 import { hostLabel, hostsInUse } from "./hosts";
-import { RUNTIME_LABELS, type HostStatus, type SandboxContainer, type StopReport } from "./types";
+import { RUNTIME_LABELS, type HostStatus, type ContainerOverview, type StopReport } from "./types";
 
 let confirmStop = true;
 
@@ -14,7 +14,7 @@ export function confirmStopEnabled(): boolean {
 }
 
 /** Human description of what a stop interrupts, for the confirmation dialog. */
-export function describeInterruption(containers: SandboxContainer[]): string[] {
+export function describeInterruption(containers: ContainerOverview[]): string[] {
   const lines: string[] = [];
   for (const c of containers) {
     if (c.sessions.length === 0) {
@@ -36,7 +36,7 @@ const shellQuote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`;
  * heading line per host. A single host gets no headings.
  */
 export function describeInterruptionByHost(
-  containers: SandboxContainer[],
+  containers: ContainerOverview[],
   hosts: HostStatus[],
 ): string[] {
   const used = hostsInUse(containers);

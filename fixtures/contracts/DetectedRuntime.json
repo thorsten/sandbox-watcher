@@ -1,0 +1,20 @@
+{
+  "samples": [
+    {
+      "endpoint": "/var/run/docker.sock",
+      "kind": "docker",
+      "source": "DOCKER_HOST"
+    },
+    {
+      "endpoint": "/var/run/podman.sock",
+      "kind": "podman",
+      "source": "DOCKER_HOST"
+    },
+    {
+      "endpoint": "/var/run/apple-container.sock",
+      "kind": "apple-container",
+      "source": "DOCKER_HOST"
+    }
+  ],
+  "type": "DetectedRuntime"
+}

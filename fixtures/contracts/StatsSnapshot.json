@@ -1,0 +1,31 @@
+{
+  "samples": [
+    {
+      "0000000000000000000000000000000000000000000000000000000000000000": [
+        {
+          "at": "2026-10-30T10:00:30Z",
+          "block_read_bytes": 0,
+          "block_write_bytes": 4096,
+          "container_id": "0000000000000000000000000000000000000000000000000000000000000000",
+          "cpu_percent": 12.5,
+          "memory_limit_bytes": 4294967296,
+          "memory_used_bytes": 536870912,
+          "net_rx_bytes": 1000000,
+          "net_tx_bytes": 250000
+        },
+        {
+          "at": "2026-10-30T10:00:31Z",
+          "block_read_bytes": 0,
+          "block_write_bytes": 0,
+          "container_id": "0000000000000000000000000000000000000000000000000000000000000001",
+          "cpu_percent": 0.0,
+          "memory_limit_bytes": null,
+          "memory_used_bytes": 0,
+          "net_rx_bytes": 0,
+          "net_tx_bytes": 0
+        }
+      ]
+    }
+  ],
+  "type": "StatsSnapshot"
+}

@@ -1,0 +1,18 @@
+{
+  "samples": [
+    {
+      "kind": "auto"
+    },
+    {
+      "kind": "iterm"
+    },
+    {
+      "kind": "terminal-app"
+    },
+    {
+      "command": "wezterm start --cwd {dir}",
+      "kind": "custom"
+    }
+  ],
+  "type": "TerminalChoice"
+}

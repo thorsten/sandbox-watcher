@@ -3,6 +3,8 @@
 //! webview; commands read its cache or perform actions.
 
 mod app_menu;
+#[cfg(test)]
+mod contracts;
 mod settings_store;
 mod tray;
 mod updates;

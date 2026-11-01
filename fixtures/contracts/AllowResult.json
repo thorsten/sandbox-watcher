@@ -1,0 +1,14 @@
+{
+  "samples": [
+    {
+      "added": [
+        "api.example.com:443"
+      ],
+      "already_present": [
+        "registry.npmjs.org:443"
+      ],
+      "path": "/Users/dev/projects/web-shop/.sandbox/config.toml"
+    }
+  ],
+  "type": "AllowResult"
+}

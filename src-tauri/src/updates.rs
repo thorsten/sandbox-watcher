@@ -27,9 +27,9 @@ pub struct UpdateInfo {
 }
 
 #[derive(Clone, Serialize)]
-struct Progress {
-    downloaded: u64,
-    total: Option<u64>,
+pub struct Progress {
+    pub downloaded: u64,
+    pub total: Option<u64>,
 }
 
 /// The update found by the last check, kept so "install" needs no second request.

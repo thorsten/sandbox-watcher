@@ -1,0 +1,166 @@
+{
+  "ActivityEventKind": {
+    "values": [
+      "user-message",
+      "assistant-text",
+      "tool-use",
+      "tool-result",
+      "tool-error"
+    ]
+  },
+  "AgentKind": {
+    "values": [
+      "claude-code",
+      "codex",
+      "open-code",
+      "pi",
+      "shell",
+      "other"
+    ]
+  },
+  "Attribution": {
+    "tag": "kind",
+    "values": [
+      "session",
+      "session",
+      "session",
+      "agent"
+    ]
+  },
+  "ConfigTarget": {
+    "values": [
+      "global",
+      "project"
+    ]
+  },
+  "ContainerState": {
+    "values": [
+      "created",
+      "running",
+      "paused",
+      "stopping",
+      "exited",
+      "dead",
+      "unknown"
+    ]
+  },
+  "CostSource": {
+    "values": [
+      "reported",
+      "estimated",
+      "unknown"
+    ]
+  },
+  "DataSource": {
+    "values": [
+      "mock",
+      "live"
+    ]
+  },
+  "EditorChoice": {
+    "tag": "kind",
+    "values": [
+      "system",
+      "vs-code",
+      "cursor",
+      "zed",
+      "jet-brains",
+      "custom"
+    ]
+  },
+  "Evidence": {
+    "values": [
+      "open-file",
+      "only-session",
+      "start-time"
+    ]
+  },
+  "HostState": {
+    "tag": "state",
+    "values": [
+      "disabled",
+      "connecting",
+      "connected",
+      "unreachable"
+    ]
+  },
+  "MountRole": {
+    "values": [
+      "project",
+      "persisted",
+      "runtime",
+      "other"
+    ]
+  },
+  "NetworkSource": {
+    "values": [
+      "firewall",
+      "dns",
+      "proxy-access"
+    ]
+  },
+  "NetworkStatus": {
+    "values": [
+      "allowed",
+      "blocked"
+    ]
+  },
+  "Readiness": {
+    "values": [
+      "starting",
+      "ready",
+      "unknown"
+    ]
+  },
+  "RuntimeEventKind": {
+    "tag": "kind",
+    "values": [
+      "created",
+      "started",
+      "stopped",
+      "died",
+      "exec-created",
+      "removed",
+      "other"
+    ]
+  },
+  "RuntimeKind": {
+    "values": [
+      "docker",
+      "podman",
+      "apple-container"
+    ]
+  },
+  "RuntimeStatus": {
+    "tag": "status",
+    "values": [
+      "not-detected",
+      "detected-only",
+      "connected",
+      "unavailable"
+    ]
+  },
+  "TerminalChoice": {
+    "tag": "kind",
+    "values": [
+      "auto",
+      "iterm",
+      "terminal-app",
+      "custom"
+    ]
+  },
+  "Theme": {
+    "values": [
+      "system",
+      "light",
+      "dark"
+    ]
+  },
+  "UsageScope": {
+    "values": [
+      "session",
+      "agent",
+      "pooled"
+    ]
+  }
+}

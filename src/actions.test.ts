@@ -5,9 +5,9 @@ import {
   describeStopReport,
   networkLogsCommand,
 } from "./actions";
-import type { HostStatus, SandboxContainer } from "./types";
+import type { HostStatus, ContainerOverview } from "./types";
 
-function container(partial: Partial<SandboxContainer> & { id: string }): SandboxContainer {
+function container(partial: Partial<ContainerOverview> & { id: string }): ContainerOverview {
   return {
     host: "local",
     key: partial.id,

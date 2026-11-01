@@ -98,8 +98,12 @@ cargo test -p sandbox-core
 # see the core job in .github/workflows/ci.yml):
 SANDBOX_WATCHER_DOCKER_TESTS=1 cargo test -p sandbox-core --test conformance
 cargo clippy --all-targets -- -D warnings
-pnpm lint && pnpm format:check && pnpm test && pnpm build
+pnpm lint && pnpm format:check && pnpm check:contracts && pnpm test && pnpm build
 ```
+
+Further checks (Rust/TypeScript contracts, dependency audits, pinned GitHub
+Actions, performance budgets) and how to run them locally are described in
+[`docs/CHECKS.md`](docs/CHECKS.md) and [`docs/PERFORMANCE.md`](docs/PERFORMANCE.md).
 
 ## Runtimes
 
@@ -165,7 +169,10 @@ verify updates.
 
 GitHub Actions builds everything. `CI` runs on every push and pull request:
 Rust tests on macOS, Linux and Windows, the Docker conformance test on
-Linux, web lint, tests and build, and an unsigned Tauri debug build per OS.
+Linux, web lint, tests and build, the contract and performance checks, and
+an unsigned Tauri debug build per OS. `Dependency audit` checks Cargo and
+pnpm dependencies on pull requests and weekly. All actions are pinned to
+commit SHAs and updated by Dependabot.
 `Release` runs on tags `v*` (or manually) and publishes installers for macOS
 (Apple silicon), Linux and Windows. macOS bundles are signed and notarised
 once the secrets below exist; Windows and Linux bundles are unsigned. `Pages`

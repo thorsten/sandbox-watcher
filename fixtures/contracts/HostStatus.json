@@ -1,0 +1,47 @@
+{
+  "samples": [
+    {
+      "alias": "host0",
+      "display_name": "Host 0",
+      "probes": [],
+      "runtimes": [
+        "docker",
+        "podman",
+        "apple-container"
+      ],
+      "state": "disabled"
+    },
+    {
+      "alias": "host1",
+      "display_name": "Host 1",
+      "probes": [
+        "docker version"
+      ],
+      "runtimes": [],
+      "state": "connecting"
+    },
+    {
+      "alias": "host2",
+      "display_name": "Host 2",
+      "probes": [],
+      "runtimes": [
+        "docker",
+        "podman",
+        "apple-container"
+      ],
+      "state": "connected"
+    },
+    {
+      "alias": "host3",
+      "display_name": "Host 3",
+      "probes": [
+        "docker version"
+      ],
+      "reason": "ssh: connect to host devbox port 22: No route to host",
+      "runtimes": [],
+      "since": "2026-10-30T10:00:01Z",
+      "state": "unreachable"
+    }
+  ],
+  "type": "HostStatus"
+}

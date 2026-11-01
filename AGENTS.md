@@ -54,6 +54,12 @@ decisions are in `docs/adr/`. Read both before changing architecture.
   `is_relevant` in `live.rs` before adding another exec.
 - **Keep `src/types.ts` in sync** when a serialised Rust type changes.
   Serialisation is kebab-case for enums, flat for `ContainerOverview`.
+  `crates/sandbox-core/tests/contracts.rs` writes `fixtures/contracts/`
+  and `pnpm check:contracts` type-checks them against `src/types.ts`; after
+  a type change run
+  `SANDBOX_WATCHER_UPDATE_CONTRACTS=1 cargo test -p sandbox-core --test contracts`
+  and commit the fixtures. A new bridged type needs a sample for every
+  variant and both states of every `Option`. See `docs/CHECKS.md`.
 - **Report partial failures, never swallow them.** `stop_all` returns a
   `StopReport` with one `StopFailure` per host and runtime whose containers
   could not be listed; activity and history carry `Coverage` and
@@ -69,11 +75,18 @@ pnpm tauri dev                   # live against Docker / Podman / Apple containe
 cargo test -p sandbox-core
 cargo clippy -p sandbox-core --all-targets -- -D warnings
 cargo fmt --all --check
-pnpm lint && pnpm format:check && pnpm test && pnpm build
+pnpm lint && pnpm format:check && pnpm check:contracts && pnpm test && pnpm build
+
+cargo deny check                                  # advisories, licences, sources (cargo install cargo-deny)
+pnpm audit --audit-level moderate
+pnpm check:actions                                # workflow actions pinned to SHAs
+cargo bench -p sandbox-core --bench perf          # measurements; budgets: docs/PERFORMANCE.md
 ```
 
 Conformance against a real runtime needs a prepared container; the recipe is
 in `.github/workflows/ci.yml` (Docker and Podman) and in the README (Apple).
+`docs/CHECKS.md` describes every automated check, how to run it locally and
+how to handle findings; `docs/PERFORMANCE.md` the benchmarks and budgets.
 
 ## UI tests
 
@@ -98,8 +111,16 @@ error, `refresh()` for an immediate re-read after an action. Use it instead of
 ## Verification expectations
 
 - Run the Rust and web checks above before every commit; the pre-commit hook
-  runs the web ones. Commit messages follow Conventional Commits and are
-  checked by commitlint.
+  runs the web ones including the contract check. Commit messages follow
+  Conventional Commits and are checked by commitlint.
+- GitHub Actions are pinned to full commit SHAs with the version in a
+  comment; Dependabot updates them. Workflows start with `contents: read`
+  and widen per job only. Dependency audits run in `audit.yml`; exceptions
+  need a reason and a re-check date (`docs/CHECKS.md`).
+- Performance budgets live in `crates/sandbox-core/tests/budgets.rs`; the
+  data-volume ones run with every `cargo test`, the wall-clock ones in CI's
+  `perf` job. Measure with `cargo bench -p sandbox-core --bench perf` before
+  changing a budget and update `docs/PERFORMANCE.md` with it.
 - If you change `src-tauri`, compile it. On Linux without GTK/WebKit, a
   `cargo clippy -p sandbox-watcher --target aarch64-apple-darwin` cross-check
   works if the C compiler for one Objective-C helper is stubbed; CI builds

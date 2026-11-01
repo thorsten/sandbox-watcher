@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { formatUptime, groupByProject, staleHashes, stopResultLabel, summarize } from "./format";
-import type { SandboxContainer } from "./types";
+import type { ContainerOverview } from "./types";
 
 const now = new Date("2026-10-30T12:00:00Z");
 
-function container(partial: Partial<SandboxContainer> & { id: string }): SandboxContainer {
+function container(partial: Partial<ContainerOverview> & { id: string }): ContainerOverview {
   return {
     host: "local",
     key: partial.id,

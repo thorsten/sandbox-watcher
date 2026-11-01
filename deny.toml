@@ -1,0 +1,74 @@
+# cargo-deny configuration: advisories, licences, duplicate and banned
+# crates, and crate sources for the whole workspace (all three desktop
+# targets). Run locally with `cargo deny check`; CI runs it in
+# .github/workflows/audit.yml on pull requests and weekly.
+#
+# Exceptions: every entry under [advisories].ignore and
+# [licenses].exceptions needs a `reason`, a link to the tracking issue and a
+# re-check date in the comment. docs/CHECKS.md describes the procedure.
+
+[graph]
+# The app ships for these targets only; Cargo.lock lists their crates.
+targets = ["x86_64-unknown-linux-gnu", "aarch64-apple-darwin", "x86_64-pc-windows-msvc"]
+all-features = false
+
+[output]
+feature-depth = 1
+
+[advisories]
+db-path = "~/.cargo/advisory-db"
+db-urls = ["https://github.com/rustsec/advisory-db"]
+# Vulnerabilities fail the check; unmaintained crates among the direct
+# dependencies, unsound crates and notices are warnings. Review warnings when
+# they appear and either upgrade or record an exception below.
+version = 2
+yanked = "deny"
+unmaintained = "workspace"
+ignore = [
+  # Format:
+  # { id = "RUSTSEC-YYYY-NNNN", reason = "why it does not apply here; re-check by YYYY-MM-DD; issue #N" },
+]
+
+[licenses]
+version = 2
+# Permissive licences only; the app itself is MIT.
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "Unicode-3.0",
+  "MPL-2.0",
+  "CC0-1.0",
+  "BSL-1.0",
+]
+confidence-threshold = 0.8
+exceptions = [
+  # Format:
+  # { allow = ["LicenseId"], crate = "name", reason = "..." },
+]
+
+[bans]
+# Several versions of one crate cost binary size, not safety; cargo-deny
+# would print the whole dependency tree for each. `cargo tree -d` lists them.
+multiple-versions = "allow"
+wildcards = "deny"
+# The Tauri shell depends on sandbox-core by path; both crates are
+# `publish = false`, which is what makes cargo-deny accept this.
+allow-wildcard-paths = true
+highlight = "all"
+deny = [
+  # Crates that must never enter the graph. Format:
+  # { crate = "name", reason = "..." },
+  { crate = "openssl-sys", reason = "TLS comes from rustls; no native OpenSSL build" },
+]
+skip = []
+skip-tree = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
