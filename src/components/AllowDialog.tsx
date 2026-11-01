@@ -41,7 +41,7 @@ export function AllowDialog({ containerKey, selections, onClose }: Props) {
   const apply = async () => {
     setBusy(true);
     try {
-      setResult(await applyAllow(containerKey, target, toAdd));
+      setResult(await applyAllow(containerKey, target, toAdd, null));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {

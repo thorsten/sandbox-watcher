@@ -12,6 +12,7 @@ mod watcher;
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
 use chrono::Utc;
 use sandbox_core::actions::{
@@ -20,10 +21,14 @@ use sandbox_core::actions::{
 };
 use sandbox_core::activity::ContainerActivity;
 use sandbox_core::adapter::LogOptions;
-use sandbox_core::allowlist::{AllowResult, ConfigTarget};
+use sandbox_core::allowlist::{
+    AllowResult, ConfigTarget, entries_for, existing_entries, inject_allowed_domains,
+    project_config_available, project_config_path, validate_entry,
+};
 use sandbox_core::detect::{DetectedRuntime, Environment, detect};
 use sandbox_core::endpoints::SshContext;
 use sandbox_core::history::{HistoryQuery, HistoryView};
+use sandbox_core::host::Host;
 use sandbox_core::model::AgentKind;
 use sandbox_core::model::{ContainerDetails, ResourceSample};
 use sandbox_core::network::NetworkReport;
@@ -465,6 +470,12 @@ struct AllowPreview {
     project_path: Option<String>,
     already_in_global: Vec<String>,
     already_in_project: Vec<String>,
+    /// SHA-256 of the previewed files (remote only); handed back to apply.
+    global_hash: Option<String>,
+    project_hash: Option<String>,
+    /// Why a target cannot be written (symlink rules, missing directory).
+    global_unavailable: Option<String>,
+    project_unavailable: Option<String>,
 }
 
 fn global_config_path() -> Option<std::path::PathBuf> {
@@ -493,6 +504,84 @@ async fn project_root_of(
     )
 }
 
+const REMOTE_ALLOW_TIMEOUT: Duration = Duration::from_secs(15);
+
+fn merged_entries(selections: &[AllowSelection]) -> Vec<String> {
+    let mut entries: Vec<String> = Vec::new();
+    for sel in selections {
+        for e in entries_for(&sel.host, &sel.ports.iter().copied().collect()) {
+            if !entries.contains(&e) {
+                entries.push(e);
+            }
+        }
+    }
+    entries
+}
+
+/// The entries already in the config. The preview only marks duplicates;
+/// apply() aborts on a broken file.
+fn present_in(entries: &[String], content: &str) -> Vec<String> {
+    let existing = existing_entries(content).unwrap_or_default();
+    entries
+        .iter()
+        .filter(|e| existing.contains(e))
+        .cloned()
+        .collect()
+}
+
+/// One target on a remote host: path, hash and content, or why not.
+struct RemoteTarget {
+    path: Option<String>,
+    hash: Option<String>,
+    content: String,
+    unavailable: Option<String>,
+}
+
+impl RemoteTarget {
+    fn unavailable(path: Option<String>, reason: String) -> Self {
+        RemoteTarget {
+            path,
+            hash: None,
+            content: String::new(),
+            unavailable: Some(reason),
+        }
+    }
+}
+
+async fn remote_target(
+    state: &State<'_, App>,
+    alias: &str,
+    target: ConfigTarget,
+    root: Option<&str>,
+) -> Result<RemoteTarget, String> {
+    use sandbox_core::allowlist_remote::{PreviewReply, parse_preview, preview_script};
+    if target == ConfigTarget::Project && root.is_none() {
+        return Ok(RemoteTarget::unavailable(
+            None,
+            "no project directory".into(),
+        ));
+    }
+    let out = state
+        .run_on_host(alias, &preview_script(target, root), REMOTE_ALLOW_TIMEOUT)
+        .await?;
+    Ok(match parse_preview(&out)? {
+        PreviewReply::Absent => {
+            RemoteTarget::unavailable(None, "this project has no .sandbox directory".into())
+        }
+        PreviewReply::Symlink { path, reason } => RemoteTarget::unavailable(Some(path), reason),
+        PreviewReply::Content {
+            path,
+            hash,
+            content,
+        } => RemoteTarget {
+            path: Some(path),
+            hash: Some(hash),
+            content,
+            unavailable: None,
+        },
+    })
+}
+
 /// What allowing the selected destinations would write, and where.
 #[tauri::command]
 async fn preview_allow(
@@ -500,69 +589,157 @@ async fn preview_allow(
     container_key: String,
     selections: Vec<AllowSelection>,
 ) -> Result<AllowPreview, String> {
-    require_local(&container_key)?;
-    use sandbox_core::allowlist::{
-        entries_for, existing_entries, project_config_available, project_config_path,
-    };
-    let mut entries: Vec<String> = Vec::new();
-    for sel in &selections {
-        for e in entries_for(&sel.host, &sel.ports.iter().copied().collect()) {
-            if !entries.contains(&e) {
-                entries.push(e);
-            }
+    let entries = merged_entries(&selections);
+    let (host, _) = sandbox_core::host::parse_container_key(&container_key);
+    let project_root = project_root_of(&state, &container_key).await?;
+    match host {
+        Host::Local => {
+            let global = global_config_path();
+            let project = project_root
+                .filter(|r| project_config_available(r))
+                .map(|r| project_config_path(&r));
+            let present = |path: &Option<std::path::PathBuf>| -> Vec<String> {
+                let Some(path) = path else { return vec![] };
+                std::fs::read_to_string(path)
+                    .map(|c| present_in(&entries, &c))
+                    .unwrap_or_default()
+            };
+            Ok(AllowPreview {
+                already_in_global: present(&global),
+                already_in_project: present(&project),
+                entries,
+                global_path: global.map(|p| p.display().to_string()),
+                project_path: project.map(|p| p.display().to_string()),
+                global_hash: None,
+                project_hash: None,
+                global_unavailable: None,
+                project_unavailable: None,
+            })
+        }
+        Host::Remote(alias) => {
+            let root = project_root
+                .as_ref()
+                .map(|p| p.to_string_lossy().into_owned());
+            let global = remote_target(&state, &alias, ConfigTarget::Global, None).await?;
+            let project =
+                remote_target(&state, &alias, ConfigTarget::Project, root.as_deref()).await?;
+            Ok(AllowPreview {
+                already_in_global: present_in(&entries, &global.content),
+                already_in_project: present_in(&entries, &project.content),
+                entries,
+                global_path: global.path,
+                project_path: project.path,
+                global_hash: global.hash,
+                project_hash: project.hash,
+                global_unavailable: global.unavailable,
+                project_unavailable: project.unavailable,
+            })
         }
     }
-    let global = global_config_path();
-    let project_root = project_root_of(&state, &container_key).await?;
-    let project = project_root
-        .filter(|r| project_config_available(r))
-        .map(|r| project_config_path(&r));
-    let present = |path: &Option<std::path::PathBuf>| -> Vec<String> {
-        let Some(path) = path else { return vec![] };
-        // The preview only marks duplicates; apply() aborts on a broken file.
-        let existing = std::fs::read_to_string(path)
-            .ok()
-            .and_then(|c| existing_entries(&c).ok())
-            .unwrap_or_default();
-        entries
-            .iter()
-            .filter(|e| existing.contains(e))
-            .cloned()
-            .collect()
-    };
-    Ok(AllowPreview {
-        already_in_global: present(&global),
-        already_in_project: present(&project),
-        entries,
-        global_path: global.map(|p| p.display().to_string()),
-        project_path: project.map(|p| p.display().to_string()),
-    })
 }
 
-/// Append the entries to the chosen sandbox config. Only the two paths
-/// sandbox itself would write are accepted.
+/// Append the entries to the chosen sandbox config. Locally only the two
+/// paths sandbox itself would write are accepted; on a remote host the write
+/// is a compare-and-swap against the hash the preview returned.
 #[tauri::command]
 async fn apply_allow(
     state: State<'_, App>,
     container_key: String,
     target: ConfigTarget,
     entries: Vec<String>,
+    expected_hash: Option<String>,
 ) -> Result<AllowResult, String> {
-    require_local(&container_key)?;
-    let path = match target {
-        ConfigTarget::Global => global_config_path().ok_or("no global config path")?,
-        ConfigTarget::Project => {
-            let root = project_root_of(&state, &container_key)
-                .await?
-                .ok_or("no project directory")?;
-            if !sandbox_core::allowlist::project_config_available(&root) {
-                return Err("this project has no .sandbox directory".into());
+    let (host, _) = sandbox_core::host::parse_container_key(&container_key);
+    let Host::Remote(alias) = host else {
+        let path = match target {
+            ConfigTarget::Global => global_config_path().ok_or("no global config path")?,
+            ConfigTarget::Project => {
+                let root = project_root_of(&state, &container_key)
+                    .await?
+                    .ok_or("no project directory")?;
+                if !project_config_available(&root) {
+                    return Err("this project has no .sandbox directory".into());
+                }
+                project_config_path(&root)
             }
-            sandbox_core::allowlist::project_config_path(&root)
-        }
+        };
+        return sandbox_core::allowlist::apply(&path, target, &entries)
+            .map_err(|e| format!("{}: {e}", path.display()));
     };
-    sandbox_core::allowlist::apply(&path, target, &entries)
-        .map_err(|e| format!("{}: {e}", path.display()))
+    use sandbox_core::allowlist_remote::{
+        ApplyReply, PreviewReply, apply_script, parse_apply, parse_preview, preview_script,
+    };
+    for e in &entries {
+        validate_entry(e)?;
+    }
+    let expected = expected_hash.ok_or("preview is required before writing to a remote host")?;
+    let root = project_root_of(&state, &container_key)
+        .await?
+        .map(|p| p.to_string_lossy().into_owned());
+    if target == ConfigTarget::Project && root.is_none() {
+        return Err("no project directory".into());
+    }
+    // Re-read, so the content we edit is the one the hash describes.
+    let out = state
+        .run_on_host(
+            &alias,
+            &preview_script(target, root.as_deref()),
+            REMOTE_ALLOW_TIMEOUT,
+        )
+        .await?;
+    let (path, hash, content) = match parse_preview(&out)? {
+        PreviewReply::Content {
+            path,
+            hash,
+            content,
+        } => (path, hash, content),
+        PreviewReply::Absent => return Err("this project has no .sandbox directory".into()),
+        PreviewReply::Symlink { path, reason } => return Err(format!("{path}: {reason}")),
+    };
+    if hash != expected {
+        return Err(format!(
+            "changed: the config on {alias} changed since the preview"
+        ));
+    }
+    let existing = existing_entries(&content)?;
+    let mut already_present: Vec<String> = Vec::new();
+    let mut to_add: Vec<String> = Vec::new();
+    for e in entries {
+        let seen = if existing.contains(&e) {
+            &mut already_present
+        } else {
+            &mut to_add
+        };
+        if !seen.contains(&e) {
+            seen.push(e);
+        }
+    }
+    if to_add.is_empty() {
+        return Ok(AllowResult {
+            path,
+            added: vec![],
+            already_present,
+        });
+    }
+    let new_content = inject_allowed_domains(&content, &to_add)?;
+    let out = state
+        .run_on_host(
+            &alias,
+            &apply_script(target, root.as_deref(), &hash, &new_content),
+            REMOTE_ALLOW_TIMEOUT,
+        )
+        .await?;
+    match parse_apply(&out)? {
+        ApplyReply::Ok => Ok(AllowResult {
+            path,
+            added: to_add,
+            already_present,
+        }),
+        ApplyReply::Changed => Err(format!(
+            "changed: the config on {alias} changed since the preview"
+        )),
+        ApplyReply::Refused(reason) => Err(format!("{path}: {reason}")),
+    }
 }
 
 /// Check GitHub Releases for a newer version now.

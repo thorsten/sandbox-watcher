@@ -159,8 +159,6 @@ impl Watcher {
     }
 
     /// Run a shell command line on a connected remote host.
-    // The remote allow-list commands call this; until they land it is unused.
-    #[allow(dead_code)]
     pub async fn run_on_host(
         &self,
         alias: &str,

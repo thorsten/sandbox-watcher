@@ -42,9 +42,14 @@ describe("api command names and arguments", () => {
     ],
     [
       "apply allow",
-      () => api.applyAllow("c1", "project", ["a.b"]),
+      () => api.applyAllow("c1", "project", ["a.b"], "abc"),
       "apply_allow",
-      { containerKey: "c1", target: "project", entries: ["a.b"] },
+      {
+        containerKey: "c1",
+        target: "project",
+        entries: ["a.b"],
+        expectedHash: "abc",
+      },
     ],
     ["check update", () => api.checkForUpdate(), "check_for_update", undefined],
     ["install update", () => api.installUpdate(), "install_update", undefined],

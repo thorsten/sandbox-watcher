@@ -441,6 +441,12 @@ export interface AllowPreview {
   project_path: string | null;
   already_in_global: string[];
   already_in_project: string[];
+  /** SHA-256 of the previewed file on a remote host; null for local containers. */
+  global_hash: string | null;
+  project_hash: string | null;
+  /** Why the target cannot be written, or null when it can. */
+  global_unavailable: string | null;
+  project_unavailable: string | null;
 }
 
 export interface AllowResult {

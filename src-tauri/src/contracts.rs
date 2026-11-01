@@ -90,6 +90,10 @@ fn allow_preview() {
                 project_path: Some("/Users/dev/projects/web-shop/.sandbox/config.toml".into()),
                 already_in_global: vec!["cdn.example.com:443".into()],
                 already_in_project: vec![],
+                global_hash: Some("e3b0c442...".into()),
+                project_hash: Some("9f86d081...".into()),
+                global_unavailable: None,
+                project_unavailable: None,
             },
             AllowPreview {
                 entries: vec![],
@@ -97,6 +101,24 @@ fn allow_preview() {
                 project_path: None,
                 already_in_global: vec![],
                 already_in_project: vec![],
+                global_hash: None,
+                project_hash: None,
+                global_unavailable: Some(
+                    "/Users/dev/.config/sandbox/config.toml does not point to a regular file"
+                        .into(),
+                ),
+                project_unavailable: Some("this project has no .sandbox directory".into()),
+            },
+            AllowPreview {
+                entries: vec![],
+                global_path: Some("/Users/dev/.sandbox/config.toml".into()),
+                project_path: None,
+                already_in_global: vec![],
+                already_in_project: vec![],
+                global_hash: None,
+                project_hash: None,
+                global_unavailable: None,
+                project_unavailable: None,
             },
         ],
     );

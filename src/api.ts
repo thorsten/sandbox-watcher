@@ -138,8 +138,14 @@ export function applyAllow(
   containerKey: string,
   target: ConfigTarget,
   entries: string[],
+  expectedHash: string | null,
 ): Promise<AllowResult> {
-  return invoke<AllowResult>("apply_allow", { containerKey, target, entries });
+  return invoke<AllowResult>("apply_allow", {
+    containerKey,
+    target,
+    entries,
+    expectedHash,
+  });
 }
 
 export function checkForUpdate(): Promise<UpdateInfo | null> {

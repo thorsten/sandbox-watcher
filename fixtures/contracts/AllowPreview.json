@@ -9,15 +9,34 @@
         "api.example.com:443",
         "cdn.example.com:443"
       ],
+      "global_hash": "e3b0c442...",
       "global_path": "/Users/dev/.sandbox/config.toml",
-      "project_path": "/Users/dev/projects/web-shop/.sandbox/config.toml"
+      "global_unavailable": null,
+      "project_hash": "9f86d081...",
+      "project_path": "/Users/dev/projects/web-shop/.sandbox/config.toml",
+      "project_unavailable": null
     },
     {
       "already_in_global": [],
       "already_in_project": [],
       "entries": [],
+      "global_hash": null,
       "global_path": null,
-      "project_path": null
+      "global_unavailable": "/Users/dev/.config/sandbox/config.toml does not point to a regular file",
+      "project_hash": null,
+      "project_path": null,
+      "project_unavailable": "this project has no .sandbox directory"
+    },
+    {
+      "already_in_global": [],
+      "already_in_project": [],
+      "entries": [],
+      "global_hash": null,
+      "global_path": "/Users/dev/.sandbox/config.toml",
+      "global_unavailable": null,
+      "project_hash": null,
+      "project_path": null,
+      "project_unavailable": null
     }
   ],
   "type": "AllowPreview"
