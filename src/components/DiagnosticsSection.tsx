@@ -108,16 +108,20 @@ export function DiagnosticsSection({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const ref = useRef<HTMLElement>(null);
+  const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     if (focus) ref.current?.scrollIntoView({ block: "start" });
   }, [focus]);
+
+  useEffect(() => () => clearTimeout(copiedTimer.current), []);
 
   const run = async () => {
     setRunning(true);
     setError(null);
     try {
       setReport(await runDiagnostics());
+      setCopied(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -127,9 +131,16 @@ export function DiagnosticsSection({
 
   const copy = async () => {
     if (!report) return;
-    await navigator.clipboard.writeText(await diagnosticsText(report));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(await diagnosticsText(report));
+      setError(null);
+      setCopied(true);
+      clearTimeout(copiedTimer.current);
+      copiedTimer.current = setTimeout(() => setCopied(false), 2000);
+    } catch (e) {
+      setCopied(false);
+      setError(e instanceof Error ? e.message : String(e));
+    }
   };
 
   return (

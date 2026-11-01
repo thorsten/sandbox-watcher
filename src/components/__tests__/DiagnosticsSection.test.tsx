@@ -19,6 +19,7 @@ const report: DiagnosticsReport = {
     ],
   },
   local: [
+    { kind: "podman", candidate: "CONTAINER_HOST", outcome: "missing" },
     {
       kind: "docker",
       candidate: "/var/run/docker.sock",
@@ -31,7 +32,6 @@ const report: DiagnosticsReport = {
       outcome: "failed",
       reason: "permission denied",
     },
-    { kind: "podman", candidate: "CONTAINER_HOST", outcome: "missing" },
   ],
   hosts: [
     {
