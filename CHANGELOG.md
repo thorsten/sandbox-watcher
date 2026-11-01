@@ -3,6 +3,58 @@
 All notable changes to Sandbox Watcher. Generated from
 [Conventional Commits](https://www.conventionalcommits.org/) by `scripts/changelog.mjs`.
 
+## 0.8.0 (2026-11-01)
+
+### Features
+
+- **ui:** connection diagnostics in Settings ([440be34](https://github.com/thorsten/sandbox-watcher/commit/440be3475568e0a38e3f04b552530899912e4fbd))
+- diagnostics commands and contract ([3b7c768](https://github.com/thorsten/sandbox-watcher/commit/3b7c7687ed621e086e411b1daaf54da81d99209c))
+- **core:** connection diagnostics report ([ffb08e6](https://github.com/thorsten/sandbox-watcher/commit/ffb08e66ea915b329b2fa1e0ac66381dbec40a82))
+- **core:** record every detection probe ([6194ce1](https://github.com/thorsten/sandbox-watcher/commit/6194ce1f0a8074cea9252fc69ad735eb6651b979))
+- **ui:** allow list dialog for remote containers ([42f1d7b](https://github.com/thorsten/sandbox-watcher/commit/42f1d7b574e672113ac798284c189aa7da5fae2c))
+- allow list for containers on remote hosts ([610d4f1](https://github.com/thorsten/sandbox-watcher/commit/610d4f17a41af0b63c116547db6d9502af0317e9))
+- **core:** remote allow list scripts with compare-and-swap ([7724e9c](https://github.com/thorsten/sandbox-watcher/commit/7724e9c3881df2d8e0c84f0dc2afba6df3f38e4a))
+- **core:** run commands on a connected remote host ([579a838](https://github.com/thorsten/sandbox-watcher/commit/579a838ee226cd2593f61806798719b2f3aabd63))
+- **core:** tcp:// Docker endpoints on remote hosts, config path like sandbox ([6551606](https://github.com/thorsten/sandbox-watcher/commit/6551606e9b886c92af96688c270509a39585ce15))
+- **core:** forward tcp:// Docker endpoints over ssh ([2b49bae](https://github.com/thorsten/sandbox-watcher/commit/2b49baed74e2ac7346ecff507a3a99580d82252a))
+- **site:** light/dark switch and footer link separators ([0451193](https://github.com/thorsten/sandbox-watcher/commit/0451193500f0c4e7c9612a6813d06ce6ce6046a7))
+
+### Fixes
+
+- **core:** detection trace test tolerates Windows path separators ([75ff4fd](https://github.com/thorsten/sandbox-watcher/commit/75ff4fd613be0b5e61c42c0ddce3f5131f59f00b))
+- **core:** bound the forwarded endpoint ping inside the connect budget ([22b2c52](https://github.com/thorsten/sandbox-watcher/commit/22b2c5234ce1a2cb498000f86e2665c705b79ace))
+- keep the host alias in the remote allow list conflict message ([83670df](https://github.com/thorsten/sandbox-watcher/commit/83670df8f7e931ffe780daf0c7ea8f4e289abf15))
+- name only the binary when a command times out ([d3bd321](https://github.com/thorsten/sandbox-watcher/commit/d3bd321a2279948438bbab93fd8264b1fa501e87))
+- hint at TLS when a remote tcp endpoint does not answer ([9ea1364](https://github.com/thorsten/sandbox-watcher/commit/9ea1364a401ee118f123d5bfa020215cb34bc288))
+- diagnostics apply the runtime pin like live selection ([785d1fb](https://github.com/thorsten/sandbox-watcher/commit/785d1fb233fc3468385169369eed3c571e4a0bac))
+- **ui:** diagnostics copy reports failures, ordering test proves the sort ([71e9969](https://github.com/thorsten/sandbox-watcher/commit/71e99690114d7a980b9a3d3b254b529e65767cae))
+- **core:** remote allow list scripts fail without a hash tool, carry paths with spaces ([4e909bb](https://github.com/thorsten/sandbox-watcher/commit/4e909bbcd643f7d95144ea443dec44e797af5444))
+- silence dead_code on Watcher::run_on_host until its callers land ([a2e6be5](https://github.com/thorsten/sandbox-watcher/commit/a2e6be5ec1d2b1b3f79fa1fabcb67aef0e4b2353))
+
+### Refactoring
+
+- move the remote allow list edit into sandbox-core ([f1a94db](https://github.com/thorsten/sandbox-watcher/commit/f1a94db2388424fe311609d9e660349c5dd8851c))
+
+### Documentation
+
+- **site:** diagnostics, tcp endpoints and the remote allow list ([a6693c8](https://github.com/thorsten/sandbox-watcher/commit/a6693c8bc33b04350790e3578dea20d5fb8a61fa))
+- **site:** the allow list works on remote hosts ([04741ce](https://github.com/thorsten/sandbox-watcher/commit/04741cecb08b87960c8a27e0539bfd4462874f53))
+- clarify where the remote allow list edit happens ([fbc6285](https://github.com/thorsten/sandbox-watcher/commit/fbc628508cd34d84ca696c5c346e18123973fda7))
+- remote allow list, tcp endpoints and diagnostics ([8823f88](https://github.com/thorsten/sandbox-watcher/commit/8823f888c91e8ebfaab91e6b4cfe40509c8dab73))
+- implementation plan for remote allow list, tcp endpoints and diagnostics ([167b5bb](https://github.com/thorsten/sandbox-watcher/commit/167b5bb6da41fce0248537039b542ebe46a60e5b))
+- design for remote allow list, TCP contexts and diagnostics ([b8afa46](https://github.com/thorsten/sandbox-watcher/commit/b8afa46695695daeec0cf0e71ee3657414cd07be))
+- deb and rpm installs update in-app ([66e6542](https://github.com/thorsten/sandbox-watcher/commit/66e65422f57dc6d69fa8f74e4d47a6d33574064d))
+- sandbox status --json --all proposed upstream ([fe5b240](https://github.com/thorsten/sandbox-watcher/commit/fe5b240a1c50950c6a51272b3e7b26d8d0e9e972))
+- **site:** cover remote hosts, files, turns, history and cost ([a43deb9](https://github.com/thorsten/sandbox-watcher/commit/a43deb9354a0c781c60dd1f6b358baa4092eb290))
+
+### Tests
+
+- **core:** remote allow list conformance over ssh ([c1404e9](https://github.com/thorsten/sandbox-watcher/commit/c1404e95d2b167074c8f6e881031b7d82192bd9f))
+
+### Build
+
+- **deps:** require @tauri-apps/cli and api 2.12.4 ([2c86fa1](https://github.com/thorsten/sandbox-watcher/commit/2c86fa1b5687c27f0eacd85a9c614eafd6f62f51))
+
 ## 0.7.0 (2026-11-01)
 
 ### Features
@@ -43,6 +95,12 @@ All notable changes to Sandbox Watcher. Generated from
 - check out text files with LF on every platform ([7d0ebf7](https://github.com/thorsten/sandbox-watcher/commit/7d0ebf7ef98ba5c09a1c101c50ea087dc2d5705e))
 - add contract, audit, pin and performance checks ([6c56c4d](https://github.com/thorsten/sandbox-watcher/commit/6c56c4dd102b737367f65e05730bf078aee0d04f))
 - generate a cyclonedx sbom on every build and release ([40cf99b](https://github.com/thorsten/sandbox-watcher/commit/40cf99b68b946786b204dbdecfd183bc46f75185))
+
+### Chores
+
+- **release:** v0.7.0 ([8bbc81c](https://github.com/thorsten/sandbox-watcher/commit/8bbc81ca4d81b466f797233c22dd4bd47b3b4d4e))
+
+**Full changelog:** [v0.6.0...v0.7.0](https://github.com/thorsten/sandbox-watcher/compare/v0.6.0...v0.7.0)
 
 ## 0.6.0 (2026-10-31)
 
