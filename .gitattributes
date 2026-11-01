@@ -1,0 +1,3 @@
+# Check out text files with LF everywhere; the contract tests compare
+# fixtures/contracts byte for byte and Windows runners default to autocrlf.
+* text=auto eol=lf
