@@ -113,7 +113,8 @@
                 </div>
               </div>
               <div class="mock-tabs">
-                <b class="active">Activity</b><b>Network</b><b>Resources</b><b>Logs</b><b>Mounts</b>
+                <b class="active">Activity</b><b>Files</b><b>Turns</b><b>Network</b><b>Resources</b
+                ><b>Logs</b><b>Mounts</b>
               </div>
               <div class="mock-block">
                 <div class="mock-block-title">Claude Code <span>· last activity 4s ago</span></div>
@@ -204,7 +205,8 @@
             <h3>What it is doing right now</h3>
             <p>
               The agent's own transcript: recent messages, tool calls and results, with the call in
-              flight highlighted. Plus the processes it runs and the files it changed.
+              flight highlighted. Every file it read, created, edited or deleted, one click from
+              your editor. Plus the processes it runs and the project's git changes.
             </p>
           </article>
           <article>
@@ -217,7 +219,8 @@
             <h3>What it reaches</h3>
             <p>
               Blocked and allowed destinations straight from sandbox's firewall, proxy and DNS logs.
-              A burst of blocked requests shows up as a notification.
+              A burst of blocked requests shows up as a notification. Tick the hosts you trust and
+              add them to sandbox's allow list, after a preview of the exact lines it writes.
             </p>
           </article>
           <article>
@@ -226,8 +229,9 @@
             </div>
             <h3>What it costs</h3>
             <p>
-              CPU and memory sparklines, network and disk I/O, and the container log with follow and
-              filter. Mounts classified as project, persisted, runtime or extra.
+              Tokens and cost per session and per prompt, read from the agent's own transcript. CPU
+              and memory sparklines, network and disk I/O, the container log with follow and filter,
+              and mounts classified as project, persisted, runtime or extra.
             </p>
           </article>
           <article>
@@ -240,7 +244,23 @@
             <h3>The few actions you want</h3>
             <p>
               Stop one sandbox or all of them, with a list of the sessions it interrupts. Open the
-              project in your terminal or file manager. Copy names, paths and ready-made commands.
+              project in your terminal, editor or file manager. Copy names, paths and ready-made
+              commands.
+            </p>
+          </article>
+          <article>
+            <div class="icon">
+              <svg viewBox="0 0 24 24">
+                <rect x="3" y="5" width="7" height="14" rx="1.5" />
+                <rect x="14" y="5" width="7" height="14" rx="1.5" />
+                <path d="M10 12h4" />
+              </svg>
+            </div>
+            <h3>Other machines too</h3>
+            <p>
+              Watch sandboxes on a remote host over your own <code>ssh</code>: pick an alias from
+              <code>~/.ssh/config</code> or import your <code>ssh://</code> Docker contexts. Key or
+              agent authentication, host keys you accepted yourself, nothing else.
             </p>
           </article>
           <article>
@@ -252,7 +272,9 @@
             <h3>Lives in the menu bar</h3>
             <p>
               A tray icon with a per-project summary. Notifications when a session starts, a sandbox
-              stops unexpectedly, or a stale container shows up. Each one switchable.
+              stops unexpectedly, or a stale container shows up. Each one switchable. A local
+              history of every session and container, with duration, tokens and cost by agent and
+              project.
             </p>
           </article>
         </div>
@@ -265,7 +287,7 @@
           <h2>How it works</h2>
           <p>
             No agent inside the container, no daemon, no account. Sandbox Watcher talks to the
-            container runtime you already run.
+            container runtime you already run, locally or through your own SSH connection.
           </p>
         </div>
         <ol class="steps">
@@ -274,7 +296,8 @@
             <h3>Finds your runtime</h3>
             <p>
               Docker, Podman or Apple <code>container</code>, in the same order sandbox looks,
-              honouring <code>DOCKER_HOST</code>, contexts and machines.
+              honouring <code>DOCKER_HOST</code>, contexts and machines. Remote hosts are reached
+              through the <code>ssh</code> client and keys you already have.
             </p>
           </li>
           <li>
@@ -412,8 +435,21 @@
             <summary>Can it see my secrets?</summary>
             <p>
               It never reads environment variable values from containers, only their names. Network
-              logs show hostnames and ports, not payloads. Nothing leaves your machine; the app has
-              no network access of its own.
+              logs show hostnames and ports, not payloads. The app talks only to your local runtime,
+              to remote hosts you added yourself through your own <code>ssh</code>, and, if enabled,
+              to GitHub to check for updates. Nothing else leaves your machine.
+            </p>
+          </details>
+          <details>
+            <summary>Can it watch sandboxes on another machine?</summary>
+            <p>
+              Yes, over SSH. Add an alias from <code>~/.ssh/config</code> under Settings, Remote
+              hosts, or import your <code>ssh://</code> Docker contexts there. Use key or agent
+              authentication and accept the host key once in a terminal; the app never prompts for
+              passwords or accepts host keys. Docker, Podman and Apple <code>container</code> work
+              on the remote side. Remote containers can be watched and stopped; terminal, folder,
+              editor and the allow list stay local. Remote hosts work from macOS and Linux, not from
+              Windows.
             </p>
           </details>
           <details>

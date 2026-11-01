@@ -24,7 +24,7 @@
     <main class="legal">
       <article id="de" lang="de">
         <h1>Datenschutzerklärung</h1>
-        <p class="muted">Stand: 31. Oktober 2026</p>
+        <p class="muted">Stand: 1. November 2026</p>
 
         <h2>1. Verantwortlicher</h2>
         <p>
@@ -83,13 +83,23 @@
           Die Desktop-Anwendung läuft lokal und spricht nur mit der Container-Laufzeit auf Ihrem
           Rechner (Docker, Podman oder Apple container). Sie sendet keine Container-, Sitzungs- oder
           Nutzungsdaten an mich oder an Dritte und liest von Umgebungsvariablen nur die Namen, nie
-          die Werte. Einstellungen werden nur lokal gespeichert.
+          die Werte. Einstellungen und der lokale Verlauf gesehener Sitzungen und Container werden
+          nur auf Ihrem Rechner gespeichert.
         </p>
         <p>
-          Einzige Ausnahme ist die Update-Prüfung: Ist sie aktiviert (Standard), fragt die Anwendung
-          etwa alle sechs Stunden bei GitHub nach einer neuen Version und lädt diese auf Wunsch
-          herunter. Dabei erhält GitHub Ihre IP-Adresse. Sie können die Update-Prüfung in den
-          Einstellungen abschalten.
+          Entfernte Hosts: Wenn Sie in den Einstellungen einen SSH-Alias aus Ihrer
+          <code>~/.ssh/config</code> oder einen <code>ssh://</code>-Docker-Kontext hinzufügen,
+          verbindet sich die Anwendung über den <code>ssh</code>-Client Ihres Systems mit diesem
+          Host und liest dort dieselben Daten wie lokal. Diese Verbindung besteht nur zu Hosts, die
+          Sie selbst eingetragen haben, nutzt Ihre eigenen Schlüssel und Host-Keys und läuft nicht
+          über mich oder Dritte. Dafür liest die Anwendung die Hostnamen aus Ihrer SSH-Konfiguration
+          und Ihren Docker-Kontexten; Passwörter werden nicht abgefragt oder gespeichert.
+        </p>
+        <p>
+          Einzige Verbindung ins Internet ist die Update-Prüfung: Ist sie aktiviert (Standard),
+          fragt die Anwendung etwa alle sechs Stunden bei GitHub nach einer neuen Version und lädt
+          diese auf Wunsch herunter. Dabei erhält GitHub Ihre IP-Adresse. Sie können die
+          Update-Prüfung in den Einstellungen abschalten.
         </p>
 
         <h2>7. Kontakt per E-Mail</h2>
@@ -113,7 +123,7 @@
       <article id="en" lang="en">
         <h1>Privacy policy</h1>
         <p class="muted">
-          As of 31 October 2026. English translation for convenience. The German version above is
+          As of 1 November 2026. English translation for convenience. The German version above is
           the legally binding one.
         </p>
 
@@ -173,12 +183,21 @@
           The desktop app runs locally and only talks to the container runtime on your machine
           (Docker, Podman or Apple container). It sends no container, session or usage data to me or
           to third parties, and of environment variables it reads only the names, never the values.
-          Settings are stored locally only.
+          Settings and the local history of sessions and containers it has seen are stored on your
+          machine only.
         </p>
         <p>
-          The one exception is the update check: when enabled (the default), the app asks GitHub for
-          a new version about every six hours and downloads it on request. GitHub receives your IP
-          address. You can turn the update check off in Settings.
+          Remote hosts: if you add an SSH alias from your <code>~/.ssh/config</code> or an
+          <code>ssh://</code> Docker context in Settings, the app connects to that host through your
+          system's <code>ssh</code> client and reads the same data there as it does locally. This
+          connection goes only to hosts you entered yourself, uses your own keys and host keys, and
+          does not pass through me or any third party. For this the app reads the host names from
+          your SSH configuration and your Docker contexts; it never asks for or stores passwords.
+        </p>
+        <p>
+          The only connection to the internet is the update check: when enabled (the default), the
+          app asks GitHub for a new version about every six hours and downloads it on request.
+          GitHub receives your IP address. You can turn the update check off in Settings.
         </p>
 
         <h2>7. Contact by email</h2>
