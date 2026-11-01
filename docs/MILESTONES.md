@@ -244,7 +244,7 @@ with no configuration.
   of each turn, read from the whole transcript on request.
 - Remote hosts over SSH (watch and stop): shipped in 0.6.0 with SSH
   conformance in CI; a real-host run is pending. Unix sockets and plain `tcp://`
-  endpoints are forwarded; TLS Docker endpoints are not supported.
+  endpoints are forwarded.
 - ~~Remote hosts follow-ups~~: shipped in 0.8.0: `ssh://` context import
   (0.7.0), allow list on remote hosts, plain `tcp://` endpoints. TLS Docker
   endpoints are not supported.
