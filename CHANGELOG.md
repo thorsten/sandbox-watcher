@@ -3,6 +3,47 @@
 All notable changes to Sandbox Watcher. Generated from
 [Conventional Commits](https://www.conventionalcommits.org/) by `scripts/changelog.mjs`.
 
+## 0.7.0 (2026-11-01)
+
+### Features
+
+- **ui:** import ssh docker contexts as remote hosts ([1101675](https://github.com/thorsten/sandbox-watcher/commit/1101675774a4272afe58ae95efc98b2f587bc382))
+- command to list ssh docker contexts ([0eae6c6](https://github.com/thorsten/sandbox-watcher/commit/0eae6c682f99afb2701147e4e76ea6a759650194))
+- **core:** list ssh docker contexts for import ([6723722](https://github.com/thorsten/sandbox-watcher/commit/6723722f74e79aad451f8c00c9133c92a1108ac4))
+
+### Fixes
+
+- **contracts:** sort keys in the shell fixtures ([920fa20](https://github.com/thorsten/sandbox-watcher/commit/920fa209b800621c7b6b5a8fa606dfd304896ae6))
+- **ui:** poll resources and history through usePolling ([5ce7734](https://github.com/thorsten/sandbox-watcher/commit/5ce7734f27933e62f6048a0d1d43c46fa4871911))
+- **core:** allow list test tolerates the Windows lock file ([f72193f](https://github.com/thorsten/sandbox-watcher/commit/f72193fea49a4f64ab666a00b91ebc40f2e9a1b0))
+- **ui:** poll activity and logs one request at a time ([ffea201](https://github.com/thorsten/sandbox-watcher/commit/ffea2012740d18d313aa460b1eddfe6dc248362a))
+- **core:** attribute transcripts to sessions and read them incrementally ([fa345c8](https://github.com/thorsten/sandbox-watcher/commit/fa345c88c9fdb536963de13beb25163a3276dd97))
+- **core:** harden the allow list write ([95cff8f](https://github.com/thorsten/sandbox-watcher/commit/95cff8fcf1b418b8781b8fb9cf21f41b06894ec3))
+- **ui:** show the ssh config entry and report copy result ([4d14d0d](https://github.com/thorsten/sandbox-watcher/commit/4d14d0d98aa7b846eb7607c8115155b2f768bdce))
+- **core:** no ssh config snippet for endpoints with whitespace ([e72f1a4](https://github.com/thorsten/sandbox-watcher/commit/e72f1a4661ffbc8b3870a402d0c9bbf70a864381))
+- **core:** keep demo contexts above the mock tests ([a1717eb](https://github.com/thorsten/sandbox-watcher/commit/a1717eb0acb1a4624b0f58152bf304578309ac38))
+
+### Documentation
+
+- importing ssh docker contexts ([003d584](https://github.com/thorsten/sandbox-watcher/commit/003d584c03508b16b506f565ed11fd89be2846e7))
+- implementation plan for importing ssh docker contexts ([0050fb0](https://github.com/thorsten/sandbox-watcher/commit/0050fb0787a28370c06ecab7a4c9ef3c7ec61983))
+- design for importing ssh docker contexts ([446bc1c](https://github.com/thorsten/sandbox-watcher/commit/446bc1c350ee12cba923109be214b2ae95e974b2))
+- mark remote hosts shipped, plan 0.7.0 follow-ups ([e1d7473](https://github.com/thorsten/sandbox-watcher/commit/e1d7473837fb2ea2166ceb8dd7ba57e55d776d39))
+- **site:** link the security policy in the footer ([50f4f6e](https://github.com/thorsten/sandbox-watcher/commit/50f4f6e563e0458509c06a13510be37fe047194f))
+- add code of conduct, contributing guide and security policy ([e3f3d47](https://github.com/thorsten/sandbox-watcher/commit/e3f3d47b6d783f81747599aec7282dc130f91ee1))
+
+### Build
+
+- **deps:** upgrade TypeScript to 7.0.2 ([1dd33b1](https://github.com/thorsten/sandbox-watcher/commit/1dd33b13f3060301f2cbeca4cbac62666e2b9358))
+- bump @types/node from 24.19.2 to 26.6.6 ([635354f](https://github.com/thorsten/sandbox-watcher/commit/635354fb1569969329bf496d396b26a8c2e5c0ab))
+
+### CI
+
+- bump the actions group across 1 directory with 8 updates ([b711a22](https://github.com/thorsten/sandbox-watcher/commit/b711a22bbd06bfd546e77218ecdfcbbb516edb31))
+- check out text files with LF on every platform ([7d0ebf7](https://github.com/thorsten/sandbox-watcher/commit/7d0ebf7ef98ba5c09a1c101c50ea087dc2d5705e))
+- add contract, audit, pin and performance checks ([6c56c4d](https://github.com/thorsten/sandbox-watcher/commit/6c56c4dd102b737367f65e05730bf078aee0d04f))
+- generate a cyclonedx sbom on every build and release ([40cf99b](https://github.com/thorsten/sandbox-watcher/commit/40cf99b68b946786b204dbdecfd183bc46f75185))
+
 ## 0.6.0 (2026-10-31)
 
 ### Features
@@ -45,6 +86,12 @@ All notable changes to Sandbox Watcher. Generated from
 - restart test containers before the ssh conformance runs ([584039e](https://github.com/thorsten/sandbox-watcher/commit/584039e5a2efc5a43f3ccac176505330ce4a1c08))
 - run the shell unit tests; mark remote hosts in progress ([2db7ea5](https://github.com/thorsten/sandbox-watcher/commit/2db7ea585510e9037ea5240de0f27aecce927feb))
 - weekly check of the sandbox files the watcher depends on ([ad25800](https://github.com/thorsten/sandbox-watcher/commit/ad25800e1811be238fedba9818c20ea7d660cc39))
+
+### Chores
+
+- **release:** v0.6.0 ([0652349](https://github.com/thorsten/sandbox-watcher/commit/0652349b90c9ecad2f425d07be35c33eec84d411))
+
+**Full changelog:** [v0.5.0...v0.6.0](https://github.com/thorsten/sandbox-watcher/compare/v0.5.0...v0.6.0)
 
 ## 0.5.0 (2026-10-31)
 
