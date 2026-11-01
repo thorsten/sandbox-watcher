@@ -160,6 +160,28 @@ pub type Connected = (
     RemoteDetection,
 );
 
+/// Ping an adapter behind a forwarded `tcp://` endpoint. Connecting is lazy,
+/// and a daemon that wants TLS only fails on the first request, so the hint
+/// goes with that error. Unix sockets are passed through untouched.
+#[cfg(any(unix, test))]
+async fn check_forwarded(
+    adapter: std::sync::Arc<dyn crate::adapter::RuntimeAdapter>,
+    target: &crate::ssh::ForwardTarget,
+    timeout: Duration,
+) -> std::result::Result<std::sync::Arc<dyn crate::adapter::RuntimeAdapter>, String> {
+    if !matches!(target, crate::ssh::ForwardTarget::Tcp { .. }) {
+        return Ok(adapter);
+    }
+    let error = match tokio::time::timeout(timeout, adapter.ping()).await {
+        Ok(Ok(_)) => return Ok(adapter),
+        Ok(Err(e)) => e.to_string(),
+        Err(_) => format!("no answer within {}s", timeout.as_secs()),
+    };
+    Err(format!(
+        "{error}; the daemon may require TLS, which is not supported"
+    ))
+}
+
 /// Open the master connection, detect runtimes and build adapters.
 #[cfg(unix)]
 pub async fn connect_host(
@@ -196,7 +218,19 @@ pub async fn connect_host(
                             candidate.kind,
                             &local.display().to_string(),
                         ) {
-                            Ok(a) => Some(Arc::new(a) as Arc<dyn RuntimeAdapter>),
+                            Ok(a) => match check_forwarded(
+                                Arc::new(a) as Arc<dyn RuntimeAdapter>,
+                                &target,
+                                PROBE_TIMEOUT,
+                            )
+                            .await
+                            {
+                                Ok(a) => Some(a),
+                                Err(e) => {
+                                    detection.probes.push(format!("{}: {e}", candidate.kind));
+                                    None
+                                }
+                            },
                             Err(e) => {
                                 detection.probes.push(format!("{}: {e}", candidate.kind));
                                 None
@@ -232,6 +266,7 @@ pub async fn connect_host(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::adapter::RuntimeAdapter;
     use crate::runner::{CommandOutput, FakeRunner};
     use std::sync::Arc;
 
@@ -241,6 +276,28 @@ mod tests {
             stdout: stdout.into(),
             stderr: String::new(),
         }
+    }
+
+    #[tokio::test]
+    async fn tcp_forward_that_does_not_answer_gets_the_tls_hint() {
+        use crate::mock::MockAdapter;
+        use crate::ssh::ForwardTarget;
+        let tcp = ForwardTarget::Tcp {
+            host: "127.0.0.1".into(),
+            port: 2375,
+        };
+        let short = Duration::from_millis(20);
+        let stalled = || Arc::new(MockAdapter::empty().stalled()) as Arc<dyn RuntimeAdapter>;
+        let err = check_forwarded(stalled(), &tcp, short).await.err().unwrap();
+        assert!(
+            err.ends_with("; the daemon may require TLS, which is not supported"),
+            "{err}"
+        );
+        let healthy = Arc::new(MockAdapter::empty()) as Arc<dyn RuntimeAdapter>;
+        assert!(check_forwarded(healthy, &tcp, short).await.is_ok());
+        // Unix sockets are not pinged, so even a stalled adapter passes.
+        let socket = ForwardTarget::UnixSocket("/var/run/docker.sock".into());
+        assert!(check_forwarded(stalled(), &socket, short).await.is_ok());
     }
 
     const WHICH: &str = "sh -c command -v docker; command -v podman; command -v container; true";
