@@ -13,6 +13,9 @@ use crate::model::RuntimeKind;
 use crate::runner::CommandRunner;
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
+/// Must stay well inside `remote_hosts::REMOTE_TIMEOUT`, so a stalled endpoint drops only its own adapter.
+#[cfg(any(unix, test))]
+const FORWARD_PING_TIMEOUT: Duration = Duration::from_secs(3);
 const SANDBOX_ORDER: [(RuntimeKind, &str); 3] = [
     (RuntimeKind::Docker, "docker"),
     (RuntimeKind::Podman, "podman"),
@@ -221,7 +224,7 @@ pub async fn connect_host(
                             Ok(a) => match check_forwarded(
                                 Arc::new(a) as Arc<dyn RuntimeAdapter>,
                                 &target,
-                                PROBE_TIMEOUT,
+                                FORWARD_PING_TIMEOUT,
                             )
                             .await
                             {
@@ -286,6 +289,8 @@ mod tests {
             host: "127.0.0.1".into(),
             port: 2375,
         };
+        // The real bound leaves the connect budget room for everything else.
+        assert!(FORWARD_PING_TIMEOUT * 3 <= crate::remote_hosts::REMOTE_TIMEOUT);
         let short = Duration::from_millis(20);
         let stalled = || Arc::new(MockAdapter::empty().stalled()) as Arc<dyn RuntimeAdapter>;
         let err = check_forwarded(stalled(), &tcp, short).await.err().unwrap();
