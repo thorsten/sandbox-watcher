@@ -95,8 +95,11 @@ writeFileSync(
   ),
 );
 
+// TypeScript 7 restricts its package exports, so bin/tsc cannot be resolved
+// directly; take the path from the package manifest instead.
 const require = createRequire(import.meta.url);
-const tsc = require.resolve("typescript/bin/tsc");
+const tsPackage = require.resolve("typescript/package.json");
+const tsc = join(dirname(tsPackage), require(tsPackage).bin.tsc);
 const result = spawnSync(process.execPath, [tsc, "-p", join(outDir, "tsconfig.json"), "--pretty"], {
   cwd: root,
   stdio: "inherit",
