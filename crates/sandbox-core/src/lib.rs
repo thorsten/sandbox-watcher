@@ -9,6 +9,7 @@ pub mod actions;
 pub mod activity;
 pub mod adapter;
 pub mod allowlist;
+pub mod allowlist_remote;
 pub mod apple;
 pub mod config;
 pub mod detect;

@@ -9,6 +9,7 @@ publish = false
 
 [dependencies]
 async-trait.workspace = true
+base64 = "0.22"
 bollard = { version = "0.21", features = ["chrono"] }
 chrono.workspace = true
 futures.workspace = true
