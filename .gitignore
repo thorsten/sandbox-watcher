@@ -2,6 +2,8 @@
 node_modules/
 dist/
 *.tsbuildinfo
+# Built by `pnpm build:site` from site/theme.ts
+site/theme.js
 
 # Rust
 target/

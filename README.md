@@ -176,7 +176,8 @@ commit SHAs and updated by Dependabot.
 `Release` runs on tags `v*` (or manually) and publishes installers for macOS
 (Apple silicon), Linux and Windows. macOS bundles are signed and notarised
 once the secrets below exist; Windows and Linux bundles are unsigned. `Pages`
-deploys the `site/` folder to GitHub Pages.
+compiles `site/theme.ts` with `pnpm build:site` and deploys the `site/`
+folder to GitHub Pages.
 
 Both workflows create a CycloneDX SBOM (`sbom` job) from `Cargo.lock` and
 `pnpm-lock.yaml`. CI keeps it as the `sbom` workflow artifact; releases

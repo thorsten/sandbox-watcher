@@ -165,6 +165,7 @@ jobs:
       - run: pnpm check:contracts
       - run: pnpm check:actions
       - run: pnpm build
+      - run: pnpm build:site
 
   perf:
     name: Performance budgets
