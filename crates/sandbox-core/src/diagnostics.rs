@@ -66,45 +66,44 @@ pub struct DiagnosticsReport {
 }
 
 /// Probe the local environment and test every enabled remote host.
-/// `preferred` is the runtime pinned by settings, config or environment.
+/// `preferred` is the runtime pinned by settings, config or environment,
+/// with a label for where the pin came from.
 /// Disabled hosts are listed without opening a connection.
 pub async fn run(
     app_version: &str,
-    preferred: Option<RuntimeKind>,
+    preferred: Option<(RuntimeKind, String)>,
     hosts: &[RemoteHost],
 ) -> DiagnosticsReport {
-    let env = Environment::current();
-    let (found, mut local) = crate::detect::detect_traced(&env);
-    let runtime_override = std::env::var("SANDBOX_WATCHER_RUNTIME").ok();
-    let environment = EnvironmentReport {
-        os: env.os.to_string(),
-        docker_host: env.docker_host.clone(),
-        container_host: env.container_host.clone(),
-        runtime_override: runtime_override.clone(),
-        config_runtime: crate::config::load().runtime,
-        config_path: crate::config::current_config_path()
-            .map(|p| p.display().to_string())
-            .unwrap_or_default(),
-        binaries: ["docker", "podman", "container"]
-            .iter()
-            .map(|b| BinaryCheck {
-                name: b.to_string(),
-                found: (env.binary_on_path)(b),
-            })
-            .collect(),
-    };
-    let pin_source = if runtime_override.is_some() {
-        "SANDBOX_WATCHER_RUNTIME"
-    } else {
-        "sandbox config"
+    // The environment holds non-Sync closures, so it must drop before any await.
+    let (found, mut local, environment) = {
+        let env = Environment::current();
+        let (found, local) = crate::detect::detect_traced(&env);
+        let environment = EnvironmentReport {
+            os: env.os.to_string(),
+            docker_host: env.docker_host.clone(),
+            container_host: env.container_host.clone(),
+            runtime_override: std::env::var("SANDBOX_WATCHER_RUNTIME").ok(),
+            config_runtime: crate::config::load().runtime,
+            config_path: crate::config::current_config_path()
+                .map(|p| p.display().to_string())
+                .unwrap_or_default(),
+            binaries: ["docker", "podman", "container"]
+                .iter()
+                .map(|b| BinaryCheck {
+                    name: b.to_string(),
+                    found: (env.binary_on_path)(b),
+                })
+                .collect(),
+        };
+        (found, local, environment)
     };
     for candidate in &found {
-        if let Some(pinned) = preferred.filter(|p| *p != candidate.kind) {
+        if let Some((pinned, label)) = preferred.as_ref().filter(|(k, _)| *k != candidate.kind) {
             local.push(Probe {
                 kind: candidate.kind,
                 candidate: format!("use {}", candidate.endpoint),
                 outcome: ProbeOutcome::Skipped {
-                    reason: format!("pinned to {pinned} by {pin_source}"),
+                    reason: format!("pinned to {pinned} by {label}"),
                 },
             });
             continue;

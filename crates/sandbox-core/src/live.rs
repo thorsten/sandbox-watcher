@@ -113,7 +113,8 @@ pub async fn connect_traced(
     let mut trace = Vec::new();
     let endpoint = match endpoints::resolve_traced(candidate).await {
         Ok((endpoint, how)) => {
-            if endpoint != candidate.endpoint {
+            // Say how the endpoint was found, or why the fallback applies.
+            if how != candidate.source {
                 trace.push(Probe {
                     kind: candidate.kind,
                     candidate: how,

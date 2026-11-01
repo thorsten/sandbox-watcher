@@ -105,6 +105,15 @@
       "blocked"
     ]
   },
+  "ProbeOutcome": {
+    "tag": "outcome",
+    "values": [
+      "found",
+      "missing",
+      "skipped",
+      "failed"
+    ]
+  },
   "Readiness": {
     "values": [
       "starting",

@@ -3,6 +3,42 @@
 // truth; `pnpm check:contracts` type-checks fixtures/contracts/*.json against this
 // file, see docs/CHECKS.md.
 
+export type ProbeOutcome =
+  | { outcome: "found"; endpoint: string }
+  | { outcome: "missing" }
+  | { outcome: "skipped"; reason: string }
+  | { outcome: "failed"; reason: string };
+
+export type Probe = ProbeOutcome & { kind: RuntimeKind; candidate: string };
+
+export interface BinaryCheck {
+  name: string;
+  found: boolean;
+}
+
+export interface EnvironmentReport {
+  os: string;
+  docker_host: string | null;
+  container_host: string | null;
+  runtime_override: string | null;
+  config_runtime: RuntimeKind | null;
+  config_path: string;
+  binaries: BinaryCheck[];
+}
+
+export interface HostReport {
+  alias: string;
+  status: HostStatus;
+}
+
+export interface DiagnosticsReport {
+  generated_at: string;
+  app_version: string;
+  environment: EnvironmentReport;
+  local: Probe[];
+  hosts: HostReport[];
+}
+
 export type RuntimeKind = "docker" | "podman" | "apple-container";
 
 export type ContainerState =

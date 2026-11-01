@@ -12,6 +12,7 @@ import type {
   StopReport,
   UpdateInfo,
   DetectedRuntime,
+  DiagnosticsReport,
   HostStatus,
   NetworkReport,
   Overview,
@@ -186,4 +187,12 @@ export function listDockerSshContexts(): Promise<SshContext[]> {
 
 export function appVersion(): Promise<string> {
   return invoke<string>("app_version");
+}
+
+export function runDiagnostics(): Promise<DiagnosticsReport> {
+  return invoke<DiagnosticsReport>("run_diagnostics");
+}
+
+export function diagnosticsText(report: DiagnosticsReport): Promise<string> {
+  return invoke<string>("diagnostics_text", { report });
 }

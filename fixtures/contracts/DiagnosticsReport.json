@@ -1,0 +1,128 @@
+{
+  "samples": [
+    {
+      "app_version": "0.8.0",
+      "environment": {
+        "binaries": [
+          {
+            "found": true,
+            "name": "docker"
+          },
+          {
+            "found": false,
+            "name": "podman"
+          }
+        ],
+        "config_path": "/Users/dev/.config/sandbox/config.toml",
+        "config_runtime": "docker",
+        "container_host": "unix:///tmp/podman.sock",
+        "docker_host": "unix:///Users/dev/.colima/default/docker.sock",
+        "os": "macos",
+        "runtime_override": "docker"
+      },
+      "generated_at": "2026-10-30T10:00:00Z",
+      "hosts": [
+        {
+          "alias": "devbox",
+          "status": {
+            "alias": "devbox",
+            "display_name": "Dev VM",
+            "probes": [
+              "docker: unix:///var/run/docker.sock"
+            ],
+            "runtimes": [
+              "docker"
+            ],
+            "state": "connected"
+          }
+        },
+        {
+          "alias": "devbox",
+          "status": {
+            "alias": "devbox",
+            "display_name": "Dev VM",
+            "probes": [
+              "docker: unix:///var/run/docker.sock"
+            ],
+            "reason": "Permission denied",
+            "runtimes": [
+              "docker"
+            ],
+            "since": "2026-10-30T10:00:01Z",
+            "state": "unreachable"
+          }
+        }
+      ],
+      "local": [
+        {
+          "candidate": "candidate 0",
+          "endpoint": "/var/run/docker.sock",
+          "kind": "docker",
+          "outcome": "found"
+        },
+        {
+          "candidate": "candidate 1",
+          "kind": "podman",
+          "outcome": "missing"
+        },
+        {
+          "candidate": "candidate 2",
+          "kind": "apple-container",
+          "outcome": "skipped",
+          "reason": "pinned to docker by sandbox config"
+        },
+        {
+          "candidate": "candidate 3",
+          "kind": "docker",
+          "outcome": "failed",
+          "reason": "permission denied"
+        }
+      ]
+    },
+    {
+      "app_version": "0.8.0",
+      "environment": {
+        "binaries": [],
+        "config_path": "",
+        "config_runtime": null,
+        "container_host": null,
+        "docker_host": null,
+        "os": "linux",
+        "runtime_override": null
+      },
+      "generated_at": "2026-10-30T10:00:02Z",
+      "hosts": [
+        {
+          "alias": "devbox",
+          "status": {
+            "alias": "devbox",
+            "display_name": "Dev VM",
+            "probes": [
+              "docker: unix:///var/run/docker.sock"
+            ],
+            "runtimes": [
+              "docker"
+            ],
+            "state": "disabled"
+          }
+        },
+        {
+          "alias": "devbox",
+          "status": {
+            "alias": "devbox",
+            "display_name": "Dev VM",
+            "probes": [
+              "docker: unix:///var/run/docker.sock"
+            ],
+            "runtimes": [
+              "docker"
+            ],
+            "state": "connecting"
+          }
+        }
+      ],
+      "local": []
+    }
+  ],
+  "type": "DiagnosticsReport"
+}

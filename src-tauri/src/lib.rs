@@ -26,6 +26,7 @@ use sandbox_core::allowlist::{
     project_config_available, project_config_path, validate_entry,
 };
 use sandbox_core::detect::{DetectedRuntime, Environment, detect};
+use sandbox_core::diagnostics::DiagnosticsReport;
 use sandbox_core::endpoints::SshContext;
 use sandbox_core::history::{HistoryQuery, HistoryView};
 use sandbox_core::host::Host;
@@ -764,6 +765,36 @@ async fn test_remote_host(state: State<'_, App>, alias: String) -> Result<HostSt
     Ok(status)
 }
 
+/// Probe every runtime candidate and every remote host now. On demand only.
+#[tauri::command]
+async fn run_diagnostics(state: State<'_, App>) -> Result<DiagnosticsReport, String> {
+    let version = env!("CARGO_PKG_VERSION");
+    if matches!(state.mode, Mode::Mock(_)) {
+        return Ok(sandbox_core::mock::demo_diagnostics(version));
+    }
+    let settings = state.settings();
+    // Name where the pin came from, so the report can say why runtimes were skipped.
+    let preferred = if let Some(kind) = settings.runtime_override {
+        Some((kind, "Settings".to_string()))
+    } else if let Some(kind) = sandbox_core::live::preferred_runtime() {
+        let label = if std::env::var_os("SANDBOX_WATCHER_RUNTIME").is_some() {
+            "SANDBOX_WATCHER_RUNTIME"
+        } else {
+            "sandbox config"
+        };
+        Some((kind, label.to_string()))
+    } else {
+        None
+    };
+    Ok(sandbox_core::diagnostics::run(version, preferred, &settings.remote_hosts).await)
+}
+
+/// The report as plain text, for copying into an issue.
+#[tauri::command]
+fn diagnostics_text(report: DiagnosticsReport) -> String {
+    sandbox_core::diagnostics::render_text(&report)
+}
+
 /// The `ssh://` Docker contexts that can be imported as remote hosts.
 /// Reads only; nothing is connected or saved.
 #[tauri::command]
@@ -857,6 +888,8 @@ pub fn run() {
             }
         })
         .invoke_handler(tauri::generate_handler![
+            run_diagnostics,
+            diagnostics_text,
             get_overview,
             refresh_now,
             get_network_overview,

@@ -26,6 +26,9 @@ use sandbox_core::activity::{
 use sandbox_core::adapter::Capabilities;
 use sandbox_core::allowlist::{AllowResult, ConfigTarget};
 use sandbox_core::detect::DetectedRuntime;
+use sandbox_core::diagnostics::{
+    BinaryCheck, DiagnosticsReport, EnvironmentReport, HostReport, Probe, ProbeOutcome,
+};
 use sandbox_core::editor::EditorChoice;
 use sandbox_core::endpoints::SshContext;
 use sandbox_core::files::FileTouch;
@@ -1182,6 +1185,94 @@ fn runtime_event() {
     contract("RuntimeEvent", runtime_events());
 }
 
+fn probe_outcomes() -> Vec<ProbeOutcome> {
+    vec![
+        ProbeOutcome::Found {
+            endpoint: "/var/run/docker.sock".into(),
+        },
+        ProbeOutcome::Missing,
+        ProbeOutcome::Skipped {
+            reason: "pinned to docker by sandbox config".into(),
+        },
+        ProbeOutcome::Failed {
+            reason: "permission denied".into(),
+        },
+    ]
+}
+
+#[test]
+fn diagnostics_report() {
+    let probes: Vec<Probe> = probe_outcomes()
+        .into_iter()
+        .enumerate()
+        .map(|(i, outcome)| Probe {
+            kind: runtime_kinds()[i % 3],
+            candidate: format!("candidate {i}"),
+            outcome,
+        })
+        .collect();
+    let host = |state: HostState| HostReport {
+        alias: "devbox".into(),
+        status: HostStatus {
+            alias: "devbox".into(),
+            display_name: "Dev VM".into(),
+            state,
+            runtimes: vec![RuntimeKind::Docker],
+            probes: vec!["docker: unix:///var/run/docker.sock".into()],
+        },
+    };
+    contract(
+        "DiagnosticsReport",
+        vec![
+            DiagnosticsReport {
+                generated_at: at(0),
+                app_version: "0.8.0".into(),
+                environment: EnvironmentReport {
+                    os: "macos".into(),
+                    docker_host: Some("unix:///Users/dev/.colima/default/docker.sock".into()),
+                    container_host: Some("unix:///tmp/podman.sock".into()),
+                    runtime_override: Some("docker".into()),
+                    config_runtime: Some(RuntimeKind::Docker),
+                    config_path: "/Users/dev/.config/sandbox/config.toml".into(),
+                    binaries: vec![
+                        BinaryCheck {
+                            name: "docker".into(),
+                            found: true,
+                        },
+                        BinaryCheck {
+                            name: "podman".into(),
+                            found: false,
+                        },
+                    ],
+                },
+                local: probes,
+                hosts: vec![
+                    host(HostState::Connected),
+                    host(HostState::Unreachable {
+                        reason: "Permission denied".into(),
+                        since: at(1),
+                    }),
+                ],
+            },
+            DiagnosticsReport {
+                generated_at: at(2),
+                app_version: "0.8.0".into(),
+                environment: EnvironmentReport {
+                    os: "linux".into(),
+                    docker_host: None,
+                    container_host: None,
+                    runtime_override: None,
+                    config_runtime: None,
+                    config_path: String::new(),
+                    binaries: vec![],
+                },
+                local: vec![],
+                hosts: vec![host(HostState::Disabled), host(HostState::Connecting)],
+            },
+        ],
+    );
+}
+
 #[test]
 fn enums() {
     let mut enums = BTreeMap::new();
@@ -1202,6 +1293,10 @@ fn enums() {
     enums.insert("CostSource", enum_values(&cost_sources(), None));
     enums.insert("UsageScope", enum_values(&usage_scopes(), None));
     enums.insert("ConfigTarget", enum_values(&config_targets(), None));
+    enums.insert(
+        "ProbeOutcome",
+        enum_values(&probe_outcomes(), Some("outcome")),
+    );
     enums.insert(
         "RuntimeEventKind",
         enum_values(&runtime_event_kinds(), Some("kind")),
