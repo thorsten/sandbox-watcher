@@ -248,8 +248,10 @@ with no configuration.
 - Remote hosts follow-ups for 0.7.0: import `ssh://` Docker contexts as
   hosts, allow list on remote hosts.
 - CLI or TUI mode sharing the same core (`sandbox-watcher --tui`).
-- Upstream contribution: propose `sandbox status --json --all` so the watcher
-  can drop its own session reader and stay version-proof.
+- Upstream contribution: `sandbox status --json --all` proposed upstream on
+  2026-11-01 so the watcher can drop its own session reader and stay
+  version-proof. Once it lands, add an adapter path that prefers it and
+  keeps the marker reader as fallback for older sandbox releases.
 - Mobile companion fed by the desktop app.
 
 ## 5. Risks and mitigations
@@ -257,7 +259,8 @@ with no configuration.
 - Coupling to sandbox internals. Labels, marker paths, and the container-tools
   CLI are not a public API and can change between releases. Mitigation: pin
   the tested sandbox version range, run the integration tests against the
-  latest release in CI weekly, and pursue the `--json` upstream contribution.
+  latest release in CI weekly, and follow up on the `--json` upstream
+  proposal (opened 2026-11-01).
 - `exec` requires root in the container for network diagnostics. Mitigation:
   make the network tab opt-in per runtime and degrade gracefully when exec
   is denied.
