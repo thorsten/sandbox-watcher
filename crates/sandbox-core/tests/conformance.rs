@@ -278,3 +278,175 @@ async fn real_runtime_adapter_conforms() {
     };
     conformance(adapter, &slug).await;
 }
+
+/// Removes its directories when dropped, so a failed assertion still cleans up.
+#[cfg(unix)]
+struct TempDirs(Vec<std::path::PathBuf>);
+
+#[cfg(unix)]
+impl Drop for TempDirs {
+    fn drop(&mut self) {
+        for d in &self.0 {
+            let _ = std::fs::remove_dir_all(d);
+        }
+    }
+}
+
+#[cfg(unix)]
+async fn run_remote(
+    session: &sandbox_core::ssh::SshSession,
+    cmd: String,
+) -> sandbox_core::runner::CommandOutput {
+    session
+        .run(&cmd, Duration::from_secs(15))
+        .await
+        .expect("run over ssh")
+}
+
+/// The remote allow list scripts against a real sshd, compared with the
+/// local writer on the same input.
+#[cfg(unix)]
+#[tokio::test]
+async fn remote_allow_list_matches_local_apply() {
+    let Ok(alias) = std::env::var("SANDBOX_WATCHER_SSH_HOST") else {
+        eprintln!("skipped: set SANDBOX_WATCHER_SSH_HOST");
+        return;
+    };
+    use sandbox_core::allowlist::{ConfigTarget, apply, inject_allowed_domains};
+    use sandbox_core::allowlist_remote::{
+        ApplyReply, PreviewReply, apply_script, parse_apply, parse_preview, preview_script,
+    };
+    use sandbox_core::ssh::SshSession;
+
+    let session = SshSession::open(&alias, Duration::from_secs(20))
+        .await
+        .expect("ssh");
+
+    // localhost: the remote filesystem is ours, so a temp dir works for both sides.
+    let pid = std::process::id();
+    let tmp = std::env::temp_dir();
+    let dir = tmp.join(format!("sw-remote-allow-{pid}"));
+    let local = tmp.join(format!("sw-local-allow-{pid}"));
+    let linked = tmp.join(format!("sw-linked-allow-{pid}"));
+    let _cleanup = TempDirs(vec![dir.clone(), local.clone(), linked.clone()]);
+
+    let initial = "allow_network = [\"a.example\"]\n";
+    std::fs::create_dir_all(dir.join(".sandbox")).unwrap();
+    std::fs::write(dir.join(".sandbox/config.toml"), initial).unwrap();
+    let root = dir.to_str().unwrap();
+
+    let out = run_remote(&session, preview_script(ConfigTarget::Project, Some(root))).await;
+    let p = parse_preview(&out).unwrap();
+    let PreviewReply::Content {
+        hash,
+        content,
+        path,
+    } = p
+    else {
+        panic!("{p:?}")
+    };
+    assert_eq!(path, dir.join(".sandbox/config.toml").to_str().unwrap());
+
+    let entries = vec!["b.example".to_string(), "c.example:8443".to_string()];
+    let new_content = inject_allowed_domains(&content, &entries).unwrap();
+    let out = run_remote(
+        &session,
+        apply_script(ConfigTarget::Project, Some(root), &hash, &new_content),
+    )
+    .await;
+    assert_eq!(parse_apply(&out).unwrap(), ApplyReply::Ok);
+    let remote_written = std::fs::read_to_string(dir.join(".sandbox/config.toml")).unwrap();
+
+    // Same input through the local writer.
+    std::fs::create_dir_all(local.join(".sandbox")).unwrap();
+    std::fs::write(local.join(".sandbox/config.toml"), initial).unwrap();
+    apply(
+        &local.join(".sandbox/config.toml"),
+        ConfigTarget::Project,
+        &entries,
+    )
+    .unwrap();
+    assert_eq!(
+        remote_written,
+        std::fs::read_to_string(local.join(".sandbox/config.toml")).unwrap()
+    );
+
+    // A stale hash is refused and the file is untouched.
+    let out = run_remote(
+        &session,
+        apply_script(ConfigTarget::Project, Some(root), &hash, "x = 1\n"),
+    )
+    .await;
+    assert_eq!(parse_apply(&out).unwrap(), ApplyReply::Changed);
+    assert_eq!(
+        std::fs::read_to_string(dir.join(".sandbox/config.toml")).unwrap(),
+        remote_written
+    );
+
+    // A symlinked .sandbox is refused.
+    std::fs::create_dir_all(&linked).unwrap();
+    std::os::unix::fs::symlink(dir.join(".sandbox"), linked.join(".sandbox")).unwrap();
+    let out = run_remote(
+        &session,
+        preview_script(ConfigTarget::Project, Some(linked.to_str().unwrap())),
+    )
+    .await;
+    let p = parse_preview(&out).unwrap();
+    assert!(matches!(p, PreviewReply::Symlink { .. }), "{p:?}");
+
+    session.close().await;
+}
+
+/// A missing global config is created with its directory.
+#[cfg(unix)]
+#[tokio::test]
+async fn remote_allow_creates_missing_global_config() {
+    let Ok(alias) = std::env::var("SANDBOX_WATCHER_SSH_HOST") else {
+        eprintln!("skipped: set SANDBOX_WATCHER_SSH_HOST");
+        return;
+    };
+    use sandbox_core::allowlist::ConfigTarget;
+    use sandbox_core::allowlist_remote::{
+        ApplyReply, EMPTY_SHA256, PreviewReply, apply_script, parse_apply, parse_preview,
+        preview_script,
+    };
+    use sandbox_core::ssh::{SshSession, shell_quote};
+
+    let session = SshSession::open(&alias, Duration::from_secs(20))
+        .await
+        .expect("ssh");
+    let dir = std::env::temp_dir().join(format!("sw-global-allow-{}", std::process::id()));
+    let _cleanup = TempDirs(vec![dir.clone()]);
+    // SANDBOX_CONFIG_DIR is read on the remote side, so prefix the command.
+    let with_env = |s: String| {
+        format!(
+            "SANDBOX_CONFIG_DIR={} ; export SANDBOX_CONFIG_DIR; {s}",
+            shell_quote(dir.to_str().unwrap())
+        )
+    };
+
+    let out = run_remote(
+        &session,
+        with_env(preview_script(ConfigTarget::Global, None)),
+    )
+    .await;
+    let p = parse_preview(&out).unwrap();
+    let PreviewReply::Content { hash, content, .. } = p else {
+        panic!("{p:?}")
+    };
+    assert_eq!(hash, EMPTY_SHA256);
+    assert_eq!(content, "");
+
+    let wanted = "allow_network = [\"x.example\"]\n";
+    let out = run_remote(
+        &session,
+        with_env(apply_script(ConfigTarget::Global, None, &hash, wanted)),
+    )
+    .await;
+    assert_eq!(parse_apply(&out).unwrap(), ApplyReply::Ok);
+    assert_eq!(
+        std::fs::read_to_string(dir.join("config.toml")).unwrap(),
+        wanted
+    );
+    session.close().await;
+}
