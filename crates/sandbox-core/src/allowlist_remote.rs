@@ -40,9 +40,10 @@ pub enum ApplyReply {
     Refused(String),
 }
 
-/// Shell functions shared by both scripts. `resolve` sets `f` (file) and
-/// `d` (directory) or prints `absent` / `symlink <path> <reason>` and exits.
-fn prelude(target: ConfigTarget, project_root: Option<&str>) -> String {
+/// Shell code shared by both scripts. `say_def` defines `say`, which reports
+/// an early outcome (`absent` or `symlink <reason>`) and exits. The rules set
+/// `f` (file) and `d` (directory) or call `say`.
+fn prelude(target: ConfigTarget, project_root: Option<&str>, say_def: &str) -> String {
     let locate = match target {
         ConfigTarget::Global => format!("f=\"{REMOTE_CONFIG_PATH_SH}\"; d=$(dirname \"$f\")"),
         ConfigTarget::Project => {
@@ -53,45 +54,68 @@ fn prelude(target: ConfigTarget, project_root: Option<&str>) -> String {
     let rules = match target {
         ConfigTarget::Project => {
             r#"
-  [ -d "$d" ] || [ -L "$d" ] || { echo absent; exit 0; }
-  [ -L "$d" ] && { echo "symlink $d is a symbolic link; refusing to write the project config"; exit 0; }
-  [ -L "$f" ] && { echo "symlink $f is a symbolic link; refusing to write the project config"; exit 0; }
+[ -d "$d" ] || [ -L "$d" ] || say absent
+[ -L "$d" ] && say "symlink $d is a symbolic link; refusing to write the project config"
+[ -L "$f" ] && say "symlink $f is a symbolic link; refusing to write the project config"
 "#
         }
         ConfigTarget::Global => {
             r#"
-  if [ -L "$f" ]; then
-    real=$(readlink -f "$f" 2>/dev/null) || real=
-    [ -n "$real" ] && [ -f "$real" ] || { echo "symlink $f does not point to a regular file"; exit 0; }
-    f=$real; d=$(dirname "$f")
-  elif [ -e "$f" ] && [ ! -f "$f" ]; then
-    echo "symlink $f is not a regular file"; exit 0
-  fi
+if [ -L "$f" ]; then
+  real=$(readlink -f "$f" 2>/dev/null) || real=
+  [ -n "$real" ] && [ -f "$real" ] || say "symlink $f does not point to a regular file"
+  f=$real; d=$(dirname "$f")
+elif [ -e "$f" ] && [ ! -f "$f" ]; then
+  say "symlink $f is not a regular file"
+fi
 "#
         }
     };
     format!(
         r#"set -u
-hash() {{ if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d' ' -f1; else shasum -a 256 | cut -d' ' -f1; fi; }}
+if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
+  echo "neither sha256sum nor shasum is installed on this host" >&2
+  exit 1
+fi
+sha256_of() {{ if command -v sha256sum >/dev/null 2>&1; then sha256sum | cut -d' ' -f1; else shasum -a 256 | cut -d' ' -f1; fi; }}
+{say_def}
 {locate}
 {rules}"#
     )
 }
 
-/// Print `path <f>` then either `missing` or `sha <hash>` and the content.
-pub fn preview_script(target: ConfigTarget, project_root: Option<&str>) -> String {
+/// The remote command line for a script: the login shell on the host only
+/// ever sees `sh -c '<script>'`, so fish or csh never parse the script.
+fn as_remote_command(script: &str) -> String {
+    format!("sh -c {}", shell_quote(script))
+}
+
+fn preview_body(target: ConfigTarget, project_root: Option<&str>) -> String {
+    // The first line is always `path <f>`, the second the outcome.
+    let say = r#"say() { printf 'path %s\n%s\n' "$f" "$1"; exit 0; }"#;
     format!(
         r#"{}
-echo "path $f"
-if [ -e "$f" ]; then echo "sha $(hash < "$f")"; cat "$f"; else echo missing; fi
+printf 'path %s\n' "$f"
+if [ -e "$f" ]; then
+  h=$(sha256_of < "$f") || exit 1
+  printf 'sha %s\n' "$h"
+  cat "$f"
+else
+  echo missing
+fi
 "#,
-        prelude(target, project_root)
+        prelude(target, project_root, say)
     )
 }
 
-/// Under a directory lock, re-hash the file, refuse with `changed` on a
-/// mismatch, otherwise replace it atomically and print `ok`.
-pub fn apply_script(
+/// The remote command line that reads the config. It prints `path <f>`, then
+/// one of `absent`, `symlink <reason>`, `missing` or `sha <hash>` followed by
+/// the file content.
+pub fn preview_script(target: ConfigTarget, project_root: Option<&str>) -> String {
+    as_remote_command(&preview_body(target, project_root))
+}
+
+fn apply_body(
     target: ConfigTarget,
     project_root: Option<&str>,
     expected_hash: &str,
@@ -100,8 +124,9 @@ pub fn apply_script(
     let encoded = base64::engine::general_purpose::STANDARD.encode(new_content);
     let expected = shell_quote(expected_hash);
     let encoded = shell_quote(&encoded);
+    let say = r#"say() { printf '%s\n' "$1"; exit 0; }"#;
     let mkdir = match target {
-        ConfigTarget::Global => "mkdir -p \"$d\" || { echo \"refused cannot create $d\"; exit 0; }",
+        ConfigTarget::Global => "mkdir -p \"$d\" || say \"refused cannot create $d\"",
         ConfigTarget::Project => "",
     };
     format!(
@@ -109,14 +134,14 @@ pub fn apply_script(
 {mkdir}
 expected={expected}
 write() {{
-  if [ -e "$f" ]; then cur=$(hash < "$f"); else cur={empty}; fi
+  if [ -e "$f" ]; then cur=$(sha256_of < "$f") || exit 1; else cur={empty}; fi
   [ "$cur" = "$expected" ] || {{ echo changed; return 0; }}
-  tmp=$(mktemp "$d/.config.toml.XXXXXX") || {{ echo "refused cannot create a temporary file in $d"; return 0; }}
-  if ! printf %s {encoded} | base64 -d > "$tmp"; then rm -f "$tmp"; echo "refused cannot write $tmp"; return 0; fi
+  tmp=$(mktemp "$d/.config.toml.XXXXXX") || {{ printf 'refused cannot create a temporary file in %s\n' "$d"; return 0; }}
+  if ! printf %s {encoded} | base64 -d > "$tmp"; then rm -f "$tmp"; printf 'refused cannot write %s\n' "$tmp"; return 0; fi
   if [ -e "$f" ]; then
     chmod --reference="$f" "$tmp" 2>/dev/null || chmod "$(stat -c %a "$f" 2>/dev/null || stat -f %Lp "$f" 2>/dev/null)" "$tmp" 2>/dev/null || true
   fi
-  if mv -f "$tmp" "$f"; then echo ok; else rm -f "$tmp"; echo "refused cannot replace $f"; fi
+  if mv -f "$tmp" "$f"; then echo ok; else rm -f "$tmp"; printf 'refused cannot replace %s\n' "$f"; fi
 }}
 if command -v flock >/dev/null 2>&1; then
   exec 9< "$d" && flock 9 && write
@@ -125,16 +150,33 @@ else
   n=0
   until mkdir "$lock" 2>/dev/null; do
     n=$((n + 1))
-    [ "$n" -lt 100 ] || {{ echo "refused cannot lock $d"; exit 0; }}
+    [ "$n" -lt 100 ] || {{ printf 'refused cannot lock %s\n' "$d"; exit 0; }}
     sleep 0.1
   done
   write
   rmdir "$lock"
 fi
 "#,
-        prelude = prelude(target, project_root),
+        prelude = prelude(target, project_root, say),
         empty = EMPTY_SHA256,
     )
+}
+
+/// The remote command line that, under a lock, re-hashes the file, prints
+/// `changed` on a mismatch, otherwise replaces it atomically and prints `ok`.
+/// Early refusals print `absent`, `symlink <reason>` or `refused <reason>`.
+pub fn apply_script(
+    target: ConfigTarget,
+    project_root: Option<&str>,
+    expected_hash: &str,
+    new_content: &str,
+) -> String {
+    as_remote_command(&apply_body(
+        target,
+        project_root,
+        expected_hash,
+        new_content,
+    ))
 }
 
 fn failed(output: &CommandOutput) -> Option<String> {
@@ -154,21 +196,20 @@ pub fn parse_preview(output: &CommandOutput) -> std::result::Result<PreviewReply
     }
     let mut lines = output.stdout.splitn(3, '\n');
     let first = lines.next().unwrap_or("");
-    if first == "absent" {
-        return Ok(PreviewReply::Absent);
-    }
-    if let Some(rest) = first.strip_prefix("symlink ") {
-        let (path, reason) = rest.split_once(' ').unwrap_or((rest, ""));
-        return Ok(PreviewReply::Symlink {
-            path: path.into(),
-            reason: reason.into(),
-        });
-    }
     let path = first
         .strip_prefix("path ")
         .ok_or_else(|| format!("unexpected preview reply: {first}"))?
         .to_string();
     let second = lines.next().unwrap_or("");
+    if second == "absent" {
+        return Ok(PreviewReply::Absent);
+    }
+    if let Some(reason) = second.strip_prefix("symlink ") {
+        return Ok(PreviewReply::Symlink {
+            path,
+            reason: reason.into(),
+        });
+    }
     if second == "missing" {
         return Ok(PreviewReply::Content {
             path,
@@ -178,11 +219,13 @@ pub fn parse_preview(output: &CommandOutput) -> std::result::Result<PreviewReply
     }
     let hash = second
         .strip_prefix("sha ")
-        .ok_or_else(|| format!("unexpected preview reply: {second}"))?
-        .to_string();
+        .ok_or_else(|| format!("unexpected preview reply: {second}"))?;
+    if hash.len() != 64 || !hash.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
+        return Err(format!("unexpected hash in preview reply: {hash}"));
+    }
     Ok(PreviewReply::Content {
         path,
-        hash,
+        hash: hash.into(),
         content: lines.next().unwrap_or("").to_string(),
     })
 }
@@ -213,6 +256,8 @@ mod tests {
     use super::*;
     use crate::runner::CommandOutput;
 
+    const HASH_A: &str = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+
     fn out(stdout: &str) -> CommandOutput {
         CommandOutput {
             exit_code: 0,
@@ -224,13 +269,13 @@ mod tests {
     #[test]
     fn scripts_quote_every_value() {
         let root = "/home/dev/it's a proj\nline2";
-        let s = preview_script(ConfigTarget::Project, Some(root));
+        let s = preview_body(ConfigTarget::Project, Some(root));
         assert!(s.contains("'/home/dev/it'\\''s a proj\nline2'"), "{s}");
         assert!(
             !s.contains("/home/dev/it's a proj/"),
             "unquoted root leaked: {s}"
         );
-        let a = apply_script(ConfigTarget::Project, Some(root), EMPTY_SHA256, "x = 1\n");
+        let a = apply_body(ConfigTarget::Project, Some(root), EMPTY_SHA256, "x = 1\n");
         assert!(a.contains("'/home/dev/it'\\''s a proj\nline2'"), "{a}");
         // Content is base64, so it never meets the shell.
         assert!(!a.contains("x = 1"), "{a}");
@@ -238,28 +283,44 @@ mod tests {
     }
 
     #[test]
+    fn commands_are_wrapped_in_sh_c() {
+        for c in [
+            preview_script(ConfigTarget::Global, None),
+            apply_script(ConfigTarget::Global, None, EMPTY_SHA256, ""),
+        ] {
+            assert!(c.starts_with("sh -c '"), "{c}");
+            assert!(c.ends_with('\''), "{c}");
+        }
+    }
+
+    #[test]
     fn global_script_uses_sandbox_config_precedence() {
-        let s = preview_script(ConfigTarget::Global, None);
+        let s = preview_body(ConfigTarget::Global, None);
         assert!(s.contains(crate::remote::REMOTE_CONFIG_PATH_SH), "{s}");
     }
 
     #[test]
     fn hash_command_falls_back_to_shasum() {
-        let s = preview_script(ConfigTarget::Global, None);
+        let s = preview_body(ConfigTarget::Global, None);
         assert!(s.contains("sha256sum"), "{s}");
         assert!(s.contains("shasum -a 256"), "{s}");
+        assert!(s.contains("exit 1"), "{s}");
     }
 
     #[test]
     fn parses_preview_replies() {
         assert!(matches!(
-            parse_preview(&out("absent\n")).unwrap(),
+            parse_preview(&out("path /p/.sandbox/config.toml\nabsent\n")).unwrap(),
             PreviewReply::Absent
         ));
-        match parse_preview(&out("symlink /p/.sandbox is a symbolic link\n")).unwrap() {
+        let reply = "path /my proj/.sandbox/config.toml\nsymlink /my proj/.sandbox is a symbolic link; refusing to write the project config\n";
+        match parse_preview(&out(reply)).unwrap() {
             PreviewReply::Symlink { path, reason } => {
-                assert_eq!(path, "/p/.sandbox");
-                assert!(reason.contains("symbolic link"));
+                assert_eq!(path, "/my proj/.sandbox/config.toml");
+                assert_eq!(
+                    reason,
+                    "/my proj/.sandbox is a symbolic link; refusing to write the project config"
+                );
             }
             other => panic!("{other:?}"),
         }
@@ -275,9 +336,10 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
-        match parse_preview(&out("path /p/.sandbox/config.toml\nsha abc\n[x]\na = 1\n")).unwrap() {
+        let reply = format!("path /p/.sandbox/config.toml\nsha {HASH_A}\n[x]\na = 1\n");
+        match parse_preview(&out(&reply)).unwrap() {
             PreviewReply::Content { hash, content, .. } => {
-                assert_eq!(hash, "abc");
+                assert_eq!(hash, HASH_A);
                 assert_eq!(content, "[x]\na = 1\n");
             }
             other => panic!("{other:?}"),
@@ -289,6 +351,17 @@ mod tests {
         };
         assert_eq!(parse_preview(&failed).unwrap_err(), "sh: boom");
         assert!(parse_preview(&out("garbage\n")).is_err());
+    }
+
+    #[test]
+    fn preview_rejects_malformed_hashes() {
+        for bad in ["", "abc", &HASH_A.to_uppercase(), &format!("{HASH_A}0")] {
+            let err = parse_preview(&out(&format!("path /p\nsha {bad}\nx\n"))).unwrap_err();
+            assert!(
+                err.contains("unexpected hash in preview reply"),
+                "{bad}: {err}"
+            );
+        }
     }
 
     #[test]
@@ -310,95 +383,266 @@ mod tests {
         assert_eq!(parse_apply(&failed).unwrap_err(), "mv: denied");
     }
 
+    #[cfg(unix)]
+    fn run(command: &str, env: &[(&str, &std::path::Path)]) -> CommandOutput {
+        // The returned string is a full command line, as the login shell sees it.
+        let mut cmd = std::process::Command::new("sh");
+        cmd.arg("-c").arg(command);
+        for (k, v) in env {
+            cmd.env(k, v);
+        }
+        let o = cmd.output().unwrap();
+        CommandOutput {
+            exit_code: o.status.code().unwrap_or(-1) as i64,
+            stdout: String::from_utf8_lossy(&o.stdout).into_owned(),
+            stderr: String::from_utf8_lossy(&o.stderr).into_owned(),
+        }
+    }
+
+    #[cfg(unix)]
+    fn have_sh() -> bool {
+        std::process::Command::new("sh")
+            .arg("-c")
+            .arg("true")
+            .status()
+            .is_ok()
+    }
+
+    #[cfg(unix)]
+    fn content_of(reply: PreviewReply) -> (String, String, String) {
+        match reply {
+            PreviewReply::Content {
+                path,
+                hash,
+                content,
+            } => (path, hash, content),
+            other => panic!("{other:?}"),
+        }
+    }
+
     #[test]
     #[cfg(unix)]
     fn scripts_run_under_local_sh() {
         // The real scripts against a temp dir; skipped where sh is missing.
-        if std::process::Command::new("sh")
-            .arg("-c")
-            .arg("true")
-            .status()
-            .is_err()
-        {
+        if !have_sh() {
             return;
         }
         let dir = tempdir();
         std::fs::create_dir(dir.join(".sandbox")).unwrap();
         let root = dir.to_str().unwrap();
-        let run = |script: &str| {
-            let o = std::process::Command::new("sh")
-                .arg("-c")
-                .arg(script)
-                .output()
-                .unwrap();
-            CommandOutput {
-                exit_code: o.status.code().unwrap_or(-1) as i64,
-                stdout: String::from_utf8_lossy(&o.stdout).into_owned(),
-                stderr: String::from_utf8_lossy(&o.stderr).into_owned(),
-            }
-        };
-        let p = parse_preview(&run(&preview_script(ConfigTarget::Project, Some(root)))).unwrap();
-        let PreviewReply::Content {
-            hash,
-            content,
-            path,
-        } = p
-        else {
-            panic!("{p:?}")
-        };
+        let p = parse_preview(&run(
+            &preview_script(ConfigTarget::Project, Some(root)),
+            &[],
+        ))
+        .unwrap();
+        let (path, hash, content) = content_of(p);
         assert_eq!(content, "");
         assert_eq!(hash, EMPTY_SHA256);
         assert!(path.ends_with("/.sandbox/config.toml"));
 
-        let a = run(&apply_script(
-            ConfigTarget::Project,
-            Some(root),
-            &hash,
-            "allow_network = [\"a\"]\n",
-        ));
+        let a = run(
+            &apply_script(
+                ConfigTarget::Project,
+                Some(root),
+                &hash,
+                "allow_network = [\"a\"]\n",
+            ),
+            &[],
+        );
         assert!(matches!(parse_apply(&a).unwrap(), ApplyReply::Ok), "{a:?}");
+        let file = dir.join(".sandbox/config.toml");
         assert_eq!(
-            std::fs::read_to_string(dir.join(".sandbox/config.toml")).unwrap(),
+            std::fs::read_to_string(&file).unwrap(),
             "allow_network = [\"a\"]\n"
         );
 
         // Stale hash: refused, file untouched.
-        let a = run(&apply_script(
-            ConfigTarget::Project,
-            Some(root),
-            EMPTY_SHA256,
-            "x = 1\n",
-        ));
+        let a = run(
+            &apply_script(ConfigTarget::Project, Some(root), EMPTY_SHA256, "x = 1\n"),
+            &[],
+        );
         assert!(
             matches!(parse_apply(&a).unwrap(), ApplyReply::Changed),
             "{a:?}"
         );
         assert_eq!(
-            std::fs::read_to_string(dir.join(".sandbox/config.toml")).unwrap(),
+            std::fs::read_to_string(&file).unwrap(),
             "allow_network = [\"a\"]\n"
         );
 
         // Symlinked .sandbox: preview says symlink, apply refuses.
         let other = tempdir();
         std::os::unix::fs::symlink(dir.join(".sandbox"), other.join(".sandbox")).unwrap();
-        let p = parse_preview(&run(&preview_script(
-            ConfigTarget::Project,
-            Some(other.to_str().unwrap()),
-        )))
+        let other_root = other.to_str().unwrap();
+        let p = parse_preview(&run(
+            &preview_script(ConfigTarget::Project, Some(other_root)),
+            &[],
+        ))
         .unwrap();
         assert!(matches!(p, PreviewReply::Symlink { .. }), "{p:?}");
-        let a = run(&apply_script(
-            ConfigTarget::Project,
-            Some(other.to_str().unwrap()),
-            EMPTY_SHA256,
-            "x = 1\n",
-        ));
+        let a = run(
+            &apply_script(
+                ConfigTarget::Project,
+                Some(other_root),
+                EMPTY_SHA256,
+                "x = 1\n",
+            ),
+            &[],
+        );
         assert!(
             matches!(parse_apply(&a).unwrap(), ApplyReply::Refused(_)),
             "{a:?}"
         );
+
+        // No .sandbox at all.
+        let bare = tempdir();
+        let p = parse_preview(&run(
+            &preview_script(ConfigTarget::Project, Some(bare.to_str().unwrap())),
+            &[],
+        ))
+        .unwrap();
+        assert!(matches!(p, PreviewReply::Absent), "{p:?}");
     }
 
+    #[test]
+    #[cfg(unix)]
+    fn existing_file_round_trips_with_its_real_hash() {
+        if !have_sh() {
+            return;
+        }
+        let dir = tempdir();
+        std::fs::create_dir(dir.join(".sandbox")).unwrap();
+        let file = dir.join(".sandbox/config.toml");
+        std::fs::write(&file, "allow_network = [\"a\"]\n").unwrap();
+        let root = dir.to_str().unwrap();
+        let (_, hash, content) = content_of(
+            parse_preview(&run(
+                &preview_script(ConfigTarget::Project, Some(root)),
+                &[],
+            ))
+            .unwrap(),
+        );
+        assert_eq!(content, "allow_network = [\"a\"]\n");
+        assert_ne!(hash, EMPTY_SHA256);
+        assert_eq!(hash.len(), 64);
+        let new =
+            crate::allowlist::inject_allowed_domains(&content, &["b.example".to_string()]).unwrap();
+        let a = run(
+            &apply_script(ConfigTarget::Project, Some(root), &hash, &new),
+            &[],
+        );
+        assert!(matches!(parse_apply(&a).unwrap(), ApplyReply::Ok), "{a:?}");
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), new);
+        assert!(new.contains("b.example"));
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn project_root_with_space_and_quote() {
+        if !have_sh() {
+            return;
+        }
+        let base = tempdir();
+        let dir = base.join("it's a proj");
+        std::fs::create_dir_all(dir.join(".sandbox")).unwrap();
+        let root = dir.to_str().unwrap();
+        let (path, hash, _) = content_of(
+            parse_preview(&run(
+                &preview_script(ConfigTarget::Project, Some(root)),
+                &[],
+            ))
+            .unwrap(),
+        );
+        assert_eq!(path, format!("{root}/.sandbox/config.toml"));
+        let a = run(
+            &apply_script(ConfigTarget::Project, Some(root), &hash, "x = 1\n"),
+            &[],
+        );
+        assert!(matches!(parse_apply(&a).unwrap(), ApplyReply::Ok), "{a:?}");
+        assert_eq!(
+            std::fs::read_to_string(dir.join(".sandbox/config.toml")).unwrap(),
+            "x = 1\n"
+        );
+
+        // A symlink under a path with a space keeps the path intact.
+        let other = base.join("my link proj");
+        std::fs::create_dir_all(&other).unwrap();
+        std::os::unix::fs::symlink(dir.join(".sandbox"), other.join(".sandbox")).unwrap();
+        let p = parse_preview(&run(
+            &preview_script(ConfigTarget::Project, Some(other.to_str().unwrap())),
+            &[],
+        ))
+        .unwrap();
+        match p {
+            PreviewReply::Symlink { path, .. } => {
+                assert_eq!(path, format!("{}/.sandbox/config.toml", other.display()))
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn global_target_creates_missing_config_in_sandbox_config_dir() {
+        if !have_sh() {
+            return;
+        }
+        let dir = tempdir().join("conf dir");
+        let env = [("SANDBOX_CONFIG_DIR", dir.as_path())];
+        let (path, hash, content) = content_of(
+            parse_preview(&run(&preview_script(ConfigTarget::Global, None), &env)).unwrap(),
+        );
+        assert_eq!(path, format!("{}/config.toml", dir.display()));
+        assert_eq!(hash, EMPTY_SHA256);
+        assert_eq!(content, "");
+        let a = run(
+            &apply_script(ConfigTarget::Global, None, &hash, "x = 1\n"),
+            &env,
+        );
+        assert!(matches!(parse_apply(&a).unwrap(), ApplyReply::Ok), "{a:?}");
+        assert_eq!(
+            std::fs::read_to_string(dir.join("config.toml")).unwrap(),
+            "x = 1\n"
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn global_symlinked_config_is_written_through() {
+        if !have_sh() {
+            return;
+        }
+        let dir = tempdir();
+        let elsewhere = tempdir();
+        let target = elsewhere.join("real.toml");
+        std::fs::write(&target, "a = 1\n").unwrap();
+        let link = dir.join("config.toml");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+        let env = [("SANDBOX_CONFIG_DIR", dir.as_path())];
+        let (path, hash, content) = content_of(
+            parse_preview(&run(&preview_script(ConfigTarget::Global, None), &env)).unwrap(),
+        );
+        assert_eq!(content, "a = 1\n");
+        // The reported path is the resolved target, not the link.
+        assert_eq!(
+            std::fs::canonicalize(&path).unwrap(),
+            std::fs::canonicalize(&target).unwrap()
+        );
+        let a = run(
+            &apply_script(ConfigTarget::Global, None, &hash, "a = 2\n"),
+            &env,
+        );
+        assert!(matches!(parse_apply(&a).unwrap(), ApplyReply::Ok), "{a:?}");
+        assert_eq!(std::fs::read_to_string(&target).unwrap(), "a = 2\n");
+        assert!(
+            std::fs::symlink_metadata(&link)
+                .unwrap()
+                .file_type()
+                .is_symlink()
+        );
+    }
+
+    #[cfg(unix)]
     fn tempdir() -> std::path::PathBuf {
         let dir = std::env::temp_dir().join(format!(
             "sw-allow-{}-{}",
