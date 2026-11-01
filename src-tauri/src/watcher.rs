@@ -20,6 +20,7 @@ use sandbox_core::network::{NetworkReport, collect_all};
 use sandbox_core::notify::{Notification, blocked_bursts, diff, recent_blocked};
 use sandbox_core::overview::{DataSource, HostedAdapter, Overview, load_many, within_budget};
 use sandbox_core::remote::{HostState, HostStatus};
+use sandbox_core::runner::CommandOutput;
 use sandbox_core::settings::Settings;
 use sandbox_core::stats_hub::{StatsHub, StatsSet};
 use sandbox_core::transcripts::TranscriptCache;
@@ -154,6 +155,19 @@ impl Watcher {
         match &self.mode {
             Mode::Mock(adapters) => adapters.clone(),
             Mode::Live(live) => live.adapters(),
+        }
+    }
+
+    /// Run a shell command line on a connected remote host.
+    pub async fn run_on_host(
+        &self,
+        alias: &str,
+        command: &str,
+        timeout: Duration,
+    ) -> Result<CommandOutput, String> {
+        match &self.mode {
+            Mode::Mock(_) => Err("no remote shell in mock mode".into()),
+            Mode::Live(live) => live.run_on_host(alias, command, timeout).await,
         }
     }
 

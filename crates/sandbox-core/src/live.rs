@@ -27,6 +27,7 @@ use crate::overview::{
     load_many_with_failures,
 };
 use crate::remote_hosts::{RemoteHosts, Wake};
+use crate::runner::CommandOutput;
 use crate::sandbox::PROBE_SENTINEL;
 use crate::settings::RemoteHost;
 
@@ -130,6 +131,16 @@ impl LiveRuntime {
     /// Remote hosts from settings. Takes effect on the next refresh.
     pub fn set_remote_hosts(&self, hosts: Vec<RemoteHost>) {
         self.remotes.set_hosts(hosts);
+    }
+
+    /// Run a shell command line on a connected remote host.
+    pub async fn run_on_host(
+        &self,
+        alias: &str,
+        command: &str,
+        timeout: Duration,
+    ) -> std::result::Result<CommandOutput, String> {
+        self.remotes.run_on(alias, command, timeout).await
     }
 
     /// Retry unreachable hosts on the next refresh ("Test connection").

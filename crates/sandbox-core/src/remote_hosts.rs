@@ -21,6 +21,7 @@ use crate::overview::{ContainerOverview, HostedAdapter, Overview, RuntimeFailure
 
 pub use crate::overview::REMOTE_TIMEOUT;
 use crate::remote::{Backoff, HostState, HostStatus, RemoteDetection};
+use crate::runner::CommandOutput;
 use crate::settings::RemoteHost;
 
 /// The reason every configured host shows where SSH hosts cannot work.
@@ -37,6 +38,8 @@ pub trait RemoteSession: Send + Sync {
     fn close(&self) -> BoxFuture<'_, ()>;
     /// The last diagnostic line the connection reported, if any.
     fn last_error(&self) -> Option<String>;
+    /// Run a command line through the master connection.
+    fn run(&self, command: &str, timeout: Duration) -> BoxFuture<'_, crate::Result<CommandOutput>>;
 }
 
 #[cfg(unix)]
@@ -49,6 +52,10 @@ impl RemoteSession for crate::ssh::SshSession {
     }
     fn last_error(&self) -> Option<String> {
         crate::ssh::SshSession::last_error(self)
+    }
+    fn run(&self, command: &str, timeout: Duration) -> BoxFuture<'_, crate::Result<CommandOutput>> {
+        let command = command.to_string();
+        Box::pin(async move { crate::ssh::SshSession::run(self, &command, timeout).await })
     }
 }
 
@@ -292,6 +299,27 @@ impl RemoteHosts {
             poll_interval: Mutex::new(Duration::from_secs(10)),
             last_refresh: Mutex::new(None),
         }
+    }
+
+    /// Run a command on a connected host. Takes the connections lock, so it
+    /// waits for a running refresh round; callers hold no other lock.
+    pub async fn run_on(
+        &self,
+        alias: &str,
+        command: &str,
+        timeout: Duration,
+    ) -> std::result::Result<CommandOutput, String> {
+        let session = {
+            let list = self.connections.lock().await;
+            list.iter()
+                .find(|c| c.config.alias == alias && c.is_connected())
+                .and_then(|c| c.session.clone())
+        };
+        let session = session.ok_or_else(|| format!("{alias} is not connected"))?;
+        session
+            .run(command, timeout)
+            .await
+            .map_err(|e| e.to_string())
     }
 
     /// Hosts from settings. Applied at the start of the next refresh.
@@ -692,6 +720,8 @@ mod tests {
         slow: AtomicBool,
         closed: AtomicBool,
         last: StdMutex<Option<String>>,
+        /// Replies for `run`, popped front to back.
+        replies: StdMutex<Vec<CommandOutput>>,
     }
 
     impl RemoteSession for FakeSession {
@@ -711,6 +741,23 @@ mod tests {
         }
         fn last_error(&self) -> Option<String> {
             self.last.lock().unwrap().clone()
+        }
+        fn run(
+            &self,
+            _command: &str,
+            _timeout: Duration,
+        ) -> BoxFuture<'_, crate::Result<CommandOutput>> {
+            let mut replies = self.replies.lock().unwrap();
+            let next = if replies.is_empty() {
+                CommandOutput {
+                    exit_code: 127,
+                    stdout: String::new(),
+                    stderr: "no reply scripted".into(),
+                }
+            } else {
+                replies.remove(0)
+            };
+            Box::pin(async move { Ok(next) })
         }
     }
 
@@ -850,6 +897,35 @@ mod tests {
         assert!(next.containers.iter().all(|c| !c.host.is_local()));
         assert!(!next.containers.is_empty());
         assert_eq!(script.calls(), 1);
+    }
+
+    #[tokio::test]
+    async fn run_on_reaches_the_connected_session_only() {
+        let (script, remotes) = setup();
+        remotes.set_hosts(vec![host("devbox")]);
+        round(&remotes).await;
+        remotes.settle().await;
+        round(&remotes).await;
+        script
+            .last_session()
+            .replies
+            .lock()
+            .unwrap()
+            .push(CommandOutput {
+                exit_code: 0,
+                stdout: "hello\n".into(),
+                stderr: String::new(),
+            });
+        let out = remotes
+            .run_on("devbox", "echo hello", Duration::from_secs(5))
+            .await
+            .unwrap();
+        assert_eq!(out.stdout, "hello\n");
+        let err = remotes
+            .run_on("other", "echo", Duration::from_secs(5))
+            .await
+            .unwrap_err();
+        assert_eq!(err, "other is not connected");
     }
 
     #[tokio::test]
