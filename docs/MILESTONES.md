@@ -248,6 +248,8 @@ with no configuration.
 - ~~Remote hosts follow-ups~~: shipped in 0.8.0: `ssh://` context import
   (0.7.0), allow list on remote hosts, plain `tcp://` endpoints. TLS Docker
   endpoints are not supported.
+- ~~Localisation~~: English and German in 0.9.0, see `docs/I18N.md` and ADR
+  0003; a third language is one dictionary per side.
 - CLI or TUI mode sharing the same core (`sandbox-watcher --tui`).
 - Upstream contribution: `sandbox status --json --all` proposed upstream on
   2026-11-01 so the watcher can drop its own session reader and stay

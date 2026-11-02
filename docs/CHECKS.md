@@ -58,6 +58,18 @@ both states of every optional field, and the enum needs an entry in the
 `enums` test. `pnpm check:contracts -- --keep` leaves the generated project
 in `target/contracts/` for inspection.
 
+## Translations
+
+`src/i18n/de.ts` is typed as the shape of `en.ts`, so `pnpm build` (which
+runs `tsc`) fails on a missing or extra German key. `src/i18n/i18n.test.ts`
+checks that both dictionaries use the same placeholders per key.
+`src/components/__tests__/germanGuard.test.tsx` renders every component
+once in German with the fixtures and fails on a list of English words that
+are easy to leave behind; extend the list when a leftover slips through,
+and add new components to its `trees`. The Rust texts in `i18n::text` are
+covered by an exhaustive `match`: a new `Language` variant does not compile
+until every text has it. Finding: add the key, do not special-case the test.
+
 ## Dependency audits
 
 `.github/workflows/audit.yml` runs on pull requests that touch a manifest

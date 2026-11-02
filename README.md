@@ -48,6 +48,13 @@ the first installed JetBrains IDE (PhpStorm, IntelliJ IDEA, WebStorm, …) or a
 custom command with `{path}`. Only paths inside the container's project
 directory are opened.
 
+## Languages
+
+English and German. Settings → Language picks one or follows the system
+language, which the app resolves on the Rust side so that the window, the
+tray menu and notifications agree. Container names, commands, logs and
+config lines are shown as they are.
+
 ## Install
 
 Download the latest build from the

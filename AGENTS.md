@@ -65,6 +65,16 @@ decisions are in `docs/adr/`. Read both before changing architecture.
   `SANDBOX_WATCHER_UPDATE_CONTRACTS=1 cargo test -p sandbox-core --test contracts`
   and commit the fixtures. A new bridged type needs a sample for every
   variant and both states of every `Option`. See `docs/CHECKS.md`.
+- **Every user-visible string goes through the dictionaries.** In the
+  webview, `t()`/`tx()` from `src/i18n` with a key in `en.ts` and the same
+  key in `de.ts` (`tsc` fails otherwise); whole sentences, never fragments.
+  Tray, native menu and notification texts go through `i18n::text` in core,
+  one function per text with an exhaustive `match`. Product names, commands,
+  log lines and ids used as CSS classes stay literal. The language comes
+  from the shell (`resolved_language`), never from `navigator.language`.
+  Adding a language: a variant in `Language` and `LanguageChoice`, a
+  dictionary typed as `Dictionary`, an option in the Settings select, and
+  regenerated contract fixtures. See `docs/adr/0003-localisation.md`.
 - **Report partial failures, never swallow them.** `stop_all` returns a
   `StopReport` with one `StopFailure` per host and runtime whose containers
   could not be listed; activity and history carry `Coverage` and
