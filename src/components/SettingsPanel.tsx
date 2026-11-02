@@ -341,6 +341,17 @@ export function SettingsPanel({
             <option value="dark">Dark</option>
           </select>
         </label>
+        <label>
+          Language
+          <select
+            value={draft.language}
+            onChange={(e) => update({ language: e.target.value as Settings["language"] })}
+          >
+            <option value="system">System</option>
+            <option value="en">English</option>
+            <option value="de">Deutsch</option>
+          </select>
+        </label>
       </fieldset>
 
       <RemoteHostsSection

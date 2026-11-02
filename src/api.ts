@@ -14,6 +14,7 @@ import type {
   DetectedRuntime,
   DiagnosticsReport,
   HostStatus,
+  Language,
   NetworkReport,
   Overview,
   SshContext,
@@ -36,6 +37,15 @@ export function getSettings(): Promise<Settings> {
 
 export function saveSettings(settings: Settings): Promise<Settings> {
   return invoke<Settings>("save_settings", { settings });
+}
+
+/**
+ * The language to render in, resolved by the shell from the setting and the
+ * system locale. Not `navigator.language`: in a WKWebView that follows the
+ * bundle's declared localisations rather than the user's system language.
+ */
+export function resolvedLanguage(): Promise<Language> {
+  return invoke<Language>("resolved_language");
 }
 
 /** The Rust watcher pushes a fresh overview after every refresh. */

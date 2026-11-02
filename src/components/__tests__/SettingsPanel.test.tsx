@@ -62,6 +62,15 @@ describe("SettingsPanel", () => {
     expect(custom.html).toContain('value="wezterm start --cwd {dir}"');
   });
 
+  it("offers the languages with the saved one selected", () => {
+    const { html, text } = render(
+      <SettingsPanel settings={settings({ language: "de" })} onSaved={noop} onClose={noop} />,
+    );
+    expect(text).toContain("Language");
+    for (const name of ["System", "English", "Deutsch"]) expect(text).toContain(name);
+    expect(html).toContain('<option value="de" selected="">Deutsch</option>');
+  });
+
   it("prefills the price table as JSON", () => {
     const { text } = render(<SettingsPanel settings={settings()} onSaved={noop} onClose={noop} />);
     expect(text).toContain('"claude-sonnet-4": {');

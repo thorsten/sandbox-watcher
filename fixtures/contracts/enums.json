@@ -84,6 +84,19 @@
       "unreachable"
     ]
   },
+  "Language": {
+    "values": [
+      "en",
+      "de"
+    ]
+  },
+  "LanguageChoice": {
+    "values": [
+      "system",
+      "en",
+      "de"
+    ]
+  },
   "MountRole": {
     "values": [
       "project",

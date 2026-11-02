@@ -34,6 +34,7 @@ use sandbox_core::endpoints::SshContext;
 use sandbox_core::files::FileTouch;
 use sandbox_core::history::{Aggregate, HistoryView, SessionRecord, UsageScope};
 use sandbox_core::host::Host;
+use sandbox_core::i18n::Language;
 use sandbox_core::model::{
     AgentKind, ContainerDetails, ContainerState, Mount, MountRole, NetworkEntry, NetworkStatus,
     PortBinding, Readiness, ResourceSample, RuntimeEvent, RuntimeEventKind, RuntimeInfo,
@@ -44,7 +45,9 @@ use sandbox_core::overview::{
     ConnectedRuntime, ContainerOverview, DataSource, Overview, RuntimeFailure, RuntimeStatus,
 };
 use sandbox_core::remote::{HostState, HostStatus};
-use sandbox_core::settings::{NotificationSettings, RemoteHost, Settings, TerminalChoice, Theme};
+use sandbox_core::settings::{
+    LanguageChoice, NotificationSettings, RemoteHost, Settings, TerminalChoice, Theme,
+};
 use sandbox_core::transcripts::{Attribution, Coverage, Evidence};
 use sandbox_core::turns::{Turn, TurnReport};
 use sandbox_core::usage::{CostSource, ModelPrice, Usage};
@@ -194,6 +197,14 @@ fn themes() -> Vec<Theme> {
         Light,
         Dark
     })
+}
+
+fn language_choices() -> Vec<LanguageChoice> {
+    unit_variants!(LanguageChoice { System, En, De })
+}
+
+fn languages() -> Vec<Language> {
+    unit_variants!(Language { En, De })
 }
 
 fn activity_event_kinds() -> Vec<ActivityEventKind> {
@@ -1021,6 +1032,7 @@ fn settings_samples() -> Vec<Settings> {
         close_to_tray: false,
         start_minimized: true,
         theme: themes()[2],
+        language: LanguageChoice::De,
         blocked_burst_threshold: 10,
         blocked_burst_window_secs: 60,
         history_retention_days: 30,
@@ -1176,6 +1188,11 @@ fn config_target() {
 }
 
 #[test]
+fn language() {
+    contract("Language", languages());
+}
+
+#[test]
 fn ssh_context() {
     contract("SshContext", ssh_contexts());
 }
@@ -1285,6 +1302,8 @@ fn enums() {
     enums.insert("MountRole", enum_values(&mount_roles(), None));
     enums.insert("DataSource", enum_values(&data_sources(), None));
     enums.insert("Theme", enum_values(&themes(), None));
+    enums.insert("LanguageChoice", enum_values(&language_choices(), None));
+    enums.insert("Language", enum_values(&languages(), None));
     enums.insert(
         "ActivityEventKind",
         enum_values(&activity_event_kinds(), None),

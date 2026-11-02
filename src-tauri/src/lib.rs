@@ -30,6 +30,7 @@ use sandbox_core::diagnostics::DiagnosticsReport;
 use sandbox_core::endpoints::SshContext;
 use sandbox_core::history::{HistoryQuery, HistoryView};
 use sandbox_core::host::Host;
+use sandbox_core::i18n::Language;
 use sandbox_core::model::AgentKind;
 use sandbox_core::model::{ContainerDetails, ResourceSample};
 use sandbox_core::network::NetworkReport;
@@ -89,6 +90,13 @@ fn get_stats(state: State<'_, App>) -> HashMap<String, Vec<ResourceSample>> {
 #[tauri::command]
 fn get_settings(state: State<'_, App>) -> Settings {
     state.settings()
+}
+
+/// The language the webview should render in. Re-read after every settings
+/// save; `settings.language` alone cannot say what `system` means.
+#[tauri::command]
+fn resolved_language(state: State<'_, App>) -> Language {
+    state.language()
 }
 
 #[tauri::command]
@@ -827,6 +835,7 @@ pub fn run() {
             check_for_update,
             install_update,
             detect_runtimes,
+            resolved_language,
             test_remote_host,
             list_docker_ssh_contexts,
             app_version

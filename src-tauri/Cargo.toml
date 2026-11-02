@@ -20,6 +20,7 @@ futures.workspace = true
 sandbox-core = { path = "../crates/sandbox-core" }
 serde.workspace = true
 serde_json.workspace = true
+sys-locale = "0.3"
 tauri = { version = "2", features = ["tray-icon", "image-png"] }
 tauri-plugin-autostart = "2"
 tauri-plugin-notification = "2"

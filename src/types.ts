@@ -267,6 +267,12 @@ export interface StopReport {
 
 export type Theme = "system" | "light" | "dark";
 
+/** The language setting; `system` follows the OS locale, English as fallback. */
+export type LanguageChoice = "system" | "en" | "de";
+
+/** A language the app is translated into. Resolved on the Rust side. */
+export type Language = "en" | "de";
+
 export type TerminalChoice =
   | { kind: "auto" }
   | { kind: "iterm" }
@@ -294,6 +300,7 @@ export interface Settings {
   close_to_tray: boolean;
   start_minimized: boolean;
   theme: Theme;
+  language: LanguageChoice;
   blocked_burst_threshold: number;
   blocked_burst_window_secs: number;
   history_retention_days: number;

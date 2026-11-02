@@ -13,6 +13,7 @@ use sandbox_core::activity::collect_insights;
 use sandbox_core::adapter::ContainerFilter;
 use sandbox_core::history::{History, HistoryQuery, HistoryView};
 use sandbox_core::host::{Host, container_key, parse_container_key};
+use sandbox_core::i18n::Language;
 use sandbox_core::live::LiveRuntime;
 use sandbox_core::mock::MockAdapter;
 use sandbox_core::model::RuntimeKind;
@@ -114,6 +115,15 @@ impl Watcher {
 
     pub fn settings(&self) -> Settings {
         self.settings.read().expect("settings poisoned").clone()
+    }
+
+    /// The language the webview, the tray and the notifications use right
+    /// now: the setting, or the system locale when it says so.
+    pub fn language(&self) -> Language {
+        Language::resolve(
+            self.settings().language,
+            sys_locale::get_locale().as_deref(),
+        )
     }
 
     /// Store new settings and apply what the watcher owns.

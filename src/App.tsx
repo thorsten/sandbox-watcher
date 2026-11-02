@@ -13,6 +13,7 @@ import {
   onUpdateAvailable,
   onUpdateProgress,
   refreshNow,
+  resolvedLanguage,
 } from "./api";
 import logoUrl from "./assets/logo.svg";
 import { DetailPane } from "./components/DetailPane";
@@ -24,6 +25,7 @@ import { StopAllButton } from "./components/StopAllButton";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { AGENT_LABELS, summarize } from "./format";
 import { filterByHost, hostsInUse, pickSelected } from "./hosts";
+import { applyLanguage } from "./language";
 import { recentBlockedCount } from "./network";
 import { applyTheme } from "./theme";
 import type { NetworkReport, Overview, ContainerOverview, Settings, UpdateInfo } from "./types";
@@ -57,6 +59,8 @@ export function App() {
     setSettings(s);
     applyConfirmStop(s.confirm_stop);
     applyTheme(s.theme);
+    // What `system` means is only known on the Rust side.
+    resolvedLanguage().then(applyLanguage, () => undefined);
   }, []);
 
   const acceptOverview = useCallback((overview: Overview) => {

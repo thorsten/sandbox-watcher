@@ -16,6 +16,17 @@ pub enum Theme {
     Dark,
 }
 
+/// Language of the UI, tray and notifications. `System` follows the
+/// system locale and falls back to English; see `i18n::Language::resolve`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum LanguageChoice {
+    #[default]
+    System,
+    En,
+    De,
+}
+
 /// Which terminal "Open terminal" uses on macOS. Linux honours `$TERMINAL`
 /// and Windows uses Windows Terminal, so only macOS needs a choice today.
 #[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
@@ -89,6 +100,7 @@ pub struct Settings {
     /// Start without showing the window.
     pub start_minimized: bool,
     pub theme: Theme,
+    pub language: LanguageChoice,
     /// Blocked requests within `blocked_burst_window_secs` that count as a burst.
     pub blocked_burst_threshold: u64,
     pub blocked_burst_window_secs: u64,
@@ -117,6 +129,7 @@ impl Default for Settings {
             close_to_tray: true,
             start_minimized: false,
             theme: Theme::System,
+            language: LanguageChoice::System,
             blocked_burst_threshold: 5,
             blocked_burst_window_secs: 60,
             history_retention_days: 30,
@@ -215,6 +228,25 @@ mod tests {
         assert_eq!(partial.poll_interval_secs, 2, "clamped");
         assert_eq!(partial.theme, Theme::Dark);
         assert!(partial.confirm_stop);
+        assert_eq!(partial.language, LanguageChoice::System);
+    }
+
+    #[test]
+    fn language_choice_serialises_kebab_case() {
+        let s = Settings {
+            language: LanguageChoice::De,
+            ..Default::default()
+        };
+        assert_eq!(serde_json::to_value(&s).unwrap()["language"], "de");
+        assert_eq!(
+            Settings::from_json(r#"{"language": "en"}"#).language,
+            LanguageChoice::En
+        );
+        // An unknown value makes the whole file invalid, which yields defaults.
+        assert_eq!(
+            Settings::from_json(r#"{"language": "fr"}"#).language,
+            LanguageChoice::System
+        );
     }
 
     #[test]

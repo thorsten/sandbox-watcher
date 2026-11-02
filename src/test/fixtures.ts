@@ -128,6 +128,7 @@ export function settings(partial: Partial<Settings> = {}): Settings {
     close_to_tray: true,
     start_minimized: false,
     theme: "system",
+    language: "system",
     blocked_burst_threshold: 5,
     blocked_burst_window_secs: 60,
     history_retention_days: 30,

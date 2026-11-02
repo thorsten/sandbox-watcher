@@ -11,6 +11,7 @@
       },
       "history_enabled": true,
       "history_retention_days": 30,
+      "language": "system",
       "launch_at_login": false,
       "notifications": {
         "blocked_burst": true,
@@ -171,6 +172,7 @@
       },
       "history_enabled": false,
       "history_retention_days": 30,
+      "language": "de",
       "launch_at_login": true,
       "notifications": {
         "blocked_burst": false,
