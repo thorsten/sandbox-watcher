@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { stopAll } from "../api";
 import { confirmStopEnabled, describeInterruptionByHost, describeStopReport } from "../actions";
+import { t } from "../i18n";
 import { disableConfirmStop } from "../settingsActions";
 import type { HostStatus, ContainerOverview } from "../types";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -43,14 +44,14 @@ export function StopAllButton({
         disabled={busy}
         onClick={() => (confirmStopEnabled() ? setConfirming(true) : void doStop())}
       >
-        {busy ? "Stopping…" : `Stop all (${running.length})`}
+        {busy ? t("stop.stopping") : t("stop.allCount", { n: running.length })}
       </button>
       {result && <span className="notice">{result}</span>}
       {confirming && (
         <ConfirmDialog
-          title={`Stop all ${running.length} running sandbox containers?`}
+          title={t("stop.allTitle", { n: running.length })}
           lines={describeInterruptionByHost(running, hosts)}
-          confirmLabel="Stop all"
+          confirmLabel={t("stop.all")}
           busy={busy}
           onCancel={() => setConfirming(false)}
           onConfirm={(dontAsk) => {

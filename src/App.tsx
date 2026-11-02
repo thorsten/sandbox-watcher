@@ -25,7 +25,7 @@ import { StopAllButton } from "./components/StopAllButton";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { AGENT_LABELS, summarize } from "./format";
 import { filterByHost, hostsInUse, pickSelected } from "./hosts";
-import { LanguageProvider, formatTime } from "./i18n";
+import { LanguageProvider, formatTime, setLanguage as applyToHelpers, t, tx } from "./i18n";
 import { applyLanguage } from "./language";
 import { recentBlockedCount } from "./network";
 import { applyTheme } from "./theme";
@@ -138,6 +138,8 @@ export function App() {
     }
   };
 
+  // App's own texts render before the provider below sets the language.
+  applyToHelpers(language);
   const summary = summarize(containers);
   const recentBlocked =
     network && state.phase === "ready" ? recentBlockedCount(network, state.refreshedAt) : 0;
@@ -151,18 +153,18 @@ export function App() {
             Sandbox Watcher
           </h1>
           {state.phase === "ready" && state.overview.runtime.status === "connected" && (
-            <div className="header-stats" aria-label="Summary">
-              <Stat label="projects" value={summary.projects} />
-              <Stat label="running" value={summary.running} />
-              <Stat label="sessions" value={summary.sessions} />
+            <div className="header-stats" aria-label={t("app.summary")}>
+              <Stat label={t("app.stat.projects")} value={summary.projects} />
+              <Stat label={t("app.stat.running")} value={summary.running} />
+              <Stat label={t("app.stat.sessions")} value={summary.sessions} />
               {[...summary.byAgent].map(([agent, n]) => (
                 <span key={agent} className={`chip agent-${agent}`}>
                   {AGENT_LABELS[agent]} <strong>{n}</strong>
                 </span>
               ))}
               {recentBlocked > 0 && (
-                <span className="badge badge-err" title="Blocked requests in the last five minutes">
-                  {recentBlocked} blocked
+                <span className="badge badge-err" title={t("app.blockedRecentTitle")}>
+                  {t("app.blockedCount", { n: recentBlocked })}
                 </span>
               )}
             </div>
@@ -170,7 +172,7 @@ export function App() {
           <div className="header-meta">
             {state.phase === "ready" && state.overview.source === "mock" && (
               <span className="badge badge-mock" title="SANDBOX_WATCHER_MOCK=1">
-                mock data
+                {t("app.mockData")}
               </span>
             )}
             <StopAllButton
@@ -179,7 +181,7 @@ export function App() {
               onChanged={() => void refresh()}
             />
             <button type="button" onClick={() => void refresh()} disabled={refreshing}>
-              {refreshing ? "Refreshing…" : "Refresh"}
+              {refreshing ? t("app.refreshing") : t("app.refresh")}
             </button>
             <button
               type="button"
@@ -188,9 +190,9 @@ export function App() {
                 setShowSettings(false);
               }}
               aria-pressed={showHistory}
-              title="Session history"
+              title={t("app.historyTitle")}
             >
-              History
+              {t("app.history")}
             </button>
             <button
               type="button"
@@ -199,9 +201,9 @@ export function App() {
                 setShowHistory(false);
               }}
               aria-pressed={showSettings}
-              title="Settings"
+              title={t("app.settings")}
             >
-              Settings
+              {t("app.settings")}
             </button>
             {version && <span className="muted small">v{version}</span>}
           </div>
@@ -215,11 +217,11 @@ export function App() {
           />
         )}
 
-        {state.phase === "loading" && <p className="muted pad">Looking for container runtimes…</p>}
+        {state.phase === "loading" && <p className="muted pad">{t("app.looking")}</p>}
 
         {state.phase === "error" && (
           <section className="banner banner-error pad">
-            <strong>Could not load overview.</strong>
+            <strong>{t("app.loadFailed")}</strong>
             <pre>{state.message}</pre>
           </section>
         )}
@@ -273,16 +275,17 @@ export function App() {
                 />
               ) : (
                 <section className="empty">
-                  <h2>No sandbox containers.</h2>
+                  <h2>{t("app.emptyTitle")}</h2>
                   <p className="muted">
-                    Start one with <code>sandbox run claude</code> in a project and it appears on
-                    the left.
+                    {tx("app.emptyHint", { command: <code>sandbox run claude</code> })}
                   </p>
                 </section>
               )}
               <footer className="muted small">
-                Tested against sandbox {state.overview.tested_sandbox_version}. Refreshed{" "}
-                {formatTime(state.refreshedAt)}.
+                {t("app.footer", {
+                  version: state.overview.tested_sandbox_version,
+                  time: formatTime(state.refreshedAt),
+                })}
               </footer>
             </main>
           </div>

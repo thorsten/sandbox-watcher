@@ -1,12 +1,12 @@
 /**
  * Translation for the webview. The language is one module-level value so
  * that pure helpers (`formatUptime`, `describeStopReport`, ...) and
- * components agree; `LanguageProvider` sets it for the tree it wraps and
- * re-renders consumers when it changes. The value itself comes from the
- * shell (`resolvedLanguage`), never from `navigator.language`.
+ * components agree; `LanguageProvider` sets it for the tree it wraps. The
+ * value itself comes from the shell (`resolvedLanguage`), never from
+ * `navigator.language`.
  */
-import { createContext, useContext, type ReactNode } from "react";
-import type { Language } from "../types";
+import { Fragment, createContext, useContext, type ReactNode } from "react";
+import type { ContainerState, Language } from "../types";
 import { de } from "./de";
 import type { Dictionary, Key, Params, PlainKey, PluralForms, PluralKey } from "./dictionary";
 import { en } from "./en";
@@ -84,12 +84,38 @@ export function t(key: Key, params?: Params): string {
   return interpolate(form, params);
 }
 
+/**
+ * Like `t`, but placeholders become React nodes, for sentences that wrap a
+ * `<code>` or a link. Placeholders without a part are left as they are.
+ */
+export function tx(key: PlainKey, parts: Record<string, ReactNode>): ReactNode {
+  const template: string = DICTIONARIES[current][key] ?? en[key];
+  return (
+    <>
+      {template.split(/(\{\w+\})/).map((piece, i) => {
+        const name = /^\{(\w+)\}$/.exec(piece)?.[1];
+        return name !== undefined && name in parts ? (
+          <Fragment key={i}>{parts[name]}</Fragment>
+        ) : (
+          piece
+        );
+      })}
+    </>
+  );
+}
+
+/** A container state as a word. */
+export function stateLabel(state: ContainerState): string {
+  return t(`state.${state}`);
+}
+
 const LanguageContext = createContext<Language>("en");
 
 /**
  * Sets the language for the tree below. Assigning the module value during
- * render keeps the pure helpers called by children in step; the context
- * makes `useT` consumers re-render on a change.
+ * render keeps `t` and the pure helpers called by children in step. App
+ * re-renders the whole tree on a change, so components call `t` directly;
+ * a memoised component would read `useLanguage()` to re-render too.
  */
 export function LanguageProvider({
   language,
@@ -104,12 +130,6 @@ export function LanguageProvider({
 
 export function useLanguage(): Language {
   return useContext(LanguageContext);
-}
-
-/** `t` for components: subscribes to the language so a change re-renders. */
-export function useT(): typeof t {
-  useContext(LanguageContext);
-  return t;
 }
 
 const dateTimeFormats = new Map<string, Intl.DateTimeFormat>();

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { installUpdate } from "../api";
+import { t } from "../i18n";
 import type { UpdateInfo } from "../types";
 import { progressPercent, summarizeNotes } from "../updateFormat";
 
@@ -29,8 +30,8 @@ export function UpdateBanner({ update, progress, onDismiss }: Props) {
   return (
     <section className="update-banner" aria-live="polite">
       <div className="update-head">
-        <strong>Sandbox Watcher {update.version} is available</strong>
-        <span className="muted"> · you have {update.current_version}</span>
+        <strong>{t("update.available", { version: update.version })}</strong>
+        <span className="muted"> · {t("update.current", { version: update.current_version })}</span>
       </div>
       {notes.length > 0 && (
         <ul className="update-notes">
@@ -43,15 +44,17 @@ export function UpdateBanner({ update, progress, onDismiss }: Props) {
         <div className="update-progress">
           <progress className="update-progress-bar" max={100} value={percent ?? undefined} />
           <span className="muted small">
-            {percent === null ? "Downloading…" : `Downloading… ${percent}%`} The app restarts when
-            done.
+            {percent === null
+              ? t("update.downloading")
+              : t("update.downloadingPercent", { percent })}{" "}
+            {t("update.restarts")}
           </span>
         </div>
       )}
       {error && <p className="notice notice-err">{error}</p>}
       <div className="update-actions">
         <button type="button" onClick={onDismiss} disabled={installing}>
-          Later
+          {t("update.later")}
         </button>
         <button
           type="button"
@@ -59,7 +62,7 @@ export function UpdateBanner({ update, progress, onDismiss }: Props) {
           onClick={() => void install()}
           disabled={installing}
         >
-          {installing ? "Installing…" : "Install and restart"}
+          {installing ? t("update.installing") : t("update.install")}
         </button>
       </div>
     </section>

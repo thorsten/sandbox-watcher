@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { t } from "../i18n";
 
 interface Props {
   title: string;
@@ -29,14 +30,14 @@ export function ConfirmDialog({ title, lines, confirmLabel, busy, onConfirm, onC
       </ul>
       <label className="check">
         <input type="checkbox" checked={dontAsk} onChange={(e) => setDontAsk(e.target.checked)} />
-        Don't ask again
+        {t("confirm.dontAsk")}
       </label>
       <div className="confirm-actions">
         <button type="button" onClick={onCancel} disabled={busy}>
-          Cancel
+          {t("confirm.cancel")}
         </button>
         <button type="button" className="danger" onClick={() => onConfirm(dontAsk)} disabled={busy}>
-          {busy ? "Stopping…" : confirmLabel}
+          {busy ? t("stop.stopping") : confirmLabel}
         </button>
       </div>
     </dialog>

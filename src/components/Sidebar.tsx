@@ -1,5 +1,6 @@
 import { AGENT_LABELS, formatUptime, groupByProject, staleHashes } from "../format";
 import { hostLabel, hostsInUse, isRemote } from "../hosts";
+import { stateLabel, t, tx } from "../i18n";
 import { formatRelative } from "../network";
 import {
   RUNTIME_LABELS,
@@ -10,7 +11,7 @@ import {
 } from "../types";
 import { RuntimeBanner } from "./RuntimeBanner";
 
-const thisMachine = navigator.platform.toLowerCase().includes("mac") ? "This Mac" : "This machine";
+const isMac = navigator.platform.toLowerCase().includes("mac");
 
 interface Props {
   containers: ContainerOverview[];
@@ -39,6 +40,7 @@ export function Sidebar({
   onSelect,
   now,
 }: Props) {
+  const thisMachine = isMac ? t("common.thisMac") : t("common.thisMachine");
   const showRuntime = runtime.status === "connected" && runtime.runtimes.length > 1;
   const stale = staleHashes(containers);
   const blockedFor = (id: string) =>
@@ -56,11 +58,11 @@ export function Sidebar({
       {hostChoices.length > 1 && (
         <select
           className="host-filter"
-          aria-label="Host filter"
+          aria-label={t("sidebar.hostFilter")}
           value={hostFilter}
           onChange={(e) => onHostFilter?.(e.target.value)}
         >
-          <option value="all">All hosts</option>
+          <option value="all">{t("sidebar.allHosts")}</option>
           {hostChoices.map((h) => (
             <option key={h} value={h}>
               {h === "local" ? thisMachine : hostLabel(h, hosts)}
@@ -70,7 +72,7 @@ export function Sidebar({
       )}
       {runtime.status === "connected" && containers.length === 0 && (
         <div className="sidebar-empty muted">
-          No sandbox containers. Start one with <code>sandbox run claude</code>.
+          {tx("sidebar.empty", { command: <code>sandbox run claude</code> })}
         </div>
       )}
       {running.map(([slug, group]) => (
@@ -93,7 +95,7 @@ export function Sidebar({
       ))}
       {stopped.length > 0 && (
         <section className="project-group stopped-group">
-          <h2 className="muted">Stopped</h2>
+          <h2 className="muted">{t("sidebar.stopped")}</h2>
           {stopped.flatMap(([, group]) =>
             group.map((c) => (
               <ContainerCard
@@ -155,9 +157,11 @@ function ContainerCard({
         )}
       </div>
       <div className="card-meta muted">
-        {isRunning ? formatUptime(container.started_at, now) : container.state}
+        {isRunning ? formatUptime(container.started_at, now) : stateLabel(container.state)}
         {showRuntime && <> · {RUNTIME_LABELS[container.runtime]}</>}
-        {container.last_seen_at && <> · last seen {formatRelative(container.last_seen_at, now)}</>}
+        {container.last_seen_at && (
+          <> · {t("sidebar.lastSeen", { when: formatRelative(container.last_seen_at, now) })}</>
+        )}
       </div>
       <div className="card-chips">
         {[...agents].map(([agent, n]) => (
@@ -166,10 +170,14 @@ function ContainerCard({
             {n > 1 && <strong>{n}</strong>}
           </span>
         ))}
-        {isRunning && container.sessions.length === 0 && <span className="muted small">idle</span>}
-        {blocked > 0 && <span className="badge badge-err">{blocked} blocked</span>}
-        {starting && <span className="badge badge-warn">starting</span>}
-        {stale && <span className="badge badge-warn">stale</span>}
+        {isRunning && container.sessions.length === 0 && (
+          <span className="muted small">{t("sidebar.idle")}</span>
+        )}
+        {blocked > 0 && (
+          <span className="badge badge-err">{t("app.blockedCount", { n: blocked })}</span>
+        )}
+        {starting && <span className="badge badge-warn">{t("sidebar.starting")}</span>}
+        {stale && <span className="badge badge-warn">{t("sidebar.stale")}</span>}
       </div>
     </button>
   );

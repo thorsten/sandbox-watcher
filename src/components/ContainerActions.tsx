@@ -2,6 +2,7 @@ import { useState } from "react";
 import { getProjectPath, openInEditor, openProject, openTerminal, stopContainer } from "../api";
 import { confirmStopEnabled, copyText, describeInterruption, networkLogsCommand } from "../actions";
 import { isRemote } from "../hosts";
+import { t, tx } from "../i18n";
 import { disableConfirmStop } from "../settingsActions";
 import type { ContainerOverview } from "../types";
 import { ConfirmDialog } from "./ConfirmDialog";
@@ -38,7 +39,7 @@ export function ContainerActions({ container, onChanged }: Props) {
     }
   };
 
-  const doStop = () => run("stop", () => stopContainer(container.key), "Stopped");
+  const doStop = () => run("stop", () => stopContainer(container.key), t("actions.stoppedNotice"));
 
   const requestStop = () => {
     if (confirmStopEnabled()) setConfirming(true);
@@ -52,19 +53,19 @@ export function ContainerActions({ container, onChanged }: Props) {
     else {
       const dir = await getProjectPath(container.key).catch(() => null);
       if (what === "path") {
-        if (!dir) return flash("err", "No bind-mounted project directory");
+        if (!dir) return flash("err", t("actions.noProjectDir"));
         text = dir;
       } else text = networkLogsCommand(dir, container.host);
     }
     const ok = await copyText(text);
-    flash(ok ? "ok" : "err", ok ? "Copied" : "Clipboard unavailable");
+    flash(ok ? "ok" : "err", ok ? t("actions.copied") : t("actions.clipboardUnavailable"));
   };
 
   return (
     <div className="actions">
       {remote ? (
-        <span className="muted" title="Not available for remote hosts">
-          remote host
+        <span className="muted" title={t("actions.remoteTitle")}>
+          {t("actions.remoteHost")}
         </span>
       ) : (
         <>
@@ -72,47 +73,47 @@ export function ContainerActions({ container, onChanged }: Props) {
             type="button"
             disabled={busy !== null}
             onClick={() => void run("terminal", () => openTerminal(container.key))}
-            title="Open a terminal in the project directory"
+            title={t("actions.terminalTitle")}
           >
-            Terminal
+            {t("actions.terminal")}
           </button>
           <button
             type="button"
             disabled={busy !== null}
             onClick={() => void run("folder", () => openProject(container.key))}
-            title="Open the project directory"
+            title={t("actions.folderTitle")}
           >
-            Folder
+            {t("actions.folder")}
           </button>
           <button
             type="button"
             disabled={busy !== null}
             onClick={() => void run("editor", () => openInEditor(container.key))}
-            title="Open the project in your editor"
+            title={t("actions.editorTitle")}
           >
-            Editor
+            {t("actions.editor")}
           </button>
         </>
       )}
       <span className="menu">
         <button type="button" onClick={() => setCopyOpen((v) => !v)} aria-expanded={copyOpen}>
-          Copy ▾
+          {t("actions.copy")}
         </button>
         {copyOpen && (
           <ul className="menu-list">
             <li>
               <button type="button" onClick={() => void copy("name")}>
-                Container name
+                {t("actions.copyName")}
               </button>
             </li>
             <li>
               <button type="button" onClick={() => void copy("path")}>
-                Project path
+                {t("actions.copyPath")}
               </button>
             </li>
             <li>
               <button type="button" onClick={() => void copy("network")}>
-                `sandbox network logs` command
+                {tx("actions.copyNetwork", { command: <code>sandbox network logs</code> })}
               </button>
             </li>
           </ul>
@@ -120,15 +121,15 @@ export function ContainerActions({ container, onChanged }: Props) {
       </span>
       {isRunning && (
         <button type="button" className="danger" disabled={busy !== null} onClick={requestStop}>
-          {busy === "stop" ? "Stopping…" : "Stop"}
+          {busy === "stop" ? t("stop.stopping") : t("actions.stop")}
         </button>
       )}
       {notice && <span className={`notice notice-${notice.kind}`}>{notice.text}</span>}
       {confirming && (
         <ConfirmDialog
-          title={`Stop ${container.name}?`}
+          title={t("actions.stopTitle", { name: container.name })}
           lines={describeInterruption([container])}
-          confirmLabel="Stop container"
+          confirmLabel={t("actions.stopContainer")}
           busy={busy === "stop"}
           onCancel={() => setConfirming(false)}
           onConfirm={(dontAsk) => {

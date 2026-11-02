@@ -1,10 +1,13 @@
 import { hostLabel } from "../hosts";
+import { t, tx } from "../i18n";
 import { RUNTIME_LABELS, type HostStatus, type RuntimeKind, type RuntimeStatus } from "../types";
 
 /** "Docker" for this machine, "Docker on <host>" for a remote one. */
 function runtimeLabel(host: string, kind: RuntimeKind, hosts: HostStatus[]): string {
   const label = RUNTIME_LABELS[kind];
-  return host === "local" ? label : `${label} on ${hostLabel(host, hosts)}`;
+  return host === "local"
+    ? label
+    : t("runtime.onHost", { runtime: label, host: hostLabel(host, hosts) });
 }
 
 /** One warning per unreachable remote host, with the probe report folded away. */
@@ -18,7 +21,7 @@ function HostWarnings({ hosts }: { hosts: HostStatus[] }) {
           {h.display_name || h.alias}: {h.state === "unreachable" ? h.reason : ""}
           {h.probes.length > 0 && (
             <details>
-              <summary className="muted small">Probes</summary>
+              <summary className="muted small">{t("runtime.probes")}</summary>
               <ul>
                 {h.probes.map((p) => (
                   <li key={p}>{p}</li>
@@ -94,16 +97,17 @@ function RuntimeStatusBanner({
     case "not-detected":
       return (
         <section className="banner banner-warn">
-          <strong>No container runtime detected.</strong>
+          <strong>{t("runtime.notDetectedTitle")}</strong>
           <p>
-            Sandbox Watcher looks for Docker, Podman and Apple <code>container</code> in the same
-            order sandbox does. Install one, or set <code>DOCKER_HOST</code> if your socket lives
-            somewhere unusual, then press Refresh.
+            {tx("runtime.notDetectedBody", {
+              container: <code>container</code>,
+              dockerHost: <code>DOCKER_HOST</code>,
+            })}
           </p>
           {onDiagnostics && (
             <p>
               <button type="button" onClick={onDiagnostics}>
-                Diagnostics
+                {t("runtime.diagnostics")}
               </button>
             </p>
           )}
@@ -112,23 +116,25 @@ function RuntimeStatusBanner({
     case "detected-only":
       return (
         <section className="banner banner-info">
-          <strong>Runtime found, but could not connect.</strong>
+          <strong>{t("runtime.detectedOnlyTitle")}</strong>
           <ul>
             {runtime.candidates.map((c) => (
               <li key={`${c.kind}-${c.endpoint}`}>
-                {RUNTIME_LABELS[c.kind]} at <code>{c.endpoint}</code>{" "}
+                {tx("runtime.at", {
+                  runtime: RUNTIME_LABELS[c.kind],
+                  endpoint: <code>{c.endpoint}</code>,
+                })}{" "}
                 <span className="muted">({c.source})</span>
               </li>
             ))}
           </ul>
           <p className="muted">
-            Docker and Podman are supported today. Apple <code>container</code> support arrives with
-            milestone M5.
+            {tx("runtime.detectedOnlyBody", { container: <code>container</code> })}
           </p>
           {onDiagnostics && (
             <p>
               <button type="button" onClick={onDiagnostics}>
-                Diagnostics
+                {t("runtime.diagnostics")}
               </button>
             </p>
           )}
@@ -137,15 +143,13 @@ function RuntimeStatusBanner({
     case "unavailable":
       return (
         <section className="banner banner-error">
-          <strong>Runtime detected but not reachable.</strong>
+          <strong>{t("runtime.unavailableTitle")}</strong>
           <pre>{runtime.reason}</pre>
-          <p className="muted">
-            Is the daemon running? On Linux, check that your user may access the socket.
-          </p>
+          <p className="muted">{t("runtime.unavailableBody")}</p>
           {onDiagnostics && (
             <p>
               <button type="button" onClick={onDiagnostics}>
-                Diagnostics
+                {t("runtime.diagnostics")}
               </button>
             </p>
           )}
@@ -160,7 +164,9 @@ function RuntimeStatusBanner({
                 <span className="dot dot-ok" aria-hidden="true" />
                 {runtimeLabel(r.host, r.kind, hosts)}
                 {r.version && <span className="muted"> {r.version}</span>}
-                {r.host === "local" && <span className="muted"> via {r.endpoint}</span>}
+                {r.host === "local" && (
+                  <span className="muted"> {t("runtime.via", { endpoint: r.endpoint })}</span>
+                )}
               </span>
             ))}
           </div>
@@ -168,7 +174,10 @@ function RuntimeStatusBanner({
             <ul className="runtime-failures muted">
               {runtime.failures.map((f) => (
                 <li key={`${f.host}/${f.kind}`}>
-                  {runtimeLabel(f.host, f.kind, hosts)} detected but not reachable: {f.reason}
+                  {t("runtime.failure", {
+                    runtime: runtimeLabel(f.host, f.kind, hosts),
+                    reason: f.reason,
+                  })}
                 </li>
               ))}
             </ul>
