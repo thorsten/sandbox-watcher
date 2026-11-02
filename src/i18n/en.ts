@@ -504,4 +504,12 @@ export const en = {
   "history.clearTitle": "Clear the history?",
   "history.clearLine": "All recorded sessions and containers are deleted from this machine.",
   "history.clearConfirm": "Clear history",
+
+  // Settings navigation.
+  "settings.navLabel": "Settings sections",
+  "nav.general": "General",
+  "nav.runtime": "Runtime",
+  "nav.history": "History",
+  "settings.appearance": "Appearance",
+  "settings.unsaved": "Unsaved changes",
 };

@@ -182,11 +182,23 @@ describe("German rendering", () => {
   });
 
   it("settings panel", () => {
-    const { text, html } = render(
-      <SettingsPanel settings={settings({ language: "de" })} onSaved={noop} onClose={noop} />,
-      de,
+    const sections = ["general", "runtime", "actions", "notifications", "history"] as const;
+    const texts = sections.map(
+      (section) =>
+        render(
+          <SettingsPanel
+            settings={settings({ language: "de" })}
+            initialSection={section}
+            onSaved={noop}
+            onClose={noop}
+          />,
+          de,
+        ).text,
     );
-    for (const legend of [
+    const all = texts.join(" ");
+    for (const label of [
+      "Allgemein",
+      "Darstellung",
       "Aktualisierung",
       "Aktionen",
       "Benachrichtigungen",
@@ -196,14 +208,19 @@ describe("German rendering", () => {
       "Diagnose",
       "Remote-Hosts",
     ]) {
-      expect(text).toContain(legend);
+      expect(all).toContain(label);
     }
-    expect(text).toContain("Vor dem Stoppen von Containern nachfragen");
-    expect(text).toContain("Sandbox gestoppt, während Sessions liefen");
-    expect(text).toContain("Speichern");
-    expect(html).toContain('<option value="de" selected="">Deutsch</option>');
-    expect(html).toContain('placeholder="SSH-Alias, z. B. devbox"');
-    expect(text).not.toMatch(/\bSettings\b|\bSave\b|Notifications/);
+    expect(all).not.toContain("Ungespeicherte");
+    expect(all).toContain("Vor dem Stoppen von Containern nachfragen");
+    expect(all).toContain("Sandbox gestoppt, während Sessions liefen");
+    expect(all).toContain("Speichern");
+    expect(all).not.toMatch(/\bSettings\b|\bSave\b|Notifications/);
+    const general = render(
+      <SettingsPanel settings={settings({ language: "de" })} onSaved={noop} onClose={noop} />,
+      de,
+    );
+    expect(general.html).toContain('<option value="de" selected="">Deutsch</option>');
+    expect(general.html).toContain('aria-label="Bereiche der Einstellungen"');
   });
 
   it("remote hosts", () => {

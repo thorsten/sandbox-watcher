@@ -649,6 +649,62 @@ dialog.confirm ul {
   border-radius: 10px;
   padding: 1rem 1.25rem;
   margin-bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+/* Sections list on the left, like the macOS System Settings; the content scrolls on its own. */
+.settings-body {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
+  gap: 1rem;
+  flex: 1;
+  min-height: 0;
+  margin-top: 0.75rem;
+}
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-right: 1px solid var(--border);
+  padding-right: 0.75rem;
+}
+.settings-nav button {
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  color: var(--fg);
+}
+.settings-nav button:hover {
+  background: var(--bg);
+}
+.settings-nav button.active {
+  background: var(--accent);
+  color: #fff;
+}
+.settings-content {
+  overflow-y: auto;
+  min-height: 0;
+  padding-right: 0.25rem;
+}
+.settings-content > fieldset:first-child,
+.settings-content > .settings-section:first-child {
+  margin-top: 0;
+}
+@media (max-width: 640px) {
+  .settings-body {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .settings-nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    padding: 0 0 0.5rem;
+  }
 }
 .settings-header {
   display: flex;

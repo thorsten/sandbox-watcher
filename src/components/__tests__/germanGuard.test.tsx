@@ -256,21 +256,24 @@ const trees: [string, () => ReactElement][] = [
   ["LogsPanel", () => <LogsPanel containerKey="a" />],
   ["MountsPanel", () => <MountsPanel containerKey="a" />],
   ["AllowDialog", () => <AllowDialog containerKey="a" selections={[]} onClose={noop} />],
-  [
-    "SettingsPanel",
-    () => (
-      <SettingsPanel
-        settings={settings({
-          terminal: { kind: "custom", command: "x" },
-          editor: { kind: "custom", command: "y" },
-          remote_hosts: [host],
-        })}
-        hostStatuses={[unreachable]}
-        onSaved={noop}
-        onClose={noop}
-      />
-    ),
-  ],
+  ...(["general", "runtime", "actions", "notifications", "history", "diagnostics"] as const).map(
+    (section): [string, () => ReactElement] => [
+      `SettingsPanel ${section}`,
+      () => (
+        <SettingsPanel
+          settings={settings({
+            terminal: { kind: "custom", command: "x" },
+            editor: { kind: "custom", command: "y" },
+            remote_hosts: [host],
+          })}
+          initialSection={section}
+          hostStatuses={[unreachable]}
+          onSaved={noop}
+          onClose={noop}
+        />
+      ),
+    ],
+  ),
   ["RemoteHostsSection", () => <RemoteHostsSection hosts={[host]} statuses={[]} onChange={noop} />],
   [
     "DockerContextsList",

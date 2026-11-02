@@ -248,7 +248,7 @@ export function App() {
                   key={JSON.stringify(settings)}
                   settings={settings}
                   hostStatuses={state.overview.hosts}
-                  focusDiagnostics={focusDiagnostics}
+                  initialSection={focusDiagnostics ? "diagnostics" : undefined}
                   onSaved={acceptSettings}
                   onClose={() => {
                     setShowSettings(false);

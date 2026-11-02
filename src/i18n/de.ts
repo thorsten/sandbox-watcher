@@ -485,4 +485,11 @@ export const de: Dictionary = {
   "history.clearLine":
     "Alle aufgezeichneten Sessions und Container werden von diesem Rechner gelöscht.",
   "history.clearConfirm": "Verlauf leeren",
+
+  "settings.navLabel": "Bereiche der Einstellungen",
+  "nav.general": "Allgemein",
+  "nav.runtime": "Runtime",
+  "nav.history": "Verlauf",
+  "settings.appearance": "Darstellung",
+  "settings.unsaved": "Ungespeicherte Änderungen",
 };
