@@ -4,9 +4,9 @@ import { container, NOW, session } from "./test/fixtures";
 
 describe("formatUptime edge cases", () => {
   it("handles exact bucket boundaries", () => {
-    expect(formatUptime("2026-10-30T11:59:00Z", NOW)).toBe("Up 1 minutes");
-    expect(formatUptime("2026-10-30T11:00:00Z", NOW)).toBe("Up 1 hours");
-    expect(formatUptime("2026-10-29T12:00:00Z", NOW)).toBe("Up 1 days");
+    expect(formatUptime("2026-10-30T11:59:00Z", NOW)).toBe("Up 1 minute");
+    expect(formatUptime("2026-10-30T11:00:00Z", NOW)).toBe("Up 1 hour");
+    expect(formatUptime("2026-10-29T12:00:00Z", NOW)).toBe("Up 1 day");
   });
   it("uses the current time by default", () => {
     expect(formatUptime(new Date().toISOString())).toMatch(/^Up \d+ seconds$/);

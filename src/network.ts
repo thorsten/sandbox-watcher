@@ -1,3 +1,4 @@
+import { t } from "./i18n";
 import type { NetworkEntry, NetworkReport } from "./types";
 
 export const RECENT_WINDOW_MS = 5 * 60 * 1000;
@@ -41,10 +42,10 @@ export function formatRelative(iso: string | null, now: Date): string {
   if (!iso) return "";
   const diff = Math.max(0, now.getTime() - Date.parse(iso));
   const s = Math.floor(diff / 1000);
-  if (s < 60) return `${s}s ago`;
+  if (s < 60) return t("ago.seconds", { n: s });
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m}m ago`;
+  if (m < 60) return t("ago.minutes", { n: m });
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h}h ago`;
-  return `${Math.floor(h / 24)}d ago`;
+  if (h < 24) return t("ago.hours", { n: h });
+  return t("ago.days", { n: Math.floor(h / 24) });
 }

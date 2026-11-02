@@ -1,5 +1,6 @@
 import { stopResultLabel } from "./format";
 import { hostLabel, hostsInUse } from "./hosts";
+import { t } from "./i18n";
 import { RUNTIME_LABELS, type HostStatus, type ContainerOverview, type StopReport } from "./types";
 
 let confirmStop = true;
@@ -18,13 +19,11 @@ export function describeInterruption(containers: ContainerOverview[]): string[] 
   const lines: string[] = [];
   for (const c of containers) {
     if (c.sessions.length === 0) {
-      lines.push(`${c.name}: no active sessions`);
+      lines.push(t("stop.noSessions", { name: c.name }));
       continue;
     }
     const sessions = c.sessions.map((s) => `${s.command} (PID ${s.pid})`).join(", ");
-    lines.push(
-      `${c.name}: ${c.sessions.length} session${c.sessions.length === 1 ? "" : "s"} will be interrupted: ${sessions}`,
-    );
+    lines.push(t("stop.interrupts", { name: c.name, n: c.sessions.length, sessions }));
   }
   return lines;
 }
@@ -42,7 +41,7 @@ export function describeInterruptionByHost(
   const used = hostsInUse(containers);
   if (used.length <= 1) return describeInterruption(containers);
   return used.flatMap((host) => [
-    host === "local" ? "This machine" : hostLabel(host, hosts),
+    host === "local" ? t("common.thisMachine") : hostLabel(host, hosts),
     ...describeInterruption(containers.filter((c) => c.host === host)),
   ]);
 }
@@ -57,19 +56,22 @@ export function describeStopReport(report: StopReport, hosts: HostStatus[] = [])
   const parts: string[] = [];
   const stopped = report.results.length - failed.length;
   if (failed.length === 0 && report.failures.length === 0) {
-    return `Stopped ${stopped} container${stopped === 1 ? "" : "s"}`;
+    return t("stop.stopped", { n: stopped });
   }
-  if (stopped > 0) parts.push(`stopped ${stopped}`);
+  if (stopped > 0) parts.push(t("stop.stoppedPart", { n: stopped }));
   if (failed.length > 0) {
-    parts.push(
-      `${failed.length} failed: ${failed
-        .map((f) => `${stopResultLabel(f)} (${f.error ?? "unknown"})`)
-        .join(", ")}`,
-    );
+    const list = failed
+      .map((f) => `${stopResultLabel(f)} (${f.error ?? t("common.unknown")})`)
+      .join(", ");
+    parts.push(t("stop.failedPart", { n: failed.length, list }));
   }
   for (const f of report.failures) {
-    const where = f.host === "local" ? "this machine" : hostLabel(f.host, hosts);
-    parts.push(`could not list ${RUNTIME_LABELS[f.runtime]} containers on ${where}: ${f.error}`);
+    const runtime = RUNTIME_LABELS[f.runtime];
+    parts.push(
+      f.host === "local"
+        ? t("stop.couldNotListLocal", { runtime, error: f.error })
+        : t("stop.couldNotListHost", { runtime, host: hostLabel(f.host, hosts), error: f.error }),
+    );
   }
   return parts.join("; ");
 }

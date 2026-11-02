@@ -25,10 +25,18 @@ import { StopAllButton } from "./components/StopAllButton";
 import { UpdateBanner } from "./components/UpdateBanner";
 import { AGENT_LABELS, summarize } from "./format";
 import { filterByHost, hostsInUse, pickSelected } from "./hosts";
+import { LanguageProvider, formatTime } from "./i18n";
 import { applyLanguage } from "./language";
 import { recentBlockedCount } from "./network";
 import { applyTheme } from "./theme";
-import type { NetworkReport, Overview, ContainerOverview, Settings, UpdateInfo } from "./types";
+import type {
+  Language,
+  NetworkReport,
+  Overview,
+  ContainerOverview,
+  Settings,
+  UpdateInfo,
+} from "./types";
 
 const EMPTY: ContainerOverview[] = [];
 
@@ -54,13 +62,20 @@ export function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [hostFilter, setHostFilter] = useState("all");
+  const [language, setLanguage] = useState<Language>("en");
 
   const acceptSettings = useCallback((s: Settings) => {
     setSettings(s);
     applyConfirmStop(s.confirm_stop);
     applyTheme(s.theme);
     // What `system` means is only known on the Rust side.
-    resolvedLanguage().then(applyLanguage, () => undefined);
+    resolvedLanguage().then(
+      (l) => {
+        applyLanguage(l);
+        setLanguage(l);
+      },
+      () => undefined,
+    );
   }, []);
 
   const acceptOverview = useCallback((overview: Overview) => {
@@ -128,150 +143,152 @@ export function App() {
     network && state.phase === "ready" ? recentBlockedCount(network, state.refreshedAt) : 0;
 
   return (
-    <div className="app">
-      <header className="app-header">
-        <h1>
-          <img className="logo" src={logoUrl} alt="" width={26} height={26} />
-          Sandbox Watcher
-        </h1>
-        {state.phase === "ready" && state.overview.runtime.status === "connected" && (
-          <div className="header-stats" aria-label="Summary">
-            <Stat label="projects" value={summary.projects} />
-            <Stat label="running" value={summary.running} />
-            <Stat label="sessions" value={summary.sessions} />
-            {[...summary.byAgent].map(([agent, n]) => (
-              <span key={agent} className={`chip agent-${agent}`}>
-                {AGENT_LABELS[agent]} <strong>{n}</strong>
-              </span>
-            ))}
-            {recentBlocked > 0 && (
-              <span className="badge badge-err" title="Blocked requests in the last five minutes">
-                {recentBlocked} blocked
+    <LanguageProvider language={language}>
+      <div className="app">
+        <header className="app-header">
+          <h1>
+            <img className="logo" src={logoUrl} alt="" width={26} height={26} />
+            Sandbox Watcher
+          </h1>
+          {state.phase === "ready" && state.overview.runtime.status === "connected" && (
+            <div className="header-stats" aria-label="Summary">
+              <Stat label="projects" value={summary.projects} />
+              <Stat label="running" value={summary.running} />
+              <Stat label="sessions" value={summary.sessions} />
+              {[...summary.byAgent].map(([agent, n]) => (
+                <span key={agent} className={`chip agent-${agent}`}>
+                  {AGENT_LABELS[agent]} <strong>{n}</strong>
+                </span>
+              ))}
+              {recentBlocked > 0 && (
+                <span className="badge badge-err" title="Blocked requests in the last five minutes">
+                  {recentBlocked} blocked
+                </span>
+              )}
+            </div>
+          )}
+          <div className="header-meta">
+            {state.phase === "ready" && state.overview.source === "mock" && (
+              <span className="badge badge-mock" title="SANDBOX_WATCHER_MOCK=1">
+                mock data
               </span>
             )}
+            <StopAllButton
+              running={containers.filter((c) => c.state === "running" && !c.last_seen_at)}
+              hosts={state.phase === "ready" ? state.overview.hosts : []}
+              onChanged={() => void refresh()}
+            />
+            <button type="button" onClick={() => void refresh()} disabled={refreshing}>
+              {refreshing ? "Refreshing…" : "Refresh"}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowHistory((v) => !v);
+                setShowSettings(false);
+              }}
+              aria-pressed={showHistory}
+              title="Session history"
+            >
+              History
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowSettings((v) => !v);
+                setShowHistory(false);
+              }}
+              aria-pressed={showSettings}
+              title="Settings"
+            >
+              Settings
+            </button>
+            {version && <span className="muted small">v{version}</span>}
+          </div>
+        </header>
+
+        {update && update.version !== dismissedVersion && (
+          <UpdateBanner
+            update={update}
+            progress={updateProgress}
+            onDismiss={() => setDismissedVersion(update.version)}
+          />
+        )}
+
+        {state.phase === "loading" && <p className="muted pad">Looking for container runtimes…</p>}
+
+        {state.phase === "error" && (
+          <section className="banner banner-error pad">
+            <strong>Could not load overview.</strong>
+            <pre>{state.message}</pre>
+          </section>
+        )}
+
+        {state.phase === "ready" && (
+          <div className="layout">
+            <Sidebar
+              containers={visible}
+              runtime={state.overview.runtime}
+              hosts={state.overview.hosts}
+              hostChoices={hostsInUse(containers)}
+              hostFilter={hostFilter}
+              onHostFilter={setHostFilter}
+              network={network}
+              selectedId={selected?.key ?? null}
+              onSelect={setSelectedId}
+              now={state.refreshedAt}
+            />
+            <main className="main">
+              {showHistory ? (
+                <HistoryView onClose={() => setShowHistory(false)} />
+              ) : showSettings && settings ? (
+                <SettingsPanel
+                  key={JSON.stringify(settings)}
+                  settings={settings}
+                  hostStatuses={state.overview.hosts}
+                  focusDiagnostics={focusDiagnostics}
+                  onSaved={acceptSettings}
+                  onClose={() => {
+                    setShowSettings(false);
+                    setFocusDiagnostics(false);
+                  }}
+                />
+              ) : state.overview.runtime.status !== "connected" ? (
+                <RuntimeBanner
+                  runtime={state.overview.runtime}
+                  hosts={state.overview.hosts}
+                  onDiagnostics={() => {
+                    setFocusDiagnostics(true);
+                    setShowSettings(true);
+                  }}
+                />
+              ) : selected ? (
+                <DetailPane
+                  key={selected.key}
+                  container={selected}
+                  runtime={state.overview.runtime}
+                  report={network?.find((r) => r.container_id === selected.key)}
+                  now={state.refreshedAt}
+                  onChanged={() => void refresh()}
+                />
+              ) : (
+                <section className="empty">
+                  <h2>No sandbox containers.</h2>
+                  <p className="muted">
+                    Start one with <code>sandbox run claude</code> in a project and it appears on
+                    the left.
+                  </p>
+                </section>
+              )}
+              <footer className="muted small">
+                Tested against sandbox {state.overview.tested_sandbox_version}. Refreshed{" "}
+                {formatTime(state.refreshedAt)}.
+              </footer>
+            </main>
           </div>
         )}
-        <div className="header-meta">
-          {state.phase === "ready" && state.overview.source === "mock" && (
-            <span className="badge badge-mock" title="SANDBOX_WATCHER_MOCK=1">
-              mock data
-            </span>
-          )}
-          <StopAllButton
-            running={containers.filter((c) => c.state === "running" && !c.last_seen_at)}
-            hosts={state.phase === "ready" ? state.overview.hosts : []}
-            onChanged={() => void refresh()}
-          />
-          <button type="button" onClick={() => void refresh()} disabled={refreshing}>
-            {refreshing ? "Refreshing…" : "Refresh"}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setShowHistory((v) => !v);
-              setShowSettings(false);
-            }}
-            aria-pressed={showHistory}
-            title="Session history"
-          >
-            History
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setShowSettings((v) => !v);
-              setShowHistory(false);
-            }}
-            aria-pressed={showSettings}
-            title="Settings"
-          >
-            Settings
-          </button>
-          {version && <span className="muted small">v{version}</span>}
-        </div>
-      </header>
-
-      {update && update.version !== dismissedVersion && (
-        <UpdateBanner
-          update={update}
-          progress={updateProgress}
-          onDismiss={() => setDismissedVersion(update.version)}
-        />
-      )}
-
-      {state.phase === "loading" && <p className="muted pad">Looking for container runtimes…</p>}
-
-      {state.phase === "error" && (
-        <section className="banner banner-error pad">
-          <strong>Could not load overview.</strong>
-          <pre>{state.message}</pre>
-        </section>
-      )}
-
-      {state.phase === "ready" && (
-        <div className="layout">
-          <Sidebar
-            containers={visible}
-            runtime={state.overview.runtime}
-            hosts={state.overview.hosts}
-            hostChoices={hostsInUse(containers)}
-            hostFilter={hostFilter}
-            onHostFilter={setHostFilter}
-            network={network}
-            selectedId={selected?.key ?? null}
-            onSelect={setSelectedId}
-            now={state.refreshedAt}
-          />
-          <main className="main">
-            {showHistory ? (
-              <HistoryView onClose={() => setShowHistory(false)} />
-            ) : showSettings && settings ? (
-              <SettingsPanel
-                key={JSON.stringify(settings)}
-                settings={settings}
-                hostStatuses={state.overview.hosts}
-                focusDiagnostics={focusDiagnostics}
-                onSaved={acceptSettings}
-                onClose={() => {
-                  setShowSettings(false);
-                  setFocusDiagnostics(false);
-                }}
-              />
-            ) : state.overview.runtime.status !== "connected" ? (
-              <RuntimeBanner
-                runtime={state.overview.runtime}
-                hosts={state.overview.hosts}
-                onDiagnostics={() => {
-                  setFocusDiagnostics(true);
-                  setShowSettings(true);
-                }}
-              />
-            ) : selected ? (
-              <DetailPane
-                key={selected.key}
-                container={selected}
-                runtime={state.overview.runtime}
-                report={network?.find((r) => r.container_id === selected.key)}
-                now={state.refreshedAt}
-                onChanged={() => void refresh()}
-              />
-            ) : (
-              <section className="empty">
-                <h2>No sandbox containers.</h2>
-                <p className="muted">
-                  Start one with <code>sandbox run claude</code> in a project and it appears on the
-                  left.
-                </p>
-              </section>
-            )}
-            <footer className="muted small">
-              Tested against sandbox {state.overview.tested_sandbox_version}. Refreshed{" "}
-              {state.refreshedAt.toLocaleTimeString()}.
-            </footer>
-          </main>
-        </div>
-      )}
-    </div>
+      </div>
+    </LanguageProvider>
   );
 }
 

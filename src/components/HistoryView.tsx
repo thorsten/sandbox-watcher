@@ -1,6 +1,7 @@
 import { useCallback, useState } from "react";
 import { clearHistory, getHistory } from "../api";
 import { AGENT_LABELS } from "../format";
+import { formatDateTime } from "../i18n";
 import type { AgentKind, Aggregate } from "../types";
 import { formatCost, formatDuration, formatTokens } from "../usageFormat";
 import { describeFiles } from "../files";
@@ -121,7 +122,7 @@ export function HistoryView({ onClose }: { onClose: () => void }) {
               <tbody>
                 {data.sessions.map((s) => (
                   <tr key={s.id} className={s.ended_at ? "" : "row-live"}>
-                    <td>{new Date(s.started_at).toLocaleString()}</td>
+                    <td>{formatDateTime(s.started_at)}</td>
                     <td>
                       {formatDuration(
                         Math.max(

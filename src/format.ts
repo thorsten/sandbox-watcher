@@ -1,17 +1,18 @@
+import { t } from "./i18n";
 import type { AgentKind, ContainerOverview, StopResult } from "./types";
 
 /** Same buckets as `sandbox status` (container-status.ts, getContainerUptime). */
 export function formatUptime(startedAt: string | null, now: Date = new Date()): string {
-  if (!startedAt) return "unknown";
+  if (!startedAt) return t("common.unknown");
   const started = Date.parse(startedAt);
-  if (Number.isNaN(started)) return "unknown";
+  if (Number.isNaN(started)) return t("common.unknown");
   const seconds = Math.max(0, Math.floor((now.getTime() - started) / 1000));
-  if (seconds < 60) return `Up ${seconds} seconds`;
+  if (seconds < 60) return t("uptime.seconds", { n: seconds });
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `Up ${minutes} minutes`;
+  if (minutes < 60) return t("uptime.minutes", { n: minutes });
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `Up ${hours} hours`;
-  return `Up ${Math.floor(hours / 24)} days`;
+  if (hours < 24) return t("uptime.hours", { n: hours });
+  return t("uptime.days", { n: Math.floor(hours / 24) });
 }
 
 /** Group containers by project slug, keeping the incoming order inside a group. */

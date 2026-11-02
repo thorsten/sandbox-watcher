@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { diagnosticsText, runDiagnostics } from "../api";
+import { formatDateTime } from "../i18n";
 import { RUNTIME_LABELS, type DiagnosticsReport, type Probe } from "../types";
 
 function outcomeText(p: Probe): { label: string; detail: string } {
@@ -80,7 +81,7 @@ export function DiagnosticsReportView({ report }: { report: DiagnosticsReport })
           </h4>
           <p>
             {h.status.state === "unreachable"
-              ? `unreachable since ${new Date(h.status.since).toLocaleString()}: ${h.status.reason}`
+              ? `unreachable since ${formatDateTime(h.status.since)}: ${h.status.reason}`
               : h.status.state}
           </p>
           {h.status.probes.length > 0 && (
@@ -159,9 +160,7 @@ export function DiagnosticsSection({
             {copied ? "Copied" : "Copy report"}
           </button>
         )}
-        {report && (
-          <span className="muted small">{new Date(report.generated_at).toLocaleString()}</span>
-        )}
+        {report && <span className="muted small">{formatDateTime(report.generated_at)}</span>}
       </div>
       {error && <p className="notice notice-err">{error}</p>}
       {report && <DiagnosticsReportView report={report} />}

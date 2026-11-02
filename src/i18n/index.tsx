@@ -1,0 +1,137 @@
+/**
+ * Translation for the webview. The language is one module-level value so
+ * that pure helpers (`formatUptime`, `describeStopReport`, ...) and
+ * components agree; `LanguageProvider` sets it for the tree it wraps and
+ * re-renders consumers when it changes. The value itself comes from the
+ * shell (`resolvedLanguage`), never from `navigator.language`.
+ */
+import { createContext, useContext, type ReactNode } from "react";
+import type { Language } from "../types";
+import { de } from "./de";
+import type { Dictionary, Key, Params, PlainKey, PluralForms, PluralKey } from "./dictionary";
+import { en } from "./en";
+
+export type { Key, PlainKey, PluralKey } from "./dictionary";
+
+const DICTIONARIES: Record<Language, Dictionary> = { en, de };
+
+/** BCP 47 tags for `Intl`; the UI language alone has no region. */
+const LOCALES: Record<Language, string> = { en: "en-US", de: "de-DE" };
+
+let current: Language = "en";
+
+export function getLanguage(): Language {
+  return current;
+}
+
+export function setLanguage(language: Language): void {
+  current = language;
+}
+
+/** The `Intl` locale of the current language. */
+export function locale(): string {
+  return LOCALES[current];
+}
+
+const pluralRules = new Map<Language, Intl.PluralRules>();
+const numberFormats = new Map<string, Intl.NumberFormat>();
+
+function plural(language: Language): Intl.PluralRules {
+  let rules = pluralRules.get(language);
+  if (!rules) {
+    rules = new Intl.PluralRules(LOCALES[language]);
+    pluralRules.set(language, rules);
+  }
+  return rules;
+}
+
+/** A cached `Intl.NumberFormat` for the current language. */
+export function numberFormat(options: Intl.NumberFormatOptions = {}): Intl.NumberFormat {
+  const id = `${current}:${JSON.stringify(options)}`;
+  let format = numberFormats.get(id);
+  if (!format) {
+    format = new Intl.NumberFormat(LOCALES[current], options);
+    numberFormats.set(id, format);
+  }
+  return format;
+}
+
+export function formatNumber(n: number, options?: Intl.NumberFormatOptions): string {
+  return numberFormat(options).format(n);
+}
+
+function interpolate(template: string, params: Params | undefined): string {
+  if (!params) return template;
+  return template.replace(/\{(\w+)\}/g, (match, name: string) => {
+    const value = params[name];
+    if (value === undefined) return match;
+    return typeof value === "number" ? formatNumber(value) : value;
+  });
+}
+
+/**
+ * The text for `key` in the current language. Plural keys pick their form
+ * from `params.n`; numbers are formatted for the language.
+ */
+export function t(key: PlainKey, params?: Params): string;
+export function t(key: PluralKey, params: Params & { n: number }): string;
+export function t(key: Key, params?: Params): string {
+  const entry = DICTIONARIES[current][key] ?? en[key];
+  if (typeof entry === "string") return interpolate(entry, params);
+  const forms: PluralForms = entry;
+  const n = typeof params?.n === "number" ? params.n : 0;
+  const form = plural(current).select(n) === "one" ? forms.one : forms.other;
+  return interpolate(form, params);
+}
+
+const LanguageContext = createContext<Language>("en");
+
+/**
+ * Sets the language for the tree below. Assigning the module value during
+ * render keeps the pure helpers called by children in step; the context
+ * makes `useT` consumers re-render on a change.
+ */
+export function LanguageProvider({
+  language,
+  children,
+}: {
+  language: Language;
+  children: ReactNode;
+}) {
+  setLanguage(language);
+  return <LanguageContext.Provider value={language}>{children}</LanguageContext.Provider>;
+}
+
+export function useLanguage(): Language {
+  return useContext(LanguageContext);
+}
+
+/** `t` for components: subscribes to the language so a change re-renders. */
+export function useT(): typeof t {
+  useContext(LanguageContext);
+  return t;
+}
+
+const dateTimeFormats = new Map<string, Intl.DateTimeFormat>();
+
+function dateTimeFormat(options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+  const id = `${current}:${JSON.stringify(options)}`;
+  let format = dateTimeFormats.get(id);
+  if (!format) {
+    format = new Intl.DateTimeFormat(LOCALES[current], options);
+    dateTimeFormats.set(id, format);
+  }
+  return format;
+}
+
+/** Date and time of an ISO timestamp, e.g. "Oct 30, 2026, 12:00 PM" or "30.10.2026, 12:00". */
+export function formatDateTime(iso: string | Date): string {
+  const date = iso instanceof Date ? iso : new Date(iso);
+  if (Number.isNaN(date.getTime())) return t("common.unknown");
+  return dateTimeFormat({ dateStyle: "medium", timeStyle: "short" }).format(date);
+}
+
+/** Time of day with seconds, for "refreshed at". */
+export function formatTime(date: Date): string {
+  return dateTimeFormat({ timeStyle: "medium" }).format(date);
+}
