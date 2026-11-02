@@ -1,4 +1,5 @@
 import { AGENT_LABELS } from "./format";
+import { t } from "./i18n";
 import { formatBytes } from "./sparkline";
 import type { AgentActivity, Attribution, ContainerActivity, Coverage, Session } from "./types";
 
@@ -6,13 +7,13 @@ import type { AgentActivity, Attribution, ContainerActivity, Coverage, Session }
 export function describeAttribution(a: Attribution): string {
   if (a.kind === "session") {
     const why = {
-      "open-file": "holds the file open",
-      "only-session": "only session of this agent",
-      "start-time": "started right before the transcript began",
+      "open-file": t("attribution.openFile"),
+      "only-session": t("attribution.onlySession"),
+      "start-time": t("attribution.startTime"),
     }[a.evidence];
-    return `Session PID ${a.pid} (${why})`;
+    return t("attribution.session", { pid: String(a.pid), why });
   }
-  return `Agent-level: could be PID ${a.candidates.join(" or ")}`;
+  return t("attribution.agent", { candidates: a.candidates.join(t("common.or")) });
 }
 
 /** Why the numbers may be off, or null when they cover the whole transcript. */
@@ -21,17 +22,15 @@ export function describeCoverage(c: Coverage): string | null {
   if (!c.complete) {
     notes.push(
       c.pending_bytes > 0
-        ? `still reading, ${formatBytes(c.pending_bytes)} to go`
-        : "still reading the transcript",
+        ? t("coverage.stillReadingBytes", { bytes: formatBytes(c.pending_bytes) })
+        : t("coverage.stillReading"),
     );
   }
-  if (c.skipped_bytes > 0) notes.push(`${formatBytes(c.skipped_bytes)} of oversized lines skipped`);
-  if (c.restarts > 0) {
-    notes.push(
-      `file was replaced ${c.restarts === 1 ? "once" : `${c.restarts} times`}; earlier totals kept`,
-    );
+  if (c.skipped_bytes > 0) {
+    notes.push(t("coverage.skipped", { bytes: formatBytes(c.skipped_bytes) }));
   }
-  return notes.length === 0 ? null : `Totals incomplete: ${notes.join("; ")}`;
+  if (c.restarts > 0) notes.push(t("coverage.replaced", { n: c.restarts }));
+  return notes.length === 0 ? null : t("coverage.incomplete", { notes: notes.join("; ") });
 }
 
 /** Sessions of a known agent that no transcript could be tied to. */
@@ -54,6 +53,6 @@ export function sessionsWithoutTranscript(activity: ContainerActivity): Session[
 export function transcriptTitle(agent: AgentActivity): string {
   const base = AGENT_LABELS[agent.agent];
   return agent.attribution.kind === "session"
-    ? `${base} · PID ${agent.attribution.pid}`
-    : `${base} · shared by ${agent.attribution.candidates.length} sessions`;
+    ? t("transcript.pid", { agent: base, pid: String(agent.attribution.pid) })
+    : t("transcript.shared", { agent: base, n: agent.attribution.candidates.length });
 }

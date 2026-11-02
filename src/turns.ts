@@ -1,10 +1,11 @@
 import { changed } from "./files";
+import { t as text } from "./i18n";
 import type { Turn } from "./types";
 import { formatCost, formatDuration, formatTokens, totalTokens } from "./usageFormat";
 
 /** "#3", or "Earlier" for activity before the first prompt that was read. */
 export function turnLabel(t: Turn): string {
-  return t.index === 0 ? "Earlier" : `#${t.index}`;
+  return t.index === 0 ? text("turn.earlier") : `#${t.index}`;
 }
 
 /** Seconds from the prompt to the turn's last line, when both are known. */
@@ -20,15 +21,17 @@ export function turnFacts(t: Turn): string[] {
   const secs = turnDurationSecs(t);
   if (secs !== null) facts.push(formatDuration(secs));
   if (t.usage) {
-    facts.push(`${formatTokens(totalTokens(t.usage))} tokens`);
+    facts.push(text("usage.tokens", { tokens: formatTokens(totalTokens(t.usage)) }));
     facts.push(formatCost(t.usage.cost_usd, t.usage.cost_source));
   }
   if (t.tool_calls > 0) {
-    const errors = t.tool_errors > 0 ? `, ${t.tool_errors} failed` : "";
-    facts.push(`${t.tool_calls} tool ${t.tool_calls === 1 ? "call" : "calls"}${errors}`);
+    facts.push(
+      t.tool_errors > 0
+        ? text("turn.toolCallsFailed", { n: t.tool_calls, failed: t.tool_errors })
+        : text("turn.toolCalls", { n: t.tool_calls }),
+    );
   }
   const changedFiles = t.files.filter(changed).length;
-  if (changedFiles > 0)
-    facts.push(`${changedFiles} ${changedFiles === 1 ? "file" : "files"} changed`);
+  if (changedFiles > 0) facts.push(text("turn.filesChanged", { n: changedFiles }));
   return facts;
 }

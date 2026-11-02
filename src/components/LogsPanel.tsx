@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getLogs } from "../api";
+import { t } from "../i18n";
 import { usePolling } from "../usePolling";
 
 export const FOLLOW_MS = 2_000;
@@ -55,28 +56,29 @@ export function LogsPanel({ containerKey }: { containerKey: string }) {
       <div className="network-toolbar">
         <label className="check">
           <input type="checkbox" checked={follow} onChange={(e) => setFollow(e.target.checked)} />
-          Follow
+          {t("logs.follow")}
         </label>
         <input
           type="search"
-          placeholder="Filter lines"
+          placeholder={t("logs.filterPlaceholder")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          aria-label="Filter log lines"
+          aria-label={t("logs.filterLabel")}
         />
         <button type="button" onClick={() => void copy()}>
-          {copied ? "Copied" : "Copy"}
+          {copied ? t("actions.copied") : t("logs.copy")}
         </button>
         <span className="muted">
-          last {TAIL} lines{needle ? `, ${shown.length} match` : ""}
+          {t("logs.lastLines", { n: TAIL })}
+          {needle ? `, ${t("logs.matches", { n: shown.length })}` : ""}
         </span>
       </div>
       {error && <p className="network-note warn">{error}</p>}
-      {text === null && !error && <p className="muted">Reading container log…</p>}
+      {text === null && !error && <p className="muted">{t("logs.reading")}</p>}
       {text !== null && (
         <pre ref={pre} className="log-view" onScroll={onScroll}>
           {shown.length === 0 || (shown.length === 1 && shown[0] === "")
-            ? "(empty)"
+            ? t("logs.empty")
             : shown.join("\n")}
         </pre>
       )}

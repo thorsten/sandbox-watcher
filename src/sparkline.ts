@@ -1,5 +1,7 @@
 /** Pure helpers for the inline SVG sparklines. */
 
+import { formatNumber } from "./i18n";
+
 export interface SparkPoint {
   x: number;
   y: number;
@@ -49,9 +51,19 @@ export function formatBytes(bytes: number): string {
     unit++;
   }
   const digits = unit === 0 ? 0 : value >= 100 ? 0 : value >= 10 ? 1 : 2;
-  return `${value.toFixed(digits)} ${units[unit]}`;
+  const number = formatNumber(value, {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
+  return `${number} ${units[unit]}`;
 }
 
+/** "42%" or "4.2%"; German gets "42 %". */
 export function formatPercent(value: number): string {
-  return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)}%`;
+  const digits = value >= 10 ? 0 : 1;
+  return formatNumber(value / 100, {
+    style: "percent",
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  });
 }

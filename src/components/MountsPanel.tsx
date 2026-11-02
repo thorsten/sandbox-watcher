@@ -1,13 +1,7 @@
 import { useEffect, useState } from "react";
 import { getContainerDetails, revealMount } from "../api";
+import { t, tx } from "../i18n";
 import type { ContainerDetails, MountRole } from "../types";
-
-const ROLE_LABELS: Record<MountRole, string> = {
-  project: "project",
-  persisted: "persisted",
-  runtime: "runtime",
-  other: "extra",
-};
 
 const ROLE_ORDER: MountRole[] = ["project", "persisted", "other", "runtime"];
 
@@ -32,8 +26,8 @@ export function MountsPanel({ containerKey }: { containerKey: string }) {
   }, [containerKey]);
 
   if (error) return <p className="network-note warn">{error}</p>;
-  if (details === undefined) return <div className="mounts muted">Inspecting container…</div>;
-  if (details === null) return <div className="mounts muted">Container is gone.</div>;
+  if (details === undefined) return <div className="mounts muted">{t("mounts.inspecting")}</div>;
+  if (details === null) return <div className="mounts muted">{t("mounts.gone")}</div>;
 
   const mounts = [...details.mounts].toSorted(
     (a, b) => ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role),
@@ -44,24 +38,22 @@ export function MountsPanel({ containerKey }: { containerKey: string }) {
       <table className="network-table">
         <thead>
           <tr>
-            <th>Role</th>
-            <th>Host path</th>
-            <th>In container</th>
-            <th>Access</th>
-            <th aria-label="Actions" />
+            <th>{t("mounts.role")}</th>
+            <th>{t("mounts.hostPath")}</th>
+            <th>{t("mounts.inContainer")}</th>
+            <th>{t("mounts.access")}</th>
+            <th aria-label={t("mounts.actions")} />
           </tr>
         </thead>
         <tbody>
           {mounts.map((m) => (
             <tr key={`${m.source}:${m.destination}`}>
               <td>
-                <span className={`chip role-${m.role}`}>{ROLE_LABELS[m.role]}</span>
+                <span className={`chip role-${m.role}`}>{t(`mount.${m.role}`)}</span>
               </td>
               <td className="path" title={m.source}>
                 {m.type === "volume" ? (
-                  <span>
-                    volume <code>{m.source}</code>
-                  </span>
+                  <span>{tx("mounts.volume", { name: <code>{m.source}</code> })}</span>
                 ) : (
                   <code>{m.host_path ?? m.source}</code>
                 )}
@@ -69,7 +61,7 @@ export function MountsPanel({ containerKey }: { containerKey: string }) {
               <td className="path">
                 <code>{m.destination}</code>
               </td>
-              <td>{m.read_only ? "read-only" : "writable"}</td>
+              <td>{m.read_only ? t("mounts.readOnly") : t("mounts.writable")}</td>
               <td>
                 {m.type === "bind" && !remote && (
                   <button
@@ -77,7 +69,7 @@ export function MountsPanel({ containerKey }: { containerKey: string }) {
                     className="link"
                     onClick={() => void revealMount(containerKey, m.source).catch(() => undefined)}
                   >
-                    Show
+                    {t("mounts.show")}
                   </button>
                 )}
               </td>
@@ -87,30 +79,30 @@ export function MountsPanel({ containerKey }: { containerKey: string }) {
       </table>
 
       <dl className="kv">
-        <dt>Working dir</dt>
+        <dt>{t("mounts.workingDir")}</dt>
         <dd>
           <code>{details.working_dir ?? "–"}</code>
         </dd>
-        <dt>User</dt>
+        <dt>{t("mounts.user")}</dt>
         <dd>{details.user ?? "–"}</dd>
-        <dt>Ports</dt>
+        <dt>{t("mounts.ports")}</dt>
         <dd>
           {details.ports.length === 0
-            ? "none"
+            ? t("mounts.none")
             : details.ports
                 .map((p) =>
                   p.host_port
                     ? `${p.host_port} → ${p.container_port}/${p.protocol}`
-                    : `${p.container_port}/${p.protocol} (not published)`,
+                    : t("mounts.notPublished", { port: `${p.container_port}/${p.protocol}` }),
                 )
                 .join(", ")}
         </dd>
-        <dt>Env names</dt>
+        <dt>{t("mounts.envNames")}</dt>
         <dd className="env-names">
           {details.env_names.length === 0
-            ? "none"
+            ? t("mounts.none")
             : details.env_names.map((n) => <code key={n}>{n}</code>)}
-          <span className="muted"> Values are never read.</span>
+          <span className="muted"> {t("mounts.valuesNeverRead")}</span>
         </dd>
       </dl>
     </div>

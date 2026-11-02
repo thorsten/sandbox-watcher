@@ -86,19 +86,24 @@ export function t(key: Key, params?: Params): string {
 
 /**
  * Like `t`, but placeholders become React nodes, for sentences that wrap a
- * `<code>` or a link. Placeholders without a part are left as they are.
+ * `<code>` or a link. Plural keys take `n` from `parts`. Placeholders
+ * without a part are left as they are; numbers are formatted.
  */
-export function tx(key: PlainKey, parts: Record<string, ReactNode>): ReactNode {
-  const template: string = DICTIONARIES[current][key] ?? en[key];
+export function tx(key: Key, parts: Record<string, ReactNode>): ReactNode {
+  const entry = DICTIONARIES[current][key] ?? en[key];
+  let template: string;
+  if (typeof entry === "string") template = entry;
+  else {
+    const n = typeof parts.n === "number" ? parts.n : 0;
+    template = plural(current).select(n) === "one" ? entry.one : entry.other;
+  }
   return (
     <>
       {template.split(/(\{\w+\})/).map((piece, i) => {
         const name = /^\{(\w+)\}$/.exec(piece)?.[1];
-        return name !== undefined && name in parts ? (
-          <Fragment key={i}>{parts[name]}</Fragment>
-        ) : (
-          piece
-        );
+        if (name === undefined || !(name in parts)) return piece;
+        const part = parts[name];
+        return <Fragment key={i}>{typeof part === "number" ? formatNumber(part) : part}</Fragment>;
       })}
     </>
   );

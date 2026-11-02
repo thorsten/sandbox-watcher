@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AGENT_LABELS, formatUptime } from "../format";
+import { stateLabel, t } from "../i18n";
 import { formatRelative } from "../network";
 import {
   type Capabilities,
@@ -16,13 +17,7 @@ import { NetworkPanel } from "./NetworkPanel";
 import { ResourcesPanel } from "./ResourcesPanel";
 
 type Tab = "activity" | "network" | "resources" | "logs" | "mounts";
-const TABS: { id: Tab; label: string }[] = [
-  { id: "activity", label: "Activity" },
-  { id: "network", label: "Network" },
-  { id: "resources", label: "Resources" },
-  { id: "logs", label: "Logs" },
-  { id: "mounts", label: "Mounts" },
-];
+const TABS: Tab[] = ["activity", "network", "resources", "logs", "mounts"];
 
 interface Props {
   container: ContainerOverview;
@@ -42,14 +37,14 @@ export function DetailPane({ container, runtime, report, now, onChanged }: Props
       ? runtime.runtimes.find((r) => r.host === container.host && r.kind === container.runtime)
           ?.capabilities
       : undefined;
-  const tabs = TABS.filter((t) => {
+  const tabs = TABS.filter((id) => {
     if (unreachable) return false;
-    if (!isRunning) return t.id === "mounts" || t.id === "logs";
-    if (t.id === "resources") return capabilities?.stats !== false;
-    if (t.id === "logs") return capabilities?.logs !== false;
+    if (!isRunning) return id === "mounts" || id === "logs";
+    if (id === "resources") return capabilities?.stats !== false;
+    if (id === "logs") return capabilities?.logs !== false;
     return true;
   });
-  const active = tabs.some((t) => t.id === tab) ? tab : (tabs[0]?.id ?? "mounts");
+  const active = tabs.includes(tab) ? tab : (tabs[0] ?? "mounts");
   const blocked = report?.entries.filter((e) => e.status === "blocked").length ?? 0;
 
   return (
@@ -68,12 +63,12 @@ export function DetailPane({ container, runtime, report, now, onChanged }: Props
             <span>{RUNTIME_LABELS[container.runtime]}</span>
             <span>
               {unreachable
-                ? `Host unreachable — last seen ${formatRelative(container.last_seen_at, now)}`
+                ? t("detail.unreachable", { when: formatRelative(container.last_seen_at, now) })
                 : isRunning
                   ? formatUptime(container.started_at, now)
-                  : container.state}
+                  : stateLabel(container.state)}
             </span>
-            <span title="Image">{container.image}</span>
+            <span title={t("detail.imageTitle")}>{container.image}</span>
             {container.config_hash && <code title="sandbox.hash">{container.config_hash}</code>}
           </div>
         </div>
@@ -83,35 +78,33 @@ export function DetailPane({ container, runtime, report, now, onChanged }: Props
       {isRunning && (
         <div className="sessions-row">
           {container.sessions.length === 0 ? (
-            <span className="muted">No active sessions</span>
+            <span className="muted">{t("detail.noSessions")}</span>
           ) : (
             container.sessions.map((s) => (
               <span key={s.pid} className="session-pill" title={s.command}>
                 <span className={`chip agent-${s.agent}`}>{AGENT_LABELS[s.agent]}</span>
                 <code>{s.command}</code>
-                <span className="muted">PID {s.pid}</span>
+                <span className="muted">{t("common.pid", { pid: String(s.pid) })}</span>
               </span>
             ))
           )}
         </div>
       )}
 
-      {unreachable && (
-        <p className="muted pad">Details come back when the host is reachable again.</p>
-      )}
+      {unreachable && <p className="muted pad">{t("detail.unreachableHint")}</p>}
 
       {tabs.length > 0 && (
-        <nav className="tabs" aria-label="Container details">
-          {tabs.map((t) => (
+        <nav className="tabs" aria-label={t("detail.tabsLabel")}>
+          {tabs.map((id) => (
             <button
-              key={t.id}
+              key={id}
               type="button"
-              className={`tab ${active === t.id ? "active" : ""}`}
-              aria-pressed={active === t.id}
-              onClick={() => setTab(t.id)}
+              className={`tab ${active === id ? "active" : ""}`}
+              aria-pressed={active === id}
+              onClick={() => setTab(id)}
             >
-              {t.label}
-              {t.id === "network" && blocked > 0 && (
+              {t(`tab.${id}`)}
+              {id === "network" && blocked > 0 && (
                 <span className="badge badge-err">{blocked}</span>
               )}
             </button>

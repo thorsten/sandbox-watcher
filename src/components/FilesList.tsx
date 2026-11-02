@@ -1,6 +1,14 @@
 import { useState } from "react";
 import { openInEditor } from "../api";
-import { changed, commonDir, describeFiles, fileStatus, relativePath } from "../files";
+import {
+  changed,
+  commonDir,
+  describeFiles,
+  fileStatus,
+  fileStatusLabel,
+  relativePath,
+} from "../files";
+import { t } from "../i18n";
 import { formatRelative } from "../network";
 import type { FileTouch } from "../types";
 
@@ -18,7 +26,7 @@ export function FilesList({ files, containerKey, projectDir, now, collapseReads 
   const [showReads, setShowReads] = useState(!collapseReads);
   const [error, setError] = useState<string | null>(null);
   const canOpen = !!containerKey && !containerKey.includes("/");
-  if (files.length === 0) return <p className="muted small">No files touched yet.</p>;
+  if (files.length === 0) return <p className="muted small">{t("files.noneYet")}</p>;
 
   const base = projectDir ?? commonDir(files.map((f) => f.path));
   const changedFiles = files.filter(changed);
@@ -39,12 +47,12 @@ export function FilesList({ files, containerKey, projectDir, now, collapseReads 
         {describeFiles(files)}
         {readFiles.length > 0 && collapseReads && (
           <button type="button" className="link" onClick={() => setShowReads((v) => !v)}>
-            {showReads ? "Hide read files" : `Show ${readFiles.length} read`}
+            {showReads ? t("files.hideRead") : t("files.showRead", { n: readFiles.length })}
           </button>
         )}
       </div>
       {shown.length === 0 ? (
-        <p className="muted small">Nothing changed yet.</p>
+        <p className="muted small">{t("files.nothingChanged")}</p>
       ) : (
         <ul className="file-list">
           {shown.map((f) => {
@@ -52,12 +60,12 @@ export function FilesList({ files, containerKey, projectDir, now, collapseReads 
             const label = relativePath(f.path, base);
             return (
               <li key={f.path}>
-                <span className={`chip file-${status}`}>{status}</span>
+                <span className={`chip file-${status}`}>{fileStatusLabel(status)}</span>
                 {canOpen && status !== "deleted" ? (
                   <button
                     type="button"
                     className="link file-path"
-                    title={`Open ${f.path}`}
+                    title={t("files.openTitle", { path: f.path })}
                     onClick={() => open(f.path)}
                   >
                     {label}
@@ -68,9 +76,9 @@ export function FilesList({ files, containerKey, projectDir, now, collapseReads 
                   </code>
                 )}
                 <span className="muted small file-meta">
-                  {f.edits > 0 && `${f.edits}× edited`}
+                  {f.edits > 0 && t("files.editedCount", { n: f.edits })}
                   {f.edits > 0 && f.reads > 0 && " · "}
-                  {f.reads > 0 && `${f.reads}× read`}
+                  {f.reads > 0 && t("files.readCount", { n: f.reads })}
                   {f.last_at && ` · ${formatRelative(f.last_at, now)}`}
                 </span>
               </li>

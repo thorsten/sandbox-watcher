@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { applyAllow, previewAllow } from "../api";
+import { t, tx } from "../i18n";
 import type { AllowPreview, AllowResult, ConfigTarget } from "../types";
 
 interface Props {
@@ -21,8 +22,8 @@ export function TargetChoice({
   unavailable: string | null;
   onSelect: (t: ConfigTarget) => void;
 }) {
-  const label = target === "global" ? "Global config" : "Project config";
-  const fallback = target === "global" ? "not available" : "no .sandbox directory in this project";
+  const label = target === "global" ? t("allow.global") : t("allow.project");
+  const fallback = target === "global" ? t("allow.globalMissing") : t("allow.projectMissing");
   return (
     <label className="check">
       <input
@@ -84,18 +85,14 @@ export function AllowDialog({ containerKey, selections, onClose }: Props) {
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       if (message.startsWith("changed:")) {
-        setError(
-          `${message.slice("changed:".length).trim()}. The preview was refreshed; check the entries and try again.`,
-        );
+        setError(t("allow.changedRetry", { message: message.slice("changed:".length).trim() }));
         try {
           setPreview(await previewAllow(containerKey, selections));
         } catch (e2) {
           setError(e2 instanceof Error ? e2.message : String(e2));
         }
       } else {
-        setError(
-          `${message} If the write may have gone through, close and open the dialog again to see the current config.`,
-        );
+        setError(t("allow.maybeWritten", { message }));
       }
     } finally {
       setBusy(false);
@@ -104,19 +101,20 @@ export function AllowDialog({ containerKey, selections, onClose }: Props) {
 
   return (
     <dialog open className="confirm allow-dialog" aria-labelledby="allow-title">
-      <h3 id="allow-title">Allow blocked destinations{alias && ` on ${alias}`}</h3>
+      <h3 id="allow-title">{alias ? t("allow.titleOn", { host: alias }) : t("allow.title")}</h3>
       {error && <p className="network-note warn">{error}</p>}
-      {!preview && !error && <p className="muted">Checking configuration…</p>}
+      {!preview && !error && <p className="muted">{t("allow.checking")}</p>}
 
       {preview && !result && (
         <>
           <p className="muted small">
-            This appends entries to sandbox's <code>allow_network</code> list, the same edit{" "}
-            <code>sandbox network allow</code> makes. It takes effect for new containers; restart
-            the sandbox afterwards.
+            {tx("allow.intro", {
+              list: <code>allow_network</code>,
+              command: <code>sandbox network allow</code>,
+            })}
           </p>
           <fieldset>
-            <legend>Write to</legend>
+            <legend>{t("allow.writeTo")}</legend>
             <TargetChoice
               target="global"
               selected={target}
@@ -132,18 +130,18 @@ export function AllowDialog({ containerKey, selections, onClose }: Props) {
               onSelect={setTarget}
             />
           </fieldset>
-          <p>Entries to add:</p>
+          <p>{t("allow.entries")}</p>
           {toAdd.length === 0 ? (
-            <p className="muted">Everything selected is already configured here.</p>
+            <p className="muted">{t("allow.allPresent")}</p>
           ) : (
             <pre>{toAdd.map((e) => `  "${e}",`).join("\n")}</pre>
           )}
           {already.length > 0 && (
-            <p className="muted small">Already present: {already.join(", ")}</p>
+            <p className="muted small">{t("allow.alreadyPresent", { list: already.join(", ") })}</p>
           )}
           <div className="confirm-actions">
             <button type="button" onClick={() => onClose(false)} disabled={busy}>
-              Cancel
+              {t("confirm.cancel")}
             </button>
             <button
               type="button"
@@ -151,7 +149,11 @@ export function AllowDialog({ containerKey, selections, onClose }: Props) {
               onClick={() => void apply()}
               disabled={busy || toAdd.length === 0 || !path || unavailable !== null}
             >
-              {busy ? "Writing…" : `Add ${toAdd.length} to ${target} config`}
+              {busy
+                ? t("allow.writing")
+                : target === "global"
+                  ? t("allow.addGlobal", { n: toAdd.length })
+                  : t("allow.addProject", { n: toAdd.length })}
             </button>
           </div>
         </>
@@ -159,18 +161,12 @@ export function AllowDialog({ containerKey, selections, onClose }: Props) {
 
       {result && (
         <>
-          <p>
-            Added {result.added.length} entr{result.added.length === 1 ? "y" : "ies"} to{" "}
-            <code>{result.path}</code>.
-          </p>
+          <p>{tx("allow.added", { n: result.added.length, path: <code>{result.path}</code> })}</p>
           {result.added.length > 0 && <pre>{result.added.map((e) => `  "${e}",`).join("\n")}</pre>}
-          <p className="muted small">
-            Running containers keep their current policy. Stop the sandbox and start it again to
-            apply.
-          </p>
+          <p className="muted small">{t("allow.restartHint")}</p>
           <div className="confirm-actions">
             <button type="button" className="primary" onClick={() => onClose(true)}>
-              Done
+              {t("allow.done")}
             </button>
           </div>
         </>

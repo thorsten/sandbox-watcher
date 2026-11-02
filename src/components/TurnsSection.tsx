@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { getTurns } from "../api";
+import { t } from "../i18n";
 import { formatRelative } from "../network";
 import { turnFacts, turnLabel } from "../turns";
 import type { AgentKind, TurnReport } from "../types";
@@ -32,13 +33,13 @@ export function TurnsSection({ containerKey, agent, pid = null, projectDir, now 
   return (
     <div className="turns">
       <div className="files-head">
-        <h4 className="files-title">Turns</h4>
+        <h4 className="files-title">{t("turns.title")}</h4>
         <button type="button" className="link small" onClick={load} disabled={loading}>
-          {loading ? "Reading transcript…" : report === undefined ? "Show turns" : "Refresh"}
+          {loading ? t("turns.reading") : report === undefined ? t("turns.show") : t("app.refresh")}
         </button>
       </div>
       {error && <p className="notice notice-err">{error}</p>}
-      {report === null && <p className="muted small">No transcript found for this agent.</p>}
+      {report === null && <p className="muted small">{t("turns.noTranscript")}</p>}
       {report && (
         <TurnsList report={report} containerKey={containerKey} projectDir={projectDir} now={now} />
       )}
@@ -57,36 +58,38 @@ export function TurnsList({
   projectDir: string | null;
   now: Date;
 }) {
-  if (report.turns.length === 0) return <p className="muted small">No prompts yet.</p>;
+  if (report.turns.length === 0) return <p className="muted small">{t("turns.noPrompts")}</p>;
   return (
     <>
       <p className="muted small">
-        {report.turns.length} {report.turns.length === 1 ? "turn" : "turns"}, newest first
-        {report.truncated && " · older turns not shown"}
+        {t("turns.count", { n: report.turns.length })}
+        {report.truncated && ` · ${t("turns.olderHidden")}`}
       </p>
       <ol className="turn-list">
-        {report.turns.toReversed().map((t) => (
-          <li key={t.index} className="turn">
+        {report.turns.toReversed().map((turn) => (
+          <li key={turn.index} className="turn">
             <details>
               <summary>
-                <span className="turn-label muted">{turnLabel(t)}</span>
-                <span className="turn-prompt" title={t.prompt}>
-                  {t.prompt || "Activity before the first prompt read"}
+                <span className="turn-label muted">{turnLabel(turn)}</span>
+                <span className="turn-prompt" title={turn.prompt}>
+                  {turn.prompt || t("turns.beforeFirst")}
                 </span>
-                <span className="turn-time muted small">{formatRelative(t.started_at, now)}</span>
+                <span className="turn-time muted small">
+                  {formatRelative(turn.started_at, now)}
+                </span>
               </summary>
               <div className="turn-body">
                 <p className="turn-facts muted small">
-                  {turnFacts(t).join(" · ") || "Nothing recorded."}
-                  {t.usage && t.usage.models.length > 0 && (
+                  {turnFacts(turn).join(" · ") || t("turns.nothing")}
+                  {turn.usage && turn.usage.models.length > 0 && (
                     <>
                       {" "}
-                      <code>{t.usage.models.join(", ")}</code>
+                      <code>{turn.usage.models.join(", ")}</code>
                     </>
                   )}
                 </p>
                 <FilesList
-                  files={t.files}
+                  files={turn.files}
                   containerKey={containerKey}
                   projectDir={projectDir}
                   now={now}

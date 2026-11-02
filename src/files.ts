@@ -1,9 +1,15 @@
+import { t } from "./i18n";
 import type { FileTouch } from "./types";
 
 export type FileStatus = "created" | "edited" | "deleted" | "read";
 
 export function changed(f: FileTouch): boolean {
   return f.edits > 0 || f.created || f.deleted;
+}
+
+/** The status as a word in the current language. */
+export function fileStatusLabel(status: FileStatus): string {
+  return t(`file.${status}`);
 }
 
 /** The most significant thing that happened to the file. */
@@ -38,10 +44,10 @@ export function summarizeFiles(files: FileTouch[]): FileSummary {
 
 export function describeFiles(files: FileTouch[]): string {
   const s = summarizeFiles(files);
-  if (s.changed === 0 && s.read === 0) return "no files";
+  if (s.changed === 0 && s.read === 0) return t("files.none");
   const parts: string[] = [];
-  if (s.changed > 0) parts.push(`${s.changed} changed`);
-  if (s.read > 0) parts.push(`${s.read} read`);
+  if (s.changed > 0) parts.push(t("files.changed", { n: s.changed }));
+  if (s.read > 0) parts.push(t("files.read", { n: s.read }));
   return parts.join(" · ");
 }
 

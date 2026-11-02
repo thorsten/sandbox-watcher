@@ -1,13 +1,8 @@
 import { useMemo, useState } from "react";
+import { t } from "../i18n";
 import { filterEntries, formatRelative } from "../network";
 import type { NetworkEntry, NetworkReport } from "../types";
 import { AllowDialog } from "./AllowDialog";
-
-const SOURCE_LABELS = {
-  firewall: "firewall log",
-  dns: "DNS log",
-  "proxy-access": "proxy log",
-} as const;
 
 interface Props {
   containerKey: string;
@@ -49,7 +44,7 @@ export function NetworkPanel({ containerKey, report, now, onChanged }: Props) {
     });
 
   if (!report) {
-    return <div className="network muted">Reading network logs…</div>;
+    return <div className="network muted">{t("network.reading")}</div>;
   }
 
   const entries = filterEntries(report.entries, { status, search });
@@ -58,62 +53,65 @@ export function NetworkPanel({ containerKey, report, now, onChanged }: Props) {
   return (
     <div className="network">
       <div className="network-toolbar">
-        <div className="segmented" aria-label="Status filter">
+        <div className="segmented" aria-label={t("network.statusFilter")}>
           <button
             type="button"
             className={status === "all" ? "active" : ""}
             onClick={() => setStatus("all")}
           >
-            All {report.entries.length}
+            {t("network.all", { n: report.entries.length })}
           </button>
           <button
             type="button"
             className={status === "blocked" ? "active" : ""}
             onClick={() => setStatus("blocked")}
           >
-            Blocked {blocked}
+            {t("network.blocked", { n: blocked })}
           </button>
         </div>
         <input
           type="search"
-          placeholder="Filter by host, IP or port"
+          placeholder={t("network.searchPlaceholder")}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          aria-label="Filter destinations"
+          aria-label={t("network.searchLabel")}
         />
         {selected.size > 0 && (
           <button type="button" className="primary" onClick={() => setAllowOpen(true)}>
-            Allow {selected.size} selected…
+            {t("network.allowSelected", { n: selected.size })}
           </button>
         )}
       </div>
 
       {report.failed_sources.length > 0 && (
         <p className="network-note warn">
-          Could not read {report.failed_sources.map((s) => SOURCE_LABELS[s]).join(", ")}. The
-          container may still be starting, or exec as root was denied.
+          {t("network.couldNotRead", {
+            n: report.failed_sources.length,
+            sources: report.failed_sources.map((s) => t(`source.${s}`)).join(", "),
+          })}
         </p>
       )}
       {report.unparsed_sources.length > 0 && (
         <p className="network-note warn">
-          The {report.unparsed_sources.map((s) => SOURCE_LABELS[s]).join(" and ")} had content in a
-          format this version does not understand. The sandbox release in this container is probably
-          newer than the one tested.
+          {t("network.unparsed", {
+            n: report.unparsed_sources.length,
+            sources: report.unparsed_sources.map((s) => t(`source.${s}`)).join(t("common.and")),
+          })}
         </p>
       )}
 
       {entries.length === 0 ? (
-        <p className="muted">No matching network activity.</p>
+        <p className="muted">{t("network.noMatch")}</p>
       ) : (
         <table className="network-table">
           <thead>
             <tr>
-              <th aria-label="Select" />
-              <th>Destination</th>
-              <th>Port</th>
-              <th>Status</th>
-              <th className="num">Count</th>
-              <th>Last seen</th>
+              <th aria-label={t("network.select")} />
+              <th>{t("network.destination")}</th>
+              <th>{t("network.port")}</th>
+              <th>{t("network.status")}</th>
+              <th className="num">{t("network.count")}</th>
+              <th>{t("network.lastSeen")}</th>
             </tr>
           </thead>
           <tbody>
@@ -123,7 +121,7 @@ export function NetworkPanel({ containerKey, report, now, onChanged }: Props) {
                   {e.status === "blocked" && !isIp(e.destination) && (
                     <input
                       type="checkbox"
-                      aria-label={`Select ${e.destination}`}
+                      aria-label={t("network.selectHost", { host: e.destination })}
                       checked={selected.has(e.destination)}
                       onChange={() => toggle(e.destination)}
                     />
@@ -138,7 +136,7 @@ export function NetworkPanel({ containerKey, report, now, onChanged }: Props) {
                 <td>{e.port === 0 ? <span className="muted">DNS</span> : e.port}</td>
                 <td>
                   <span className={`badge badge-${e.status === "blocked" ? "err" : "ok"}`}>
-                    {e.status}
+                    {t(`netstatus.${e.status}`)}
                   </span>
                 </td>
                 <td className="num">{e.count}</td>
@@ -164,19 +162,13 @@ export function NetworkPanel({ containerKey, report, now, onChanged }: Props) {
       )}
 
       <details className="network-caveats">
-        <summary className="muted">About these numbers</summary>
+        <summary className="muted">{t("network.about")}</summary>
         <ul className="muted">
-          <li>
-            Tick blocked hosts and choose "Allow selected" to add them to sandbox's allow list. Raw
-            IP addresses cannot be allowed by name.
-          </li>
-          <li>Repeated blocked connections can be collapsed by the firewall logger.</li>
-          <li>IPv6 connections are not recorded.</li>
-          <li>
-            Hostnames come from the container's DNS replies. Services that share an IP can show a
-            different name than the one requested.
-          </li>
-          <li>DNS-only rows are domains that were resolved but never seen by the proxy.</li>
+          <li>{t("network.caveatAllow")}</li>
+          <li>{t("network.caveatCollapsed")}</li>
+          <li>{t("network.caveatIpv6")}</li>
+          <li>{t("network.caveatNames")}</li>
+          <li>{t("network.caveatDns")}</li>
         </ul>
       </details>
     </div>

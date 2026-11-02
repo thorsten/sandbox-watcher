@@ -1,4 +1,5 @@
 import { useId, useState } from "react";
+import { t } from "../i18n";
 import { areaPath, linePath, sparkPoints } from "../sparkline";
 
 interface Props {
@@ -88,7 +89,7 @@ export function Sparkline({ title, values, max, format, current }: Props) {
         )}
         {points.length <= 1 && (
           <text x={WIDTH / 2} y={HEIGHT / 2 + 4} textAnchor="middle" className="spark-empty">
-            collecting…
+            {t("spark.collecting")}
           </text>
         )}
       </svg>
