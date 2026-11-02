@@ -9,6 +9,7 @@ use chrono::{DateTime, Duration, Utc};
 use serde::{Deserialize, Serialize};
 
 use crate::host::Host;
+use crate::i18n::{Language, text};
 use crate::model::{AgentKind, NetworkStatus};
 use crate::network::NetworkReport;
 use crate::overview::{ContainerOverview, Overview};
@@ -35,12 +36,12 @@ pub struct Notification {
     pub container_id: String,
 }
 
-fn agent_label(agent: AgentKind, command: &str) -> String {
+fn agent_label(lang: Language, agent: AgentKind, command: &str) -> String {
     match agent {
         AgentKind::Other => command
             .split_whitespace()
             .next()
-            .unwrap_or("session")
+            .unwrap_or(text::session_fallback(lang))
             .to_string(),
         other => other.label().to_string(),
     }
@@ -96,11 +97,13 @@ pub fn stale_ids(overview: &Overview) -> HashSet<String> {
     stale
 }
 
-/// Compare `previous` with `next` and produce notifications allowed by `settings`.
+/// Compare `previous` with `next` and produce notifications allowed by
+/// `settings`, worded in `lang`.
 pub fn diff(
     previous: &Overview,
     next: &Overview,
     settings: &NotificationSettings,
+    lang: Language,
 ) -> Vec<Notification> {
     let mut out = Vec::new();
     if !settings.enabled {
@@ -136,9 +139,9 @@ pub fn diff(
                         kind: NotificationKind::ContainerStarted,
                         title: titled(
                             now,
-                            format!("Sandbox started: {}", now.container.project_slug),
+                            text::container_started_title(lang, &now.container.project_slug),
                         ),
-                        body: format!("{name} is running"),
+                        body: text::container_running_body(lang, name),
                         container_id: (*id).to_string(),
                     });
                 }
@@ -154,9 +157,9 @@ pub fn diff(
                         kind: NotificationKind::ContainerStarted,
                         title: titled(
                             now,
-                            format!("Sandbox started: {}", now.container.project_slug),
+                            text::container_started_title(lang, &now.container.project_slug),
                         ),
-                        body: format!("{name} is running again"),
+                        body: text::container_running_again_body(lang, name),
                         container_id: (*id).to_string(),
                     });
                 }
@@ -167,16 +170,9 @@ pub fn diff(
                             kind: NotificationKind::ContainerDied,
                             title: titled(
                                 now,
-                                format!(
-                                    "Sandbox stopped unexpectedly: {}",
-                                    now.container.project_slug
-                                ),
+                                text::container_died_title(lang, &now.container.project_slug),
                             ),
-                            body: format!(
-                                "{name} stopped while {} session{} ran",
-                                was.sessions.len(),
-                                if was.sessions.len() == 1 { "" } else { "s" }
-                            ),
+                            body: text::container_died_body(lang, name, was.sessions.len()),
                             container_id: (*id).to_string(),
                         });
                     } else if settings.container_stopped {
@@ -184,9 +180,9 @@ pub fn diff(
                             kind: NotificationKind::ContainerStopped,
                             title: titled(
                                 now,
-                                format!("Sandbox stopped: {}", now.container.project_slug),
+                                text::container_stopped_title(lang, &now.container.project_slug),
                             ),
-                            body: format!("{name} is no longer running"),
+                            body: text::container_stopped_body(lang, name),
                             container_id: (*id).to_string(),
                         });
                     }
@@ -200,13 +196,13 @@ pub fn diff(
                                 kind: NotificationKind::SessionStarted,
                                 title: titled(
                                     now,
-                                    format!(
-                                        "{} started in {}",
-                                        agent_label(s.agent, &s.command),
-                                        now.container.project_slug
+                                    text::session_started_title(
+                                        lang,
+                                        &agent_label(lang, s.agent, &s.command),
+                                        &now.container.project_slug,
                                     ),
                                 ),
-                                body: format!("{name}, PID {}", s.pid),
+                                body: text::session_body(lang, name, s.pid),
                                 container_id: (*id).to_string(),
                             });
                         }
@@ -217,13 +213,13 @@ pub fn diff(
                                 kind: NotificationKind::SessionEnded,
                                 title: titled(
                                     now,
-                                    format!(
-                                        "{} ended in {}",
-                                        agent_label(s.agent, &s.command),
-                                        now.container.project_slug
+                                    text::session_ended_title(
+                                        lang,
+                                        &agent_label(lang, s.agent, &s.command),
+                                        &now.container.project_slug,
                                     ),
                                 ),
-                                body: format!("{name}, PID {}", s.pid),
+                                body: text::session_body(lang, name, s.pid),
                                 container_id: (*id).to_string(),
                             });
                         }
@@ -241,8 +237,8 @@ pub fn diff(
             {
                 out.push(Notification {
                     kind: NotificationKind::StaleContainer,
-                    title: titled(c, format!("Stale sandbox: {}", c.container.project_slug)),
-                    body: format!("{} was created from an older configuration than the newest container of this project", c.container.name),
+                    title: titled(c, text::stale_title(lang, &c.container.project_slug)),
+                    body: text::stale_body(lang, &c.container.name),
                     container_id: id.clone(),
                 });
             }
@@ -282,6 +278,7 @@ pub fn blocked_bursts(
     overview: &Overview,
     threshold: u64,
     settings: &NotificationSettings,
+    lang: Language,
 ) -> Vec<Notification> {
     if !settings.enabled || !settings.blocked_burst {
         return vec![];
@@ -294,8 +291,8 @@ pub fn blocked_bursts(
             let c = names.get(id.as_str())?;
             Some(Notification {
                 kind: NotificationKind::BlockedBurst,
-                title: titled(c, format!("Blocked requests: {}", c.container.project_slug)),
-                body: format!("{n} blocked connections recently from {}", c.container.name),
+                title: titled(c, text::burst_title(lang, &c.container.project_slug)),
+                body: text::burst_body(lang, *n, &c.container.name),
                 container_id: id.clone(),
             })
         })
@@ -320,13 +317,54 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn notifications_are_worded_in_the_language() {
+        let mock = MockAdapter::demo();
+        let before = snapshot(&mock).await;
+        mock.stop("sandbox-web-shop", None).await.unwrap();
+        let after = snapshot(&mock).await;
+        let de = diff(
+            &before,
+            &after,
+            &NotificationSettings::default(),
+            Language::De,
+        );
+        let died = de
+            .iter()
+            .find(|n| n.kind == NotificationKind::ContainerDied)
+            .expect("died notification");
+        assert_eq!(died.title, "Sandbox unerwartet gestoppt: web-shop");
+        assert!(
+            died.body
+                .starts_with("sandbox-web-shop wurde gestoppt, während "),
+            "{}",
+            died.body
+        );
+        let en = diff(
+            &before,
+            &after,
+            &NotificationSettings::default(),
+            Language::En,
+        );
+        assert_eq!(en.len(), de.len());
+        assert!(
+            en.iter()
+                .any(|n| n.title == "Sandbox stopped unexpectedly: web-shop")
+        );
+    }
+
+    #[tokio::test]
     async fn detects_stops_with_and_without_sessions() {
         let mock = MockAdapter::demo();
         let before = snapshot(&mock).await;
         mock.stop("sandbox-web-shop", None).await.unwrap(); // had sessions
         mock.stop("sandbox-billing-api-live", None).await.unwrap(); // had sessions too (mock default)
         let after = snapshot(&mock).await;
-        let n = diff(&before, &after, &NotificationSettings::default());
+        let n = diff(
+            &before,
+            &after,
+            &NotificationSettings::default(),
+            Language::En,
+        );
         assert_eq!(n.len(), 2);
         assert!(n.iter().all(|x| x.kind == NotificationKind::ContainerDied));
 
@@ -341,7 +379,12 @@ mod tests {
         before2.containers[idx].sessions.clear();
         after2.containers[idx].sessions.clear();
         after2.containers[idx].container.state = crate::model::ContainerState::Exited;
-        let n = diff(&before2, &after2, &NotificationSettings::default());
+        let n = diff(
+            &before2,
+            &after2,
+            &NotificationSettings::default(),
+            Language::En,
+        );
         assert_eq!(kinds(&n), vec![NotificationKind::ContainerStopped]);
     }
 
@@ -355,7 +398,12 @@ mod tests {
             command: "codex".into(),
             agent: AgentKind::Codex,
         });
-        let n = diff(&before, &after, &NotificationSettings::default());
+        let n = diff(
+            &before,
+            &after,
+            &NotificationSettings::default(),
+            Language::En,
+        );
         assert_eq!(kinds(&n), vec![NotificationKind::SessionStarted]);
         assert!(n[0].title.starts_with("Codex started in"));
 
@@ -363,7 +411,7 @@ mod tests {
             session_started: false,
             ..Default::default()
         };
-        assert!(diff(&before, &after, &muted).is_empty());
+        assert!(diff(&before, &after, &muted, Language::En).is_empty());
 
         let mut brand_new = before.clone();
         let mut extra = before.containers[1].clone();
@@ -373,7 +421,12 @@ mod tests {
         extra.container.project_slug = "new".into();
         extra.runtime = RuntimeKind::Docker;
         brand_new.containers.push(extra);
-        let n = diff(&before, &brand_new, &NotificationSettings::default());
+        let n = diff(
+            &before,
+            &brand_new,
+            &NotificationSettings::default(),
+            Language::En,
+        );
         assert!(
             n.iter()
                 .any(|x| x.kind == NotificationKind::ContainerStarted && x.title.contains("new"))
@@ -400,7 +453,12 @@ mod tests {
         let mut after = before.clone();
         after.containers[i2].container.config_hash = Some("ffffffffffff".into());
         after.containers[i2].container.started_at = Some(Utc::now());
-        let n = diff(&before, &after, &NotificationSettings::default());
+        let n = diff(
+            &before,
+            &after,
+            &NotificationSettings::default(),
+            Language::En,
+        );
         let stale: Vec<_> = n
             .iter()
             .filter(|x| x.kind == NotificationKind::StaleContainer)
@@ -410,7 +468,12 @@ mod tests {
             stale[0].body.starts_with("sandbox-web-shop "),
             "the older container is stale"
         );
-        let again = diff(&after, &after, &NotificationSettings::default());
+        let again = diff(
+            &after,
+            &after,
+            &NotificationSettings::default(),
+            Language::En,
+        );
         assert!(again.is_empty());
     }
 
@@ -421,9 +484,23 @@ mod tests {
         let id = overview.containers[1].container.id.clone();
         let prev = HashMap::from([(id.clone(), 2u64)]);
         let cur = HashMap::from([(id.clone(), 7u64)]);
-        let n = blocked_bursts(&prev, &cur, &overview, 5, &NotificationSettings::default());
+        let n = blocked_bursts(
+            &prev,
+            &cur,
+            &overview,
+            5,
+            &NotificationSettings::default(),
+            Language::En,
+        );
         assert_eq!(kinds(&n), vec![NotificationKind::BlockedBurst]);
-        let n = blocked_bursts(&cur, &cur, &overview, 5, &NotificationSettings::default());
+        let n = blocked_bursts(
+            &cur,
+            &cur,
+            &overview,
+            5,
+            &NotificationSettings::default(),
+            Language::En,
+        );
         assert!(n.is_empty(), "stays above threshold: no repeat");
     }
 
@@ -484,7 +561,12 @@ mod tests {
         let before = overview_with(vec![]);
         let started = remote(running_template().await, "devbox");
         let after = overview_with(vec![started]);
-        let out = diff(&before, &after, &NotificationSettings::default());
+        let out = diff(
+            &before,
+            &after,
+            &NotificationSettings::default(),
+            Language::En,
+        );
         assert_eq!(out[0].container_id, "devbox/c1");
         assert!(out[0].title.starts_with("devbox: "), "{}", out[0].title);
     }
@@ -511,9 +593,25 @@ mod tests {
         gone.last_seen_at = Some(chrono::Utc::now());
         gone.sessions.clear();
         let during = overview_with(vec![gone.clone()]);
-        assert!(diff(&before, &during, &NotificationSettings::default()).is_empty());
+        assert!(
+            diff(
+                &before,
+                &during,
+                &NotificationSettings::default(),
+                Language::En
+            )
+            .is_empty()
+        );
         // Coming back with the same running container is not "started".
-        assert!(diff(&during, &before, &NotificationSettings::default()).is_empty());
+        assert!(
+            diff(
+                &during,
+                &before,
+                &NotificationSettings::default(),
+                Language::En
+            )
+            .is_empty()
+        );
     }
 
     #[test]
@@ -524,7 +622,15 @@ mod tests {
         let mut greyed = a;
         greyed.last_seen_at = Some(chrono::Utc::now());
         let during = overview_with(vec![greyed]);
-        assert!(diff(&before, &during, &NotificationSettings::default()).is_empty());
+        assert!(
+            diff(
+                &before,
+                &during,
+                &NotificationSettings::default(),
+                Language::En
+            )
+            .is_empty()
+        );
     }
 
     #[test]
@@ -538,6 +644,14 @@ mod tests {
             probes: vec![],
         }];
         let after = overview_with(vec![remote(running("c1", "web-shop"), "devbox")]);
-        assert!(diff(&before, &after, &NotificationSettings::default()).is_empty());
+        assert!(
+            diff(
+                &before,
+                &after,
+                &NotificationSettings::default(),
+                Language::En
+            )
+            .is_empty()
+        );
     }
 }

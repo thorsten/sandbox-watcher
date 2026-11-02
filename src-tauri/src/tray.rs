@@ -1,6 +1,7 @@
 //! Tray / menu bar icon with a per-project summary.
 
 use sandbox_core::host::Host;
+use sandbox_core::i18n::{Language, text};
 use sandbox_core::overview::{ContainerOverview, Overview};
 use tauri::menu::{Menu, MenuBuilder, MenuItemBuilder};
 use tauri::tray::{TrayIcon, TrayIconBuilder, TrayIconEvent};
@@ -51,7 +52,7 @@ fn host_label(overview: &Overview, alias: &str) -> String {
 /// One entry per project and host: menu label and the key of the first
 /// container (click target). Remote projects carry their host label, so the
 /// same slug on two hosts gives two entries.
-fn quick_list(overview: &Overview) -> Vec<(String, String)> {
+fn quick_list(overview: &Overview, lang: Language) -> Vec<(String, String)> {
     // host, slug, containers, sessions, key of the first container
     let mut projects: Vec<(&Host, &str, usize, usize, &str)> = Vec::new();
     for c in running_containers(overview) {
@@ -80,12 +81,9 @@ fn quick_list(overview: &Overview) -> Vec<(String, String)> {
                 Host::Remote(alias) => format!("{}: {slug}", host_label(overview, alias)),
             };
             let label = match (containers, sessions) {
-                (1, 0) => format!("{name}: idle"),
-                (1, n) => format!("{name}: {n} session{}", if n == 1 { "" } else { "s" }),
-                (c, n) => format!(
-                    "{name}: {c} containers, {n} session{}",
-                    if n == 1 { "" } else { "s" }
-                ),
+                (1, 0) => text::tray_project_idle(lang, &name),
+                (1, n) => text::tray_project_sessions(lang, &name, n),
+                (c, n) => text::tray_project_containers(lang, &name, c, n),
             };
             (label, key.to_string())
         })
@@ -95,18 +93,19 @@ fn quick_list(overview: &Overview) -> Vec<(String, String)> {
 fn build_menu<R: Runtime>(
     app: &AppHandle<R>,
     overview: Option<&Overview>,
+    lang: Language,
 ) -> tauri::Result<Menu<R>> {
     let mut builder = MenuBuilder::new(app)
-        .item(&MenuItemBuilder::with_id(MENU_SHOW, "Show Sandbox Watcher").build(app)?)
+        .item(&MenuItemBuilder::with_id(MENU_SHOW, text::tray_show(lang)).build(app)?)
         .separator();
 
     let mut running = 0usize;
     if let Some(overview) = overview {
         running = running_containers(overview).count();
-        let entries = quick_list(overview);
+        let entries = quick_list(overview, lang);
         if entries.is_empty() {
             builder = builder.item(
-                &MenuItemBuilder::with_id("tray-empty", "No running sandboxes")
+                &MenuItemBuilder::with_id("tray-empty", text::tray_empty(lang))
                     .enabled(false)
                     .build(app)?,
             );
@@ -122,35 +121,32 @@ fn build_menu<R: Runtime>(
 
     builder
         .item(
-            &MenuItemBuilder::with_id(MENU_STOP_ALL, "Stop all sandboxes")
+            &MenuItemBuilder::with_id(MENU_STOP_ALL, text::tray_stop_all(lang))
                 .enabled(running > 0)
                 .build(app)?,
         )
-        .item(&MenuItemBuilder::with_id(MENU_SETTINGS, "Settings…").build(app)?)
+        .item(&MenuItemBuilder::with_id(MENU_SETTINGS, text::tray_settings(lang)).build(app)?)
         .separator()
-        .item(&MenuItemBuilder::with_id(MENU_QUIT, "Quit Sandbox Watcher").build(app)?)
+        .item(&MenuItemBuilder::with_id(MENU_QUIT, text::tray_quit(lang)).build(app)?)
         .build()
 }
 
-fn tooltip(overview: Option<&Overview>) -> String {
+fn tooltip(overview: Option<&Overview>, lang: Language) -> String {
     match overview {
         None => "Sandbox Watcher".to_string(),
         Some(o) => {
             let running = running_containers(o).count();
             let sessions: usize = running_containers(o).map(|c| c.sessions.len()).sum();
-            format!(
-                "Sandbox Watcher: {running} running, {sessions} session{}",
-                if sessions == 1 { "" } else { "s" }
-            )
+            text::tray_tooltip(lang, running, sessions)
         }
     }
 }
 
-pub fn create<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<TrayIcon<R>> {
-    let menu = build_menu(app, None)?;
+pub fn create<R: Runtime>(app: &AppHandle<R>, lang: Language) -> tauri::Result<TrayIcon<R>> {
+    let menu = build_menu(app, None, lang)?;
     let mut builder = TrayIconBuilder::with_id(TRAY_ID)
         .menu(&menu)
-        .tooltip(tooltip(None))
+        .tooltip(tooltip(None, lang))
         .show_menu_on_left_click(cfg!(not(target_os = "macos")))
         .on_tray_icon_event(|tray, event| {
             if let TrayIconEvent::Click { .. } = event
@@ -176,15 +172,15 @@ pub fn create<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<TrayIcon<R>> {
     builder.build(app)
 }
 
-/// Refresh menu and tooltip after an overview change.
-pub fn update<R: Runtime>(app: &AppHandle<R>, overview: &Overview) {
+/// Refresh menu and tooltip after an overview or language change.
+pub fn update<R: Runtime>(app: &AppHandle<R>, overview: &Overview, lang: Language) {
     let Some(tray) = app.tray_by_id(TRAY_ID) else {
         return;
     };
-    if let Ok(menu) = build_menu(app, Some(overview)) {
+    if let Ok(menu) = build_menu(app, Some(overview), lang) {
         let _ = tray.set_menu(Some(menu));
     }
-    let _ = tray.set_tooltip(Some(tooltip(Some(overview))));
+    let _ = tray.set_tooltip(Some(tooltip(Some(overview), lang)));
 }
 
 /// Handle tray menu clicks that the shell owns. Returns false for ids it
@@ -268,7 +264,7 @@ mod tests {
     #[test]
     fn same_slug_on_two_hosts_gives_two_entries() {
         let o = overview(vec![entry("local", "web", 1), entry("devbox", "web", 2)]);
-        let list = quick_list(&o);
+        let list = quick_list(&o, Language::En);
         assert_eq!(list.len(), 2);
         assert_eq!(list[0].0, "web: 1 session");
         assert_eq!(list[1].0, "Dev VM: web: 2 sessions");
@@ -277,12 +273,32 @@ mod tests {
     }
 
     #[test]
+    fn labels_follow_the_language() {
+        let o = overview(vec![
+            entry("local", "web", 1),
+            entry("local", "web", 2),
+            entry("local", "api", 0),
+        ]);
+        let list = quick_list(&o, Language::De);
+        assert_eq!(list[0].0, "web: 2 Container, 3 Sessions");
+        assert_eq!(list[1].0, "api: inaktiv");
+        assert_eq!(
+            tooltip(Some(&o), Language::De),
+            "Sandbox Watcher: 3 laufend, 3 Sessions"
+        );
+        assert_eq!(tooltip(None, Language::De), "Sandbox Watcher");
+    }
+
+    #[test]
     fn greyed_containers_are_not_running() {
         let mut greyed = entry("devbox", "web", 1);
         greyed.last_seen_at = Some(chrono::Utc::now());
         let o = overview(vec![entry("local", "api", 0), greyed]);
         assert_eq!(running_containers(&o).count(), 1);
-        assert_eq!(quick_list(&o).len(), 1);
-        assert_eq!(tooltip(Some(&o)), "Sandbox Watcher: 1 running, 0 sessions");
+        assert_eq!(quick_list(&o, Language::En).len(), 1);
+        assert_eq!(
+            tooltip(Some(&o), Language::En),
+            "Sandbox Watcher: 1 running, 0 sessions"
+        );
     }
 }

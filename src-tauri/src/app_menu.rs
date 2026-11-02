@@ -1,13 +1,15 @@
 //! Application menu: Tauri's default layout, with an About entry that shows
 //! our icon, version, license and website even in unbundled dev builds.
 
+use sandbox_core::i18n::{Language, text};
 use tauri::image::Image;
 use tauri::menu::{AboutMetadataBuilder, Menu, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Runtime};
 
 const WEBSITE: &str = "https://thorsten.github.io/sandbox-watcher/";
 
-pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
+pub fn build<R: Runtime>(app: &AppHandle<R>, lang: Language) -> tauri::Result<Menu<R>> {
+    let item = |name: &str| text::menu_predefined(lang, name);
     let pkg = app.package_info();
     let config = app.config();
     // The Cargo package is `sandbox-watcher`; people should see the product name.
@@ -36,23 +38,27 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
 
     let window_menu = Submenu::with_items(
         app,
-        "Window",
+        text::menu_window(lang),
         true,
         &[
-            &PredefinedMenuItem::minimize(app, None)?,
-            &PredefinedMenuItem::maximize(app, None)?,
+            &PredefinedMenuItem::minimize(app, item("minimize"))?,
+            &PredefinedMenuItem::maximize(app, item("maximize"))?,
             #[cfg(target_os = "macos")]
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::close_window(app, None)?,
+            &PredefinedMenuItem::close_window(app, item("close_window"))?,
         ],
     )?;
 
     #[cfg(not(target_os = "macos"))]
     let help_menu = Submenu::with_items(
         app,
-        "Help",
+        text::menu_help(lang),
         true,
-        &[&PredefinedMenuItem::about(app, None, Some(about.clone()))?],
+        &[&PredefinedMenuItem::about(
+            app,
+            Some(&text::menu_about(lang, &product_name)),
+            Some(about.clone()),
+        )?],
     )?;
 
     #[cfg(target_os = "macos")]
@@ -61,41 +67,45 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         product_name.clone(),
         true,
         &[
-            &PredefinedMenuItem::about(app, Some(&format!("About {product_name}")), Some(about))?,
+            &PredefinedMenuItem::about(
+                app,
+                Some(&text::menu_about(lang, &product_name)),
+                Some(about),
+            )?,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::services(app, None)?,
+            &PredefinedMenuItem::services(app, item("services"))?,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::hide(app, Some(&format!("Hide {product_name}")))?,
-            &PredefinedMenuItem::hide_others(app, None)?,
-            &PredefinedMenuItem::show_all(app, None)?,
+            &PredefinedMenuItem::hide(app, Some(&text::menu_hide(lang, &product_name)))?,
+            &PredefinedMenuItem::hide_others(app, item("hide_others"))?,
+            &PredefinedMenuItem::show_all(app, item("show_all"))?,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::quit(app, Some(&format!("Quit {product_name}")))?,
+            &PredefinedMenuItem::quit(app, Some(&text::menu_quit(lang, &product_name)))?,
         ],
     )?;
 
     #[cfg(not(target_os = "macos"))]
     let file_menu = Submenu::with_items(
         app,
-        "File",
+        text::menu_file(lang),
         true,
         &[
-            &PredefinedMenuItem::close_window(app, None)?,
-            &PredefinedMenuItem::quit(app, None)?,
+            &PredefinedMenuItem::close_window(app, item("close_window"))?,
+            &PredefinedMenuItem::quit(app, item("quit"))?,
         ],
     )?;
 
     let edit_menu = Submenu::with_items(
         app,
-        "Edit",
+        text::menu_edit(lang),
         true,
         &[
-            &PredefinedMenuItem::undo(app, None)?,
-            &PredefinedMenuItem::redo(app, None)?,
+            &PredefinedMenuItem::undo(app, item("undo"))?,
+            &PredefinedMenuItem::redo(app, item("redo"))?,
             &PredefinedMenuItem::separator(app)?,
-            &PredefinedMenuItem::cut(app, None)?,
-            &PredefinedMenuItem::copy(app, None)?,
-            &PredefinedMenuItem::paste(app, None)?,
-            &PredefinedMenuItem::select_all(app, None)?,
+            &PredefinedMenuItem::cut(app, item("cut"))?,
+            &PredefinedMenuItem::copy(app, item("copy"))?,
+            &PredefinedMenuItem::paste(app, item("paste"))?,
+            &PredefinedMenuItem::select_all(app, item("select_all"))?,
         ],
     )?;
 

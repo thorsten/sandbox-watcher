@@ -300,14 +300,15 @@ impl Watcher {
 
         // Notifications from the snapshot diff.
         let settings = self.settings();
+        let lang = self.language();
         let previous = self.overview();
         let mut notifications: Vec<Notification> = Vec::new();
         if let Some(previous) = &previous {
-            notifications.extend(diff(previous, &overview, &settings.notifications));
+            notifications.extend(diff(previous, &overview, &settings.notifications, lang));
         }
         *self.overview.write().expect("overview poisoned") = Some(overview.clone());
         let _ = self.app.emit(OVERVIEW_UPDATED, &overview);
-        tray::update(&self.app, &overview);
+        tray::update(&self.app, &overview, lang);
 
         // Transcript state only for containers that are running and reachable.
         let live_keys: Vec<&str> = overview
@@ -393,6 +394,7 @@ impl Watcher {
                     &overview,
                     settings.blocked_burst_threshold,
                     &settings.notifications,
+                    lang,
                 ));
             }
             *previous_counts = counts;

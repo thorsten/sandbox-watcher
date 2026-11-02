@@ -109,6 +109,14 @@ fn save_settings(
     settings_store::save(&app, &settings)?;
     apply_autostart(&app, settings.launch_at_login);
     state.apply_settings(settings.clone());
+    // Native menu and tray speak the new language at once; the webview
+    // re-reads `resolved_language` on the settings event.
+    let lang = state.language();
+    app.set_menu(app_menu::build(&app, lang).map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+    if let Some(overview) = state.overview() {
+        tray::update(&app, &overview, lang);
+    }
     Ok(settings)
 }
 
@@ -781,8 +789,9 @@ pub fn run() {
                 live.set_listener(Arc::new(move |_event| poke.poke()));
             }
 
-            app.set_menu(app_menu::build(&handle)?)?;
-            tray::create(&handle)?;
+            let lang = watcher.language();
+            app.set_menu(app_menu::build(&handle, lang)?)?;
+            tray::create(&handle, lang)?;
             app.on_menu_event(on_menu_event);
             apply_autostart(&handle, settings.launch_at_login);
 
