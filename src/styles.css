@@ -52,6 +52,29 @@ button {
 button:hover {
   border-color: var(--accent);
 }
+/* Selects look like buttons everywhere: no native chrome, one chevron, same height. */
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  font: inherit;
+  color: var(--fg);
+  background-color: var(--card);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5 6 8l3.5-3.5' fill='none' stroke='%239ca3af' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.55rem center;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.35rem 1.9rem 0.35rem 0.6rem;
+  cursor: pointer;
+  max-width: 100%;
+}
+select:hover {
+  border-color: var(--accent);
+}
+select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
 
 .app {
   max-width: 960px;
@@ -752,13 +775,15 @@ dialog.confirm ul {
   flex: 1;
   min-width: 220px;
 }
-.settings input,
-.settings select {
+.settings input {
   padding: 0.3rem 0.5rem;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg);
   color: var(--fg);
+}
+.settings select {
+  background-color: var(--bg);
 }
 .settings-grid {
   display: grid;
