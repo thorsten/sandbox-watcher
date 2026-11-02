@@ -17,6 +17,7 @@ import { render } from "../../test/render";
 import { ContainerActions } from "../ContainerActions";
 import { DetailPane } from "../DetailPane";
 import { FilesList } from "../FilesList";
+import { HistoryView } from "../HistoryView";
 import { NetworkPanel } from "../NetworkPanel";
 import { RemoteHostsSection } from "../RemoteHostsSection";
 import { RuntimeBanner } from "../RuntimeBanner";
@@ -226,5 +227,13 @@ describe("German rendering", () => {
     );
     expect(text).toContain("Dev VM nicht erreichbar Verbindung testen Entfernen");
     expect(text).toContain("führe zuerst einmal ssh <alias> aus");
+  });
+
+  it("history view", () => {
+    const { text, html } = render(<HistoryView onClose={noop} />, de);
+    expect(text).toContain("Verlauf Leeren Schließen Heute 7 Tage 30 Tage Alle");
+    expect(text).toContain("Alle Projekte");
+    expect(text).toContain("Alle Agenten");
+    expect(html).toContain('aria-label="Zeitraum"');
   });
 });

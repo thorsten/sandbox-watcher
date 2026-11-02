@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import { clearHistory, getHistory } from "../api";
 import { AGENT_LABELS } from "../format";
-import { formatDateTime } from "../i18n";
+import { formatDateTime, t, type PlainKey } from "../i18n";
 import type { AgentKind, Aggregate } from "../types";
 import { formatCost, formatDuration, formatTokens } from "../usageFormat";
 import { describeFiles } from "../files";
@@ -9,11 +9,11 @@ import { usePolling } from "../usePolling";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { FilesList } from "./FilesList";
 
-const RANGES: { label: string; hours: number | null }[] = [
-  { label: "Today", hours: 24 },
-  { label: "7 days", hours: 24 * 7 },
-  { label: "30 days", hours: 24 * 30 },
-  { label: "All", hours: null },
+const RANGES: { label: PlainKey; hours: number | null }[] = [
+  { label: "range.today", hours: 24 },
+  { label: "range.week", hours: 24 * 7 },
+  { label: "range.month", hours: 24 * 30 },
+  { label: "range.all", hours: null },
 ];
 const AGENTS: AgentKind[] = ["claude-code", "codex", "open-code", "pi", "shell", "other"];
 export const HISTORY_POLL_MS = 15_000;
@@ -38,19 +38,19 @@ export function HistoryView({ onClose }: { onClose: () => void }) {
   return (
     <section className="history" aria-labelledby="history-title">
       <header className="settings-header">
-        <h2 id="history-title">History</h2>
+        <h2 id="history-title">{t("app.history")}</h2>
         <div className="header-meta">
           <button type="button" className="danger" onClick={() => setConfirmClear(true)}>
-            Clear
+            {t("history.clear")}
           </button>
           <button type="button" onClick={onClose}>
-            Close
+            {t("settings.close")}
           </button>
         </div>
       </header>
 
       <div className="network-toolbar">
-        <div className="segmented" aria-label="Time range">
+        <div className="segmented" aria-label={t("history.timeRange")}>
           {RANGES.map((r) => (
             <button
               key={r.label}
@@ -58,12 +58,16 @@ export function HistoryView({ onClose }: { onClose: () => void }) {
               className={range === r.hours ? "active" : ""}
               onClick={() => setRange(r.hours)}
             >
-              {r.label}
+              {t(r.label)}
             </button>
           ))}
         </div>
-        <select value={project} onChange={(e) => setProject(e.target.value)} aria-label="Project">
-          <option value="">All projects</option>
+        <select
+          value={project}
+          onChange={(e) => setProject(e.target.value)}
+          aria-label={t("history.project")}
+        >
+          <option value="">{t("history.allProjects")}</option>
           {(data?.projects ?? []).map((p) => (
             <option key={p} value={p}>
               {p}
@@ -73,9 +77,9 @@ export function HistoryView({ onClose }: { onClose: () => void }) {
         <select
           value={agent}
           onChange={(e) => setAgent(e.target.value as AgentKind | "")}
-          aria-label="Agent"
+          aria-label={t("history.agent")}
         >
-          <option value="">All agents</option>
+          <option value="">{t("history.allAgents")}</option>
           {AGENTS.map((a) => (
             <option key={a} value={a}>
               {AGENT_LABELS[a]}
@@ -88,35 +92,43 @@ export function HistoryView({ onClose }: { onClose: () => void }) {
       {data && (
         <>
           <div className="summary">
-            <Tile label="Sessions" value={String(data.total.sessions)} />
-            <Tile label="Agent time" value={formatDuration(data.total.seconds)} />
-            <Tile label="Tokens" value={formatTokens(data.total.tokens)} />
+            <Tile label={t("history.sessions")} value={String(data.total.sessions)} />
+            <Tile label={t("history.agentTime")} value={formatDuration(data.total.seconds)} />
+            <Tile label={t("history.tokens")} value={formatTokens(data.total.tokens)} />
             <Tile
-              label={data.total.cost_incomplete ? "Cost (partial)" : "Cost"}
+              label={data.total.cost_incomplete ? t("history.costPartial") : t("history.cost")}
               value={data.total.cost_usd === null ? "–" : formatCost(data.total.cost_usd, "mixed")}
             />
           </div>
 
           <div className="history-grid">
-            <AggregateTable title="By agent" rows={data.by_agent} />
-            <AggregateTable title="By project" rows={data.by_project} />
+            <AggregateTable
+              title={t("history.byAgent")}
+              column={t("history.agent")}
+              rows={data.by_agent}
+            />
+            <AggregateTable
+              title={t("history.byProject")}
+              column={t("history.project")}
+              rows={data.by_project}
+            />
           </div>
 
-          <h3>Sessions</h3>
+          <h3>{t("history.sessions")}</h3>
           {data.sessions.length === 0 ? (
-            <p className="muted">Nothing recorded in this range.</p>
+            <p className="muted">{t("history.nothing")}</p>
           ) : (
             <table className="network-table">
               <thead>
                 <tr>
-                  <th>Started</th>
-                  <th>Duration</th>
-                  <th>Project</th>
-                  <th>Agent</th>
-                  <th>Command</th>
-                  <th>Files</th>
-                  <th className="num">Tokens</th>
-                  <th className="num">Cost</th>
+                  <th>{t("history.started")}</th>
+                  <th>{t("history.duration")}</th>
+                  <th>{t("history.project")}</th>
+                  <th>{t("history.agent")}</th>
+                  <th>{t("history.command")}</th>
+                  <th>{t("history.files")}</th>
+                  <th className="num">{t("history.tokens")}</th>
+                  <th className="num">{t("history.cost")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -134,7 +146,9 @@ export function HistoryView({ onClose }: { onClose: () => void }) {
                           ),
                         ),
                       )}
-                      {!s.ended_at && <span className="badge badge-ok badge-inline">live</span>}
+                      {!s.ended_at && (
+                        <span className="badge badge-ok badge-inline">{t("history.live")}</span>
+                      )}
                     </td>
                     <td>{s.project_slug}</td>
                     <td>
@@ -168,21 +182,15 @@ export function HistoryView({ onClose }: { onClose: () => void }) {
                           )
                         : "–"}
                       {s.usage_scope === "agent" && (
-                        <span
-                          className="muted"
-                          title="Transcripts that several sessions of this agent could have written are counted here"
-                        >
+                        <span className="muted" title={t("history.sharedTitle")}>
                           {" "}
-                          shared
+                          {t("history.shared")}
                         </span>
                       )}
                       {s.usage_scope === "pooled" && (
-                        <span
-                          className="muted"
-                          title="Counted in the sibling session marked shared"
-                        >
+                        <span className="muted" title={t("history.pooledTitle")}>
                           {" "}
-                          pooled
+                          {t("history.pooled")}
                         </span>
                       )}
                     </td>
@@ -199,9 +207,9 @@ export function HistoryView({ onClose }: { onClose: () => void }) {
 
       {confirmClear && (
         <ConfirmDialog
-          title="Clear the history?"
-          lines={["All recorded sessions and containers are deleted from this machine."]}
-          confirmLabel="Clear history"
+          title={t("history.clearTitle")}
+          lines={[t("history.clearLine")]}
+          confirmLabel={t("history.clearConfirm")}
           onCancel={() => setConfirmClear(false)}
           onConfirm={() => {
             setConfirmClear(false);
@@ -222,7 +230,16 @@ function Tile({ label, value }: { label: string; value: string }) {
   );
 }
 
-function AggregateTable({ title, rows }: { title: string; rows: Aggregate[] }) {
+function AggregateTable({
+  title,
+  column,
+  rows,
+}: {
+  title: string;
+  /** Heading of the key column: what the rows are grouped by. */
+  column: string;
+  rows: Aggregate[];
+}) {
   return (
     <div>
       <h3>{title}</h3>
@@ -232,11 +249,11 @@ function AggregateTable({ title, rows }: { title: string; rows: Aggregate[] }) {
         <table className="network-table">
           <thead>
             <tr>
-              <th>{title.replace("By ", "")}</th>
-              <th className="num">Sessions</th>
-              <th className="num">Time</th>
-              <th className="num">Tokens</th>
-              <th className="num">Cost</th>
+              <th>{column}</th>
+              <th className="num">{t("history.sessions")}</th>
+              <th className="num">{t("history.time")}</th>
+              <th className="num">{t("history.tokens")}</th>
+              <th className="num">{t("history.cost")}</th>
             </tr>
           </thead>
           <tbody>
@@ -249,7 +266,7 @@ function AggregateTable({ title, rows }: { title: string; rows: Aggregate[] }) {
                 <td className="num">
                   {r.cost_usd === null ? "–" : formatCost(r.cost_usd, "mixed")}
                   {r.cost_incomplete && (
-                    <span className="muted" title="Some sessions had no price for their model">
+                    <span className="muted" title={t("history.incompleteTitle")}>
                       {" "}
                       *
                     </span>
