@@ -403,8 +403,14 @@ export function SettingsPanel({
     <section className="settings" aria-labelledby="settings-title">
       <header className="settings-header">
         <h2 id="settings-title">{t("app.settings")}</h2>
-        <button type="button" onClick={onClose}>
-          {t("settings.close")}
+        <button
+          type="button"
+          className="close"
+          onClick={onClose}
+          title={t("settings.close")}
+          aria-label={t("settings.close")}
+        >
+          ×
         </button>
       </header>
 

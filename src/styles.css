@@ -715,6 +715,17 @@ dialog.confirm ul {
   margin: 0;
   font-size: 1.1rem;
 }
+.settings-header .close {
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  line-height: 1;
+  font-size: 1.2rem;
+  color: var(--muted);
+}
+.settings-header .close:hover {
+  color: var(--fg);
+}
 .settings fieldset {
   border: 1px solid var(--border);
   border-radius: 8px;

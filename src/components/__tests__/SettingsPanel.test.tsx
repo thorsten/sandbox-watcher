@@ -37,6 +37,8 @@ describe("SettingsPanel", () => {
     expect(text).toContain("Check now");
     expect(text).not.toContain("Run diagnostics");
     expect(text).toContain("Save");
+    expect(html).toContain('class="close"');
+    expect(html).toContain('aria-label="Close"');
   });
 
   it("opens the requested section", () => {
