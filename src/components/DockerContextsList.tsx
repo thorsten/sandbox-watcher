@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { copyText } from "../actions";
+import { t } from "../i18n";
 import type { RemoteHost, SshContext } from "../types";
 
 interface Props {
@@ -41,13 +42,16 @@ export function DockerContextsList({ contexts, hosts, onAdd }: Props) {
 
   return (
     <div className="docker-contexts">
-      <h4>From Docker contexts</h4>
+      <h4>{t("contexts.title")}</h4>
       <ul className="remote-hosts">
         {contexts.map((c) => (
           <li key={c.name}>
             {c.alias && aliases.has(c.alias) ? (
               <span>
-                {c.name} <span className="muted">{c.endpoint} · added</span>
+                {c.name}{" "}
+                <span className="muted">
+                  {c.endpoint} · {t("contexts.added")}
+                </span>
               </span>
             ) : c.alias ? (
               <label className="check">
@@ -63,10 +67,11 @@ export function DockerContextsList({ contexts, hosts, onAdd }: Props) {
                 {c.name} {c.endpoint} · {c.reason}{" "}
                 {c.snippet && (
                   <button type="button" onClick={() => void copy(c)}>
-                    Copy ~/.ssh/config entry
+                    {t("contexts.copySnippet")}
                   </button>
                 )}
-                {copied?.name === c.name && (copied.ok ? " Copied" : " Clipboard unavailable")}
+                {copied?.name === c.name &&
+                  ` ${copied.ok ? t("actions.copied") : t("actions.clipboardUnavailable")}`}
                 {c.snippet && <pre>{c.snippet}</pre>}
               </span>
             )}
@@ -74,7 +79,7 @@ export function DockerContextsList({ contexts, hosts, onAdd }: Props) {
         ))}
       </ul>
       <button type="button" disabled={selected.length === 0} onClick={add}>
-        Add selected
+        {t("contexts.addSelected")}
       </button>
     </div>
   );

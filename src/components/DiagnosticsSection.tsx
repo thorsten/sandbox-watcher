@@ -1,18 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { diagnosticsText, runDiagnostics } from "../api";
-import { formatDateTime } from "../i18n";
+import { formatDateTime, t } from "../i18n";
 import { RUNTIME_LABELS, type DiagnosticsReport, type Probe } from "../types";
 
 function outcomeText(p: Probe): { label: string; detail: string } {
   switch (p.outcome) {
     case "found":
-      return { label: "found", detail: p.endpoint };
+      return { label: t("outcome.found"), detail: p.endpoint };
     case "missing":
-      return { label: "missing", detail: "" };
+      return { label: t("outcome.missing"), detail: "" };
     case "skipped":
-      return { label: "skipped", detail: p.reason };
+      return { label: t("outcome.skipped"), detail: p.reason };
     case "failed":
-      return { label: "failed", detail: p.reason };
+      return { label: t("outcome.failed"), detail: p.reason };
   }
 }
 
@@ -23,32 +23,36 @@ export function DiagnosticsReportView({ report }: { report: DiagnosticsReport })
   const local = [...report.local].toSorted((a, b) => ORDER[a.outcome] - ORDER[b.outcome]);
   return (
     <div className="diagnostics">
-      <h4>Environment</h4>
+      <h4>{t("diag.environment")}</h4>
       <dl className="diagnostics-env">
-        <dt>OS</dt>
+        <dt>{t("diag.os")}</dt>
         <dd>{env.os}</dd>
         <dt>DOCKER_HOST</dt>
-        <dd>{env.docker_host ?? <span className="muted">not set</span>}</dd>
+        <dd>{env.docker_host ?? <span className="muted">{t("diag.notSet")}</span>}</dd>
         <dt>CONTAINER_HOST</dt>
-        <dd>{env.container_host ?? <span className="muted">not set</span>}</dd>
+        <dd>{env.container_host ?? <span className="muted">{t("diag.notSet")}</span>}</dd>
         <dt>SANDBOX_WATCHER_RUNTIME</dt>
-        <dd>{env.runtime_override ?? <span className="muted">not set</span>}</dd>
-        <dt>sandbox config</dt>
+        <dd>{env.runtime_override ?? <span className="muted">{t("diag.notSet")}</span>}</dd>
+        <dt>{t("diag.sandboxConfig")}</dt>
         <dd>
-          <code>{env.config_path || "none"}</code>
+          <code>{env.config_path || t("diag.none")}</code>
           {env.config_runtime && <span>, runtime = {env.config_runtime}</span>}
         </dd>
-        <dt>on PATH</dt>
-        <dd>{env.binaries.map((b) => `${b.name} ${b.found ? "yes" : "no"}`).join(", ")}</dd>
+        <dt>{t("diag.onPath")}</dt>
+        <dd>
+          {env.binaries
+            .map((b) => `${b.name} ${b.found ? t("diag.yes") : t("diag.no")}`)
+            .join(", ")}
+        </dd>
       </dl>
-      <h4>Local runtimes</h4>
+      <h4>{t("diag.localRuntimes")}</h4>
       <table className="diagnostics-table">
         <thead>
           <tr>
-            <th>Runtime</th>
-            <th>Candidate</th>
-            <th>Outcome</th>
-            <th>Detail</th>
+            <th>{t("diag.runtime")}</th>
+            <th>{t("diag.candidate")}</th>
+            <th>{t("diag.outcome")}</th>
+            <th>{t("diag.detail")}</th>
           </tr>
         </thead>
         <tbody>
@@ -76,13 +80,16 @@ export function DiagnosticsReportView({ report }: { report: DiagnosticsReport })
       {report.hosts.map((h) => (
         <section key={h.alias}>
           <h4>
-            Remote host {h.status.display_name}
+            {t("diag.remoteHost", { name: h.status.display_name })}
             {h.status.display_name !== h.alias && <span className="muted"> ({h.alias})</span>}
           </h4>
           <p>
             {h.status.state === "unreachable"
-              ? `unreachable since ${formatDateTime(h.status.since)}: ${h.status.reason}`
-              : h.status.state}
+              ? t("diag.unreachableSince", {
+                  since: formatDateTime(h.status.since),
+                  reason: h.status.reason,
+                })
+              : t(`hoststate.${h.status.state}`)}
           </p>
           {h.status.probes.length > 0 && (
             <ul>
@@ -146,18 +153,15 @@ export function DiagnosticsSection({
 
   return (
     <section className="settings-section" id="diagnostics" ref={ref}>
-      <h3>Diagnostics</h3>
-      <p className="muted small">
-        Probes every place a runtime could be, locally and on each remote host, and shows what
-        answered. Nothing is sent anywhere; copy the report into an issue yourself.
-      </p>
+      <h3>{t("runtime.diagnostics")}</h3>
+      <p className="muted small">{t("diag.intro")}</p>
       <div className="settings-row">
         <button type="button" onClick={() => void run()} disabled={running}>
-          {running ? "Running…" : "Run diagnostics"}
+          {running ? t("diag.running") : t("diag.run")}
         </button>
         {report && (
           <button type="button" onClick={() => void copy()}>
-            {copied ? "Copied" : "Copy report"}
+            {copied ? t("actions.copied") : t("diag.copyReport")}
           </button>
         )}
         {report && <span className="muted small">{formatDateTime(report.generated_at)}</span>}

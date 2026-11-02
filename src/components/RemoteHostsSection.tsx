@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { listDockerSshContexts, testRemoteHost } from "../api";
+import { t, tx } from "../i18n";
 import type { HostStatus, RemoteHost, SshContext } from "../types";
 import { DockerContextsList } from "./DockerContextsList";
 
@@ -52,15 +53,17 @@ export function RemoteHostsSection({ hosts, statuses, onChange }: Props) {
 
   return (
     <section className="settings-section">
-      <h3>Remote hosts</h3>
+      <h3>{t("remote.title")}</h3>
       {isWindows ? (
-        <p className="muted">Remote hosts are not supported on Windows.</p>
+        <p className="muted">{t("remote.windows")}</p>
       ) : (
         <>
           <p className="muted">
-            Uses your own <code>ssh</code> and <code>~/.ssh/config</code>. Key or agent
-            authentication only; run <code>ssh &lt;alias&gt;</code> once first to accept the host
-            key.
+            {tx("remote.intro", {
+              ssh: <code>ssh</code>,
+              config: <code>~/.ssh/config</code>,
+              command: <code>ssh &lt;alias&gt;</code>,
+            })}
           </p>
           <ul className="remote-hosts">
             {hosts.map((h) => {
@@ -81,15 +84,18 @@ export function RemoteHostsSection({ hosts, statuses, onChange }: Props) {
                     />{" "}
                     {h.display_name || h.alias}
                   </label>
-                  <span className="muted"> {status?.state ?? "not connected"}</span>
+                  <span className="muted">
+                    {" "}
+                    {status ? t(`hoststate.${status.state}`) : t("remote.notConnected")}
+                  </span>
                   <button type="button" disabled={testing} onClick={() => void test(h.alias)}>
-                    Test connection
+                    {t("remote.test")}
                   </button>
                   <button
                     type="button"
                     onClick={() => onChange(hosts.filter((x) => x.alias !== h.alias))}
                   >
-                    Remove
+                    {t("remote.remove")}
                   </button>
                 </li>
               );
@@ -97,20 +103,20 @@ export function RemoteHostsSection({ hosts, statuses, onChange }: Props) {
           </ul>
           <div className="remote-host-add">
             <input
-              placeholder="SSH alias, e.g. devbox"
-              aria-label="SSH alias"
+              placeholder={t("remote.aliasPlaceholder")}
+              aria-label={t("remote.aliasLabel")}
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
             />
             <button type="button" disabled={!validAlias(draft.trim())} onClick={add}>
-              Add
+              {t("remote.add")}
             </button>
             <button
               type="button"
               disabled={testing || !validAlias(draft.trim())}
               onClick={() => void test(draft.trim())}
             >
-              Test connection
+              {t("remote.test")}
             </button>
           </div>
           <DockerContextsList
@@ -126,7 +132,10 @@ export function RemoteHostsSection({ hosts, statuses, onChange }: Props) {
               <strong>{result.alias}</strong>:{" "}
               {result.state === "unreachable"
                 ? result.reason
-                : `${result.state} (${result.runtimes.join(", ") || "no runtimes"})`}
+                : t("remote.stateWith", {
+                    state: t(`hoststate.${result.state}`),
+                    runtimes: result.runtimes.join(", ") || t("remote.noRuntimes"),
+                  })}
               <ul>
                 {result.probes.map((p) => (
                   <li key={p}>{p}</li>

@@ -9,6 +9,7 @@ import {
   file,
   report,
   session,
+  settings,
   turn,
   turnReport,
 } from "../../test/fixtures";
@@ -17,7 +18,9 @@ import { ContainerActions } from "../ContainerActions";
 import { DetailPane } from "../DetailPane";
 import { FilesList } from "../FilesList";
 import { NetworkPanel } from "../NetworkPanel";
+import { RemoteHostsSection } from "../RemoteHostsSection";
 import { RuntimeBanner } from "../RuntimeBanner";
+import { SettingsPanel } from "../SettingsPanel";
 import { Sidebar } from "../Sidebar";
 import { StopAllButton } from "../StopAllButton";
 import { TurnsList } from "../TurnsSection";
@@ -175,5 +178,53 @@ describe("German rendering", () => {
     expect(text).toContain("DNS-Log, Firewall-Log konnten nicht gelesen werden.");
     expect(html).toContain('placeholder="Nach Host, IP oder Port filtern"');
     expect(html).toContain('aria-label="evil.example auswählen"');
+  });
+
+  it("settings panel", () => {
+    const { text, html } = render(
+      <SettingsPanel settings={settings({ language: "de" })} onSaved={noop} onClose={noop} />,
+      de,
+    );
+    for (const legend of [
+      "Aktualisierung",
+      "Aktionen",
+      "Benachrichtigungen",
+      "Verlauf und Kosten",
+      "Updates",
+      "Fenster",
+      "Diagnose",
+      "Remote-Hosts",
+    ]) {
+      expect(text).toContain(legend);
+    }
+    expect(text).toContain("Vor dem Stoppen von Containern nachfragen");
+    expect(text).toContain("Sandbox gestoppt, während Sessions liefen");
+    expect(text).toContain("Speichern");
+    expect(html).toContain('<option value="de" selected="">Deutsch</option>');
+    expect(html).toContain('placeholder="SSH-Alias, z. B. devbox"');
+    expect(text).not.toMatch(/\bSettings\b|\bSave\b|Notifications/);
+  });
+
+  it("remote hosts", () => {
+    const { text } = render(
+      <RemoteHostsSection
+        hosts={[{ alias: "devbox", display_name: "Dev VM", enabled: true }]}
+        statuses={[
+          {
+            state: "unreachable",
+            reason: "ssh: connection refused",
+            since: NOW.toISOString(),
+            alias: "devbox",
+            display_name: "Dev VM",
+            runtimes: [],
+            probes: [],
+          },
+        ]}
+        onChange={noop}
+      />,
+      de,
+    );
+    expect(text).toContain("Dev VM nicht erreichbar Verbindung testen Entfernen");
+    expect(text).toContain("führe zuerst einmal ssh <alias> aus");
   });
 });

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { checkForUpdate, saveSettings } from "../api";
+import { t, tx } from "../i18n";
 import { RUNTIME_LABELS, type HostStatus, type RuntimeKind, type Settings } from "../types";
 import { DiagnosticsSection } from "./DiagnosticsSection";
 import { RemoteHostsSection } from "./RemoteHostsSection";
@@ -32,12 +33,16 @@ export function SettingsPanel({
   const [updateStatus, setUpdateStatus] = useState<string | null>(null);
 
   const checkNow = async () => {
-    setUpdateStatus("Checking…");
+    setUpdateStatus(t("settings.checking"));
     try {
       const found = await checkForUpdate();
-      setUpdateStatus(found ? `Version ${found.version} is available.` : "You are up to date.");
+      setUpdateStatus(
+        found ? t("settings.updateAvailable", { version: found.version }) : t("settings.upToDate"),
+      );
     } catch (e) {
-      setUpdateStatus(`Check failed: ${e instanceof Error ? e.message : String(e)}`);
+      setUpdateStatus(
+        t("settings.checkFailed", { error: e instanceof Error ? e.message : String(e) }),
+      );
     }
   };
 
@@ -64,16 +69,16 @@ export function SettingsPanel({
   return (
     <section className="settings" aria-labelledby="settings-title">
       <header className="settings-header">
-        <h2 id="settings-title">Settings</h2>
+        <h2 id="settings-title">{t("app.settings")}</h2>
         <button type="button" onClick={onClose}>
-          Close
+          {t("settings.close")}
         </button>
       </header>
 
       <fieldset>
-        <legend>Refresh</legend>
+        <legend>{t("settings.refresh")}</legend>
         <label>
-          Fallback poll interval
+          {t("settings.pollInterval")}
           <input
             type="number"
             min={2}
@@ -81,20 +86,20 @@ export function SettingsPanel({
             value={draft.poll_interval_secs}
             onChange={(e) => update({ poll_interval_secs: Number(e.target.value) })}
           />
-          <span className="muted">seconds. Runtime events refresh sooner.</span>
+          <span className="muted">{t("settings.pollHint")}</span>
         </label>
         <label>
-          Runtime
+          {t("settings.runtime")}
           <select
             value={draft.runtime_override ?? ""}
             onChange={(e) =>
               update({ runtime_override: (e.target.value || null) as RuntimeKind | null })
             }
           >
-            <option value="">Follow sandbox config, else all detected</option>
+            <option value="">{t("settings.runtimeFollow")}</option>
             {RUNTIMES.map((r) => (
               <option key={r} value={r}>
-                Only {RUNTIME_LABELS[r]}
+                {t("settings.runtimeOnly", { runtime: RUNTIME_LABELS[r] })}
               </option>
             ))}
           </select>
@@ -102,17 +107,17 @@ export function SettingsPanel({
       </fieldset>
 
       <fieldset>
-        <legend>Actions</legend>
+        <legend>{t("settings.actions")}</legend>
         <label className="check">
           <input
             type="checkbox"
             checked={draft.confirm_stop}
             onChange={(e) => update({ confirm_stop: e.target.checked })}
           />
-          Ask before stopping containers
+          {t("settings.confirmStop")}
         </label>
         <label>
-          Terminal
+          {t("settings.terminal")}
           <select
             value={terminalKind}
             onChange={(e) => {
@@ -123,16 +128,16 @@ export function SettingsPanel({
             }}
           >
             <option value="auto">
-              {isMac ? "iTerm2 if installed, else Terminal.app" : "System default"}
+              {isMac ? t("settings.terminalAutoMac") : t("settings.terminalAuto")}
             </option>
             {isMac && <option value="iterm">iTerm2</option>}
             {isMac && <option value="terminal-app">Terminal.app</option>}
-            <option value="custom">Custom command</option>
+            <option value="custom">{t("settings.customCommand")}</option>
           </select>
         </label>
         {terminalKind === "custom" && (
           <label>
-            Command
+            {t("settings.command")}
             <input
               type="text"
               value={customCommand}
@@ -140,16 +145,16 @@ export function SettingsPanel({
               onChange={(e) => update({ terminal: { kind: "custom", command: e.target.value } })}
             />
             <span className="muted">
-              <code>{"{dir}"}</code> is replaced by the quoted project directory.
+              {tx("settings.dirHint", { placeholder: <code>{"{dir}"}</code> })}
             </span>
           </label>
         )}
       </fieldset>
 
       <fieldset>
-        <legend>Editor</legend>
+        <legend>{t("settings.editor")}</legend>
         <label>
-          Open files and projects with
+          {t("settings.openWith")}
           <select
             value={draft.editor.kind}
             onChange={(e) => {
@@ -162,17 +167,17 @@ export function SettingsPanel({
               });
             }}
           >
-            <option value="system">System default app</option>
+            <option value="system">{t("settings.editorSystem")}</option>
             <option value="vs-code">Visual Studio Code</option>
             <option value="cursor">Cursor</option>
             <option value="zed">Zed</option>
             <option value="jet-brains">JetBrains IDE (PhpStorm, IntelliJ IDEA, WebStorm, …)</option>
-            <option value="custom">Custom command</option>
+            <option value="custom">{t("settings.customCommand")}</option>
           </select>
         </label>
         {draft.editor.kind === "custom" && (
           <label>
-            Command
+            {t("settings.command")}
             <input
               type="text"
               value={draft.editor.command}
@@ -180,34 +185,34 @@ export function SettingsPanel({
               onChange={(e) => update({ editor: { kind: "custom", command: e.target.value } })}
             />
             <span className="muted">
-              <code>{"{path}"}</code> is replaced by the quoted file or folder.
+              {tx("settings.pathHint", { placeholder: <code>{"{path}"}</code> })}
             </span>
           </label>
         )}
       </fieldset>
 
       <fieldset>
-        <legend>Notifications</legend>
+        <legend>{t("settings.notifications")}</legend>
         <label className="check">
           <input
             type="checkbox"
             checked={draft.notifications.enabled}
             onChange={(e) => updateNotify({ enabled: e.target.checked })}
           />
-          Enable notifications
+          {t("settings.enableNotifications")}
         </label>
         <div className="settings-grid">
           {(
             [
-              ["session_started", "Session started"],
-              ["session_ended", "Session ended"],
-              ["container_started", "Sandbox started"],
-              ["container_stopped", "Sandbox stopped"],
-              ["container_died", "Sandbox stopped while sessions ran"],
-              ["blocked_burst", "Burst of blocked requests"],
-              ["stale_container", "Stale container detected"],
+              "session_started",
+              "session_ended",
+              "container_started",
+              "container_stopped",
+              "container_died",
+              "blocked_burst",
+              "stale_container",
             ] as const
-          ).map(([key, label]) => (
+          ).map((key) => (
             <label key={key} className="check">
               <input
                 type="checkbox"
@@ -215,12 +220,12 @@ export function SettingsPanel({
                 checked={draft.notifications[key]}
                 onChange={(e) => updateNotify({ [key]: e.target.checked })}
               />
-              {label}
+              {t(`notify.${key}`)}
             </label>
           ))}
         </div>
         <label>
-          Blocked burst threshold
+          {t("settings.burstThreshold")}
           <input
             type="number"
             min={1}
@@ -228,7 +233,7 @@ export function SettingsPanel({
             value={draft.blocked_burst_threshold}
             onChange={(e) => update({ blocked_burst_threshold: Number(e.target.value) })}
           />
-          <span className="muted">requests within</span>
+          <span className="muted">{t("settings.requestsWithin")}</span>
           <input
             type="number"
             min={10}
@@ -236,22 +241,22 @@ export function SettingsPanel({
             value={draft.blocked_burst_window_secs}
             onChange={(e) => update({ blocked_burst_window_secs: Number(e.target.value) })}
           />
-          <span className="muted">seconds</span>
+          <span className="muted">{t("settings.seconds")}</span>
         </label>
       </fieldset>
 
       <fieldset>
-        <legend>History and cost</legend>
+        <legend>{t("settings.history")}</legend>
         <label className="check">
           <input
             type="checkbox"
             checked={draft.history_enabled}
             onChange={(e) => update({ history_enabled: e.target.checked })}
           />
-          Record sessions and containers locally
+          {t("settings.recordHistory")}
         </label>
         <label>
-          Keep history for
+          {t("settings.keepFor")}
           <input
             type="number"
             min={1}
@@ -259,10 +264,10 @@ export function SettingsPanel({
             value={draft.history_retention_days}
             onChange={(e) => update({ history_retention_days: Number(e.target.value) })}
           />
-          <span className="muted">days</span>
+          <span className="muted">{t("settings.days")}</span>
         </label>
         <label className="stacked">
-          Model prices, USD per million tokens, matched by model id prefix
+          {t("settings.prices")}
           <textarea
             rows={8}
             value={pricesText}
@@ -279,40 +284,37 @@ export function SettingsPanel({
             spellCheck={false}
           />
           {pricesError && <span className="notice notice-err">{pricesError}</span>}
-          <span className="muted small">
-            Pi and OpenCode report cost themselves; Claude Code and Codex are estimated from this
-            table. Unknown models show tokens only.
-          </span>
+          <span className="muted small">{t("settings.pricesHint")}</span>
         </label>
       </fieldset>
 
       <fieldset>
-        <legend>Updates</legend>
+        <legend>{t("settings.updates")}</legend>
         <label className="check">
           <input
             type="checkbox"
             checked={draft.check_for_updates}
             onChange={(e) => update({ check_for_updates: e.target.checked })}
           />
-          Check for new releases on start and every six hours
+          {t("settings.checkUpdates")}
         </label>
         <div className="settings-row">
           <button type="button" onClick={() => void checkNow()}>
-            Check now
+            {t("settings.checkNow")}
           </button>
           {updateStatus && <span className="muted small">{updateStatus}</span>}
         </div>
       </fieldset>
 
       <fieldset>
-        <legend>Window</legend>
+        <legend>{t("settings.window")}</legend>
         <label className="check">
           <input
             type="checkbox"
             checked={draft.close_to_tray}
             onChange={(e) => update({ close_to_tray: e.target.checked })}
           />
-          Keep running in the tray when the window is closed
+          {t("settings.closeToTray")}
         </label>
         <label className="check">
           <input
@@ -320,7 +322,7 @@ export function SettingsPanel({
             checked={draft.start_minimized}
             onChange={(e) => update({ start_minimized: e.target.checked })}
           />
-          Start hidden in the tray
+          {t("settings.startMinimized")}
         </label>
         <label className="check">
           <input
@@ -328,26 +330,26 @@ export function SettingsPanel({
             checked={draft.launch_at_login}
             onChange={(e) => update({ launch_at_login: e.target.checked })}
           />
-          Launch at login
+          {t("settings.launchAtLogin")}
         </label>
         <label>
-          Theme
+          {t("settings.theme")}
           <select
             value={draft.theme}
             onChange={(e) => update({ theme: e.target.value as Settings["theme"] })}
           >
-            <option value="system">System</option>
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
+            <option value="system">{t("theme.system")}</option>
+            <option value="light">{t("theme.light")}</option>
+            <option value="dark">{t("theme.dark")}</option>
           </select>
         </label>
         <label>
-          Language
+          {t("settings.language")}
           <select
             value={draft.language}
             onChange={(e) => update({ language: e.target.value as Settings["language"] })}
           >
-            <option value="system">System</option>
+            <option value="system">{t("language.system")}</option>
             <option value="en">English</option>
             <option value="de">Deutsch</option>
           </select>
@@ -364,14 +366,14 @@ export function SettingsPanel({
 
       <footer className="settings-footer">
         {status === "error" && <span className="notice notice-err">{error}</span>}
-        {status === "saved" && <span className="notice notice-ok">Saved</span>}
+        {status === "saved" && <span className="notice notice-ok">{t("settings.saved")}</span>}
         <button
           type="button"
           className="primary"
           onClick={() => void save()}
           disabled={status === "saving" || pricesError !== null}
         >
-          {status === "saving" ? "Saving…" : "Save"}
+          {status === "saving" ? t("settings.saving") : t("settings.save")}
         </button>
       </footer>
     </section>
