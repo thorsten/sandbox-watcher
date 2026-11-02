@@ -3,6 +3,29 @@
 All notable changes to Sandbox Watcher. Generated from
 [Conventional Commits](https://www.conventionalcommits.org/) by `scripts/changelog.mjs`.
 
+## 0.9.0 (2026-11-02)
+
+### Features
+
+- **ui:** close the settings with an × button ([b183a4b](https://github.com/thorsten/sandbox-watcher/commit/b183a4b654d1cfa6f6993bf19843308e5eb424f6))
+- **ui:** settings as sections with a list on the left ([ee29241](https://github.com/thorsten/sandbox-watcher/commit/ee29241612206e37469848629a37fe212aed0b36))
+- **shell:** tray, native menu and notifications in the chosen language ([5711c6c](https://github.com/thorsten/sandbox-watcher/commit/5711c6c8cdc211c896ec5bfef0965ea391485706))
+- **ui:** translate the history view and guard against English leftovers ([adeda63](https://github.com/thorsten/sandbox-watcher/commit/adeda630e16bc0c0f3cf965030c3983a9f99f3fe))
+- **ui:** translate settings, remote hosts, Docker contexts and diagnostics ([2a7d4f0](https://github.com/thorsten/sandbox-watcher/commit/2a7d4f02c13b986a75f1ce9b1009b77ff810c436))
+- **ui:** translate the detail pane, its panels and the allow dialog ([b4c8dfa](https://github.com/thorsten/sandbox-watcher/commit/b4c8dfa0850135887b4f338ecdbbb77453b3e086))
+- **ui:** translate the app shell, sidebar, banners and actions ([8982ccd](https://github.com/thorsten/sandbox-watcher/commit/8982ccd54c5d48d2891c50f9311da7686a6c7220))
+- **ui:** translation infrastructure and localised format helpers ([da6f592](https://github.com/thorsten/sandbox-watcher/commit/da6f592f0bda8f4b9bb1c30c0674c550a95bf3d2))
+- **settings:** language setting resolved on the Rust side ([1450bcf](https://github.com/thorsten/sandbox-watcher/commit/1450bcf129b817d8a832b2b965c6d6974230695e))
+
+### Documentation
+
+- mark the localisation plan as verified on the Mac ([e22ca41](https://github.com/thorsten/sandbox-watcher/commit/e22ca4148ce42c795f6d8f90a7143bed2a22dd5c))
+- record the localisation decisions and checks ([dcc20ab](https://github.com/thorsten/sandbox-watcher/commit/dcc20ab37f5c871ec1b521d9a7e200fe66ee1d3b))
+
+### Build
+
+- bump base64 from 0.22.1 to 0.23.1 ([66e3f65](https://github.com/thorsten/sandbox-watcher/commit/66e3f65d81737dd5ca63252df71a1c8600db3208))
+
 ## 0.8.0 (2026-11-01)
 
 ### Features
@@ -54,6 +77,12 @@ All notable changes to Sandbox Watcher. Generated from
 ### Build
 
 - **deps:** require @tauri-apps/cli and api 2.12.4 ([2c86fa1](https://github.com/thorsten/sandbox-watcher/commit/2c86fa1b5687c27f0eacd85a9c614eafd6f62f51))
+
+### Chores
+
+- **release:** v0.8.0 ([ece4c0b](https://github.com/thorsten/sandbox-watcher/commit/ece4c0bb09783798efab935008bf029082479001))
+
+**Full changelog:** [v0.7.0...v0.8.0](https://github.com/thorsten/sandbox-watcher/compare/v0.7.0...v0.8.0)
 
 ## 0.7.0 (2026-11-01)
 
