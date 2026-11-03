@@ -1,12 +1,12 @@
 //! Conventions of MaibornWolff Sandbox that the watcher relies on.
 //!
-//! Taken from `@maibornwolff/sandbox` 0.73.1. None of this is a public API of
+//! Taken from `@maibornwolff/sandbox` 0.73.2. None of this is a public API of
 //! sandbox, so every constant notes the source file it was read from. Bump
 //! `TESTED_SANDBOX_VERSION` after re-checking these against a new release,
 //! then record the files with `pnpm check:upstream --update`.
 
 /// Newest sandbox release these conventions were verified against.
-pub const TESTED_SANDBOX_VERSION: &str = "0.73.1";
+pub const TESTED_SANDBOX_VERSION: &str = "0.73.2";
 
 use crate::model::Readiness;
 

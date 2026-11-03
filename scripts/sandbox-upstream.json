@@ -17,7 +17,7 @@
     "src/modules/network-diagnostics/",
     "src/platform/container-runtime/apple/"
   ],
-  "version": "0.73.1",
+  "version": "0.73.2",
   "files": {
     "src/modules/sandbox-containers/container-labels.ts": "08e5d5afcc12502a773985e39c68d3f8e3df0c84dda7aa5a8a198ef43b6119dc",
     "src/modules/sandbox-containers/container-hashing.ts": "1faace71644c963f120162fa70490a5121d28e69a6986a85ab24ce5ec1a7d7eb",

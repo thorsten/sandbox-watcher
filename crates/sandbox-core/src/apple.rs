@@ -1,5 +1,5 @@
 //! `RuntimeAdapter` for Apple `container` (macOS 26+, Apple silicon), driven
-//! through its CLI. Commands and JSON shape follow sandbox 0.73.1's own
+//! through its CLI. Commands and JSON shape follow sandbox 0.73.2's own
 //! adapter (`src/platform/container-runtime/apple/`). The runtime has no
 //! event stream and no stats API, which `capabilities()` reports.
 

@@ -1,7 +1,7 @@
 //! Add blocked destinations to sandbox's `allow_network` list the way
 //! `sandbox network allow` does. That command is interactive only, so the
 //! watcher performs the same edit itself: it appends entries to the chosen
-//! `config.toml` with the formatting of sandbox 0.73.1
+//! `config.toml` with the formatting of sandbox 0.73.2
 //! (`configuration/allowed-network-config-update.ts`), editing the parsed
 //! document so comments and other settings survive.
 //!

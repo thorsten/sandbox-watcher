@@ -1,7 +1,7 @@
 //! Network activity of a sandbox container, read from the logs sandbox keeps
 //! inside it and reported through `sandbox-container-tools network diagnostic`.
 //!
-//! Parsers are ports of sandbox 0.73.1's `network-diagnostics` module and
+//! Parsers are ports of sandbox 0.73.2's `network-diagnostics` module and
 //! stay line-compatible with it. See `fixtures/sandbox-logs/README.md`.
 
 use std::collections::{BTreeMap, HashMap};

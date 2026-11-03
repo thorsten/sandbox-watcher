@@ -207,7 +207,7 @@
         "status": "not-detected"
       },
       "source": "mock",
-      "tested_sandbox_version": "0.73.1"
+      "tested_sandbox_version": "0.73.2"
     },
     {
       "containers": [],
@@ -276,7 +276,7 @@
         "status": "detected-only"
       },
       "source": "live",
-      "tested_sandbox_version": "0.73.1"
+      "tested_sandbox_version": "0.73.2"
     },
     {
       "containers": [
@@ -527,7 +527,7 @@
         "status": "connected"
       },
       "source": "mock",
-      "tested_sandbox_version": "0.73.1"
+      "tested_sandbox_version": "0.73.2"
     },
     {
       "containers": [],
@@ -597,7 +597,7 @@
         "status": "unavailable"
       },
       "source": "live",
-      "tested_sandbox_version": "0.73.1"
+      "tested_sandbox_version": "0.73.2"
     }
   ],
   "type": "Overview"

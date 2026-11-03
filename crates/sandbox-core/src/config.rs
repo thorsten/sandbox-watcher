@@ -1,6 +1,6 @@
 //! Read the parts of sandbox's user configuration the watcher cares about.
 //!
-//! Location follows sandbox 0.73.1 (`config-paths.ts`): `$XDG_CONFIG_HOME/sandbox/config.toml`,
+//! Location follows sandbox 0.73.2 (`config-paths.ts`): `$XDG_CONFIG_HOME/sandbox/config.toml`,
 //! `%APPDATA%\sandbox\config.toml` on Windows, else `~/.config/sandbox/config.toml`.
 
 use std::path::{Path, PathBuf};

@@ -563,7 +563,7 @@ fn overviews() -> Vec<Overview> {
             } else {
                 vec![]
             },
-            tested_sandbox_version: "0.73.1".into(),
+            tested_sandbox_version: "0.73.2".into(),
             hosts: if i.is_multiple_of(2) {
                 vec![]
             } else {
