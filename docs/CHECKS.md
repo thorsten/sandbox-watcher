@@ -165,6 +165,10 @@ real runtime.
 - Exceptions: re-check at the recorded date; remove when fixed upstream.
 - Action pins: merge the weekly Dependabot pull request after CI passes;
   `--verify` in the audit workflow catches moved tags.
+- Yanked crates: `deny.toml` treats them as errors, so the audit turns red
+  without any change here. `cargo update -p <crate>` moves the lock file to
+  the next release; check it is not yanked either. A local `cargo deny
+  check` can still pass with a stale registry index, so trust CI on yanks.
 - Budgets: when a budget fails, run `cargo bench -p sandbox-core --bench perf`
   on the same code and on `main`, decide whether the algorithm regressed,
   and only then adjust the number together with the baseline table.
