@@ -15,6 +15,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use chrono::Utc;
+use sandbox_core::CommandError;
 use sandbox_core::actions::{
     MacTerminal, STOP_TIMEOUT, StopReport, TerminalLaunch, custom_terminal_launch,
     terminal_launches,
@@ -48,32 +49,28 @@ use watcher::{Mode, Watcher};
 type App = Arc<Watcher>;
 
 /// Host-side actions need the container's files on this machine.
-pub fn require_local(key: &str) -> Result<(), String> {
+pub fn require_local(key: &str) -> Result<(), CommandError> {
     if sandbox_core::host::parse_container_key(key).0.is_local() {
         Ok(())
     } else {
-        Err("not available for remote hosts".into())
+        Err(CommandError::LocalOnly)
     }
 }
 
 #[tauri::command]
-async fn get_overview(state: State<'_, App>) -> Result<Overview, String> {
+async fn get_overview(state: State<'_, App>) -> Result<Overview, CommandError> {
     if let Some(overview) = state.overview() {
         return Ok(overview);
     }
     state.refresh_and_wait().await;
-    state
-        .overview()
-        .ok_or_else(|| "overview not available yet".to_string())
+    state.overview().ok_or(CommandError::OverviewNotReady)
 }
 
 /// Force a refresh and return the result.
 #[tauri::command]
-async fn refresh_now(state: State<'_, App>) -> Result<Overview, String> {
+async fn refresh_now(state: State<'_, App>) -> Result<Overview, CommandError> {
     state.refresh_and_wait().await;
-    state
-        .overview()
-        .ok_or_else(|| "overview not available yet".to_string())
+    state.overview().ok_or(CommandError::OverviewNotReady)
 }
 
 #[tauri::command]
@@ -104,7 +101,7 @@ fn save_settings(
     app: AppHandle,
     state: State<'_, App>,
     settings: Settings,
-) -> Result<Settings, String> {
+) -> Result<Settings, CommandError> {
     let settings = settings.normalised();
     settings_store::save(&app, &settings)?;
     apply_autostart(&app, settings.launch_at_login);
@@ -112,8 +109,8 @@ fn save_settings(
     // Native menu and tray speak the new language at once; the webview
     // re-reads `resolved_language` on the settings event.
     let lang = state.language();
-    app.set_menu(app_menu::build(&app, lang).map_err(|e| e.to_string())?)
-        .map_err(|e| e.to_string())?;
+    app.set_menu(app_menu::build(&app, lang).map_err(|e| CommandError::other(e.to_string()))?)
+        .map_err(|e| CommandError::other(e.to_string()))?;
     if let Some(overview) = state.overview() {
         tray::update(&app, &overview, lang);
     }
@@ -136,7 +133,7 @@ fn apply_autostart(app: &AppHandle, enabled: bool) {
 async fn get_activity(
     state: State<'_, App>,
     container_key: String,
-) -> Result<ContainerActivity, String> {
+) -> Result<ContainerActivity, CommandError> {
     let (adapter, container_id) = state.adapter_for(&container_key)?;
     let sessions = state
         .overview()
@@ -166,7 +163,7 @@ async fn get_turns(
     container_key: String,
     agent: AgentKind,
     pid: Option<u32>,
-) -> Result<Option<TurnReport>, String> {
+) -> Result<Option<TurnReport>, CommandError> {
     let (adapter, container_id) = state.adapter_for(&container_key)?;
     let sessions = state
         .overview()
@@ -185,7 +182,7 @@ async fn get_turns(
         &prices,
     )
     .await
-    .map_err(|e| e.to_string())
+    .map_err(CommandError::from)
 }
 
 /// Mounts, ports, env names and user of one container, mounts classified
@@ -194,12 +191,9 @@ async fn get_turns(
 async fn get_container_details(
     state: State<'_, App>,
     container_key: String,
-) -> Result<Option<ContainerDetails>, String> {
+) -> Result<Option<ContainerDetails>, CommandError> {
     let (adapter, container_id) = state.adapter_for(&container_key)?;
-    let mut details = adapter
-        .inspect(&container_id)
-        .await
-        .map_err(|e| e.to_string())?;
+    let mut details = adapter.inspect(&container_id).await?;
     if let Some(details) = details.as_mut() {
         sandbox_core::mounts::classify(details);
         sandbox_core::paths::annotate_host_paths(details, cfg!(windows));
@@ -213,9 +207,9 @@ async fn get_logs(
     state: State<'_, App>,
     container_key: String,
     tail: Option<usize>,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     let (adapter, container_id) = state.adapter_for(&container_key)?;
-    adapter
+    Ok(adapter
         .logs(
             &container_id,
             LogOptions {
@@ -223,8 +217,7 @@ async fn get_logs(
                 timestamps: false,
             },
         )
-        .await
-        .map_err(|e| e.to_string())
+        .await?)
 }
 
 /// Show a mount's host path in the file manager. Only bind mount sources of
@@ -236,14 +229,16 @@ async fn reveal_mount(
     state: State<'_, App>,
     container_key: String,
     path: String,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     require_local(&container_key)?;
     let (adapter, container_id) = state.adapter_for(&container_key)?;
-    let mut details = adapter
-        .inspect(&container_id)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("container {container_id} not found"))?;
+    let mut details =
+        adapter
+            .inspect(&container_id)
+            .await?
+            .ok_or_else(|| CommandError::ContainerNotFound {
+                container: container_id.clone(),
+            })?;
     sandbox_core::paths::annotate_host_paths(&mut details, cfg!(windows));
     let target = details
         .mounts
@@ -251,20 +246,19 @@ async fn reveal_mount(
         .filter(|m| m.kind == "bind")
         .find(|m| m.source == path || m.host_path.as_deref() == Some(path.as_str()))
         .and_then(|m| m.host_path.clone())
-        .ok_or_else(|| "path is not a mount of this container".to_string())?;
+        .ok_or(CommandError::NotAMount)?;
     app.opener()
         .reveal_item_in_dir(&target)
-        .map_err(|e| e.to_string())
+        .map_err(|e| CommandError::OpenFailed {
+            detail: e.to_string(),
+        })
 }
 
 /// Stop one container. The UI asks for confirmation first.
 #[tauri::command]
-async fn stop_container(state: State<'_, App>, container_key: String) -> Result<(), String> {
+async fn stop_container(state: State<'_, App>, container_key: String) -> Result<(), CommandError> {
     let (adapter, container_id) = state.adapter_for(&container_key)?;
-    adapter
-        .stop(&container_id, Some(STOP_TIMEOUT))
-        .await
-        .map_err(|e| e.to_string())?;
+    adapter.stop(&container_id, Some(STOP_TIMEOUT)).await?;
     state.poke();
     Ok(())
 }
@@ -273,7 +267,7 @@ async fn stop_container(state: State<'_, App>, container_key: String) -> Result<
 /// containers could not be listed are reported as failures, so the UI never
 /// shows a partial stop as complete.
 #[tauri::command]
-async fn stop_all(state: State<'_, App>) -> Result<StopReport, String> {
+async fn stop_all(state: State<'_, App>) -> Result<StopReport, CommandError> {
     let report = sandbox_core::actions::stop_all(&state.adapters(), STOP_TIMEOUT).await;
     state.poke();
     Ok(report)
@@ -284,14 +278,15 @@ async fn stop_all(state: State<'_, App>) -> Result<StopReport, String> {
 async fn get_project_path(
     state: State<'_, App>,
     container_key: String,
-) -> Result<Option<String>, String> {
+) -> Result<Option<String>, CommandError> {
     let (adapter, container_id) = state.adapter_for(&container_key)?;
     let local = sandbox_core::host::parse_container_key(&container_key)
         .0
         .is_local();
-    sandbox_core::actions::project_path(&adapter, &container_id, cfg!(windows) && local)
-        .await
-        .map_err(|e| e.to_string())
+    Ok(
+        sandbox_core::actions::project_path(&adapter, &container_id, cfg!(windows) && local)
+            .await?,
+    )
 }
 
 /// Open the project directory in the file manager.
@@ -300,20 +295,22 @@ async fn open_project(
     app: AppHandle,
     state: State<'_, App>,
     container_key: String,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     require_local(&container_key)?;
     let (adapter, container_id) = state.adapter_for(&container_key)?;
     let dir = sandbox_core::actions::project_path(&adapter, &container_id, cfg!(windows))
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "this container has no bind-mounted project directory".to_string())?;
+        .await?
+        .ok_or(CommandError::NoProjectDirectory)?;
     app.opener()
         .open_path(&dir, None::<&str>)
-        .map_err(|e| e.to_string())
+        .map_err(|e| CommandError::OpenFailed {
+            detail: e.to_string(),
+        })
 }
 
 /// Try launch candidates in order until one starts (or, for `wait`
-/// launches, exits successfully). Returns a label for the one that worked.
+/// launches, exits successfully). Returns a label for the one that worked,
+/// or every candidate's failure as one line of detail.
 async fn run_launches(launches: &[TerminalLaunch]) -> Result<String, String> {
     let mut errors = Vec::new();
     for launch in launches {
@@ -373,30 +370,31 @@ async fn open_in_editor(
     state: State<'_, App>,
     container_key: String,
     path: Option<String>,
-) -> Result<String, String> {
+) -> Result<String, CommandError> {
     require_local(&container_key)?;
     let (adapter, container_id) = state.adapter_for(&container_key)?;
     let root = sandbox_core::actions::project_path(&adapter, &container_id, cfg!(windows))
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "this container has no bind-mounted project directory".to_string())?;
+        .await?
+        .ok_or(CommandError::NoProjectDirectory)?;
     // Transcripts carry container paths; on Windows hosts translate them first.
     let requested = path.map(|p| sandbox_core::paths::display_host_path(&p, cfg!(windows)));
     let target =
         sandbox_core::editor::validate_target(std::path::Path::new(&root), requested.as_deref())
-            .ok_or_else(|| "path is outside this container's project".to_string())?;
+            .ok_or(CommandError::PathOutsideProject)?;
     let target = target.to_string_lossy().into_owned();
     let choice = state.settings().editor;
     let launches = sandbox_core::editor::editor_launches(std::env::consts::OS, &choice, &target);
     if launches.is_empty() {
         app.opener()
             .open_path(&target, None::<&str>)
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| CommandError::OpenFailed {
+                detail: e.to_string(),
+            })?;
         return Ok("default app".into());
     }
     run_launches(&launches)
         .await
-        .map_err(|e| format!("no editor could be started ({e})"))
+        .map_err(|detail| CommandError::NoEditor { detail })
 }
 
 /// Terminal apps to try on macOS, from settings, then what is installed.
@@ -423,13 +421,15 @@ fn mac_terminals(choice: &TerminalChoice) -> Vec<MacTerminal> {
 /// Open a terminal in the project directory. Tries the configured or the
 /// platform's usual terminals in order until one succeeds.
 #[tauri::command]
-async fn open_terminal(state: State<'_, App>, container_key: String) -> Result<String, String> {
+async fn open_terminal(
+    state: State<'_, App>,
+    container_key: String,
+) -> Result<String, CommandError> {
     require_local(&container_key)?;
     let (adapter, container_id) = state.adapter_for(&container_key)?;
     let dir = sandbox_core::actions::project_path(&adapter, &container_id, cfg!(windows))
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "this container has no bind-mounted project directory".to_string())?;
+        .await?
+        .ok_or(CommandError::NoProjectDirectory)?;
     let settings = state.settings();
     let os = std::env::consts::OS;
     let mut launches = Vec::new();
@@ -446,7 +446,7 @@ async fn open_terminal(state: State<'_, App>, container_key: String) -> Result<S
 
     run_launches(&launches)
         .await
-        .map_err(|e| format!("no terminal could be started ({e})"))
+        .map_err(|detail| CommandError::NoTerminal { detail })
 }
 
 /// Session history for a time range, optionally narrowed to a project or agent.
@@ -511,12 +511,11 @@ fn global_config_path() -> Option<std::path::PathBuf> {
 async fn project_root_of(
     state: &State<'_, App>,
     container_key: &str,
-) -> Result<Option<std::path::PathBuf>, String> {
+) -> Result<Option<std::path::PathBuf>, CommandError> {
     let (adapter, container_id) = state.adapter_for(container_key)?;
     Ok(
         sandbox_core::actions::project_path(&adapter, &container_id, cfg!(windows))
-            .await
-            .map_err(|e| e.to_string())?
+            .await?
             .map(std::path::PathBuf::from),
     )
 }
@@ -552,7 +551,7 @@ async fn preview_allow(
     state: State<'_, App>,
     container_key: String,
     selections: Vec<AllowSelection>,
-) -> Result<AllowPreview, String> {
+) -> Result<AllowPreview, CommandError> {
     let entries = merged_entries(&selections);
     let (host, _) = sandbox_core::host::parse_container_key(&container_key);
     let project_root = project_root_of(&state, &container_key).await?;
@@ -586,20 +585,23 @@ async fn preview_allow(
                 .as_ref()
                 .map(|p| p.to_string_lossy().into_owned());
             let session = state.session_for(&alias).await?;
+            // What the remote script or ssh said is diagnostic detail.
             let global = preview_remote(
                 session.as_ref(),
                 ConfigTarget::Global,
                 None,
                 REMOTE_ALLOW_TIMEOUT,
             )
-            .await?;
+            .await
+            .map_err(CommandError::other)?;
             let project = preview_remote(
                 session.as_ref(),
                 ConfigTarget::Project,
                 root.as_deref(),
                 REMOTE_ALLOW_TIMEOUT,
             )
-            .await?;
+            .await
+            .map_err(CommandError::other)?;
             Ok(AllowPreview {
                 already_in_global: present_in(&entries, &global.content),
                 already_in_project: present_in(&entries, &project.content),
@@ -625,26 +627,30 @@ async fn apply_allow(
     target: ConfigTarget,
     entries: Vec<String>,
     expected_hash: Option<String>,
-) -> Result<AllowResult, String> {
+) -> Result<AllowResult, CommandError> {
     let (host, _) = sandbox_core::host::parse_container_key(&container_key);
     let Host::Remote(alias) = host else {
         let path = match target {
-            ConfigTarget::Global => global_config_path().ok_or("no global config path")?,
+            ConfigTarget::Global => global_config_path().ok_or(CommandError::NoGlobalConfig)?,
             ConfigTarget::Project => {
                 let root = project_root_of(&state, &container_key)
                     .await?
-                    .ok_or("no project directory")?;
+                    .ok_or(CommandError::NoProjectDirectory)?;
                 if !project_config_available(&root) {
-                    return Err("this project has no .sandbox directory".into());
+                    return Err(CommandError::NoSandboxDirectory);
                 }
                 project_config_path(&root)
             }
         };
-        return sandbox_core::allowlist::apply(&path, target, &entries)
-            .map_err(|e| format!("{}: {e}", path.display()));
+        return sandbox_core::allowlist::apply(&path, target, &entries).map_err(|e| {
+            CommandError::ConfigWriteFailed {
+                path: path.display().to_string(),
+                detail: e.to_string(),
+            }
+        });
     };
     use sandbox_core::allowlist_remote::{RemoteApplyError, apply_remote};
-    let expected = expected_hash.ok_or("preview is required before writing to a remote host")?;
+    let expected = expected_hash.ok_or(CommandError::PreviewRequired)?;
     let root = project_root_of(&state, &container_key)
         .await?
         .map(|p| p.to_string_lossy().into_owned());
@@ -660,31 +666,37 @@ async fn apply_allow(
     .await
     .map_err(|e| match e {
         // The dialog shows the host by its alias, which core does not know.
-        RemoteApplyError::Changed(_) => {
-            format!("changed: the config on {alias} changed since the preview")
-        }
-        RemoteApplyError::Refused { path, reason } => format!("{path}: {reason}"),
-        RemoteApplyError::Other(e) => e,
+        RemoteApplyError::Changed(_) => CommandError::ConfigChanged { host: alias },
+        RemoteApplyError::Refused { path, reason } => CommandError::ConfigRefused { path, reason },
+        RemoteApplyError::NoProjectDirectory => CommandError::NoProjectDirectory,
+        RemoteApplyError::NoSandboxDirectory => CommandError::NoSandboxDirectory,
+        RemoteApplyError::Other(detail) => CommandError::Other { detail },
     })
 }
 
 /// Check GitHub Releases for a newer version now.
 #[tauri::command]
-async fn check_for_update(app: AppHandle) -> Result<Option<updates::UpdateInfo>, String> {
+async fn check_for_update(app: AppHandle) -> Result<Option<updates::UpdateInfo>, CommandError> {
     updates::check(&app).await
 }
 
 /// Install the update found by the last check and restart.
 #[tauri::command]
-async fn install_update(app: AppHandle) -> Result<(), String> {
+async fn install_update(app: AppHandle) -> Result<(), CommandError> {
     updates::install(&app).await
 }
 
 /// Open a throwaway connection to a host, report what it found, and retry
 /// unreachable hosts right away.
 #[tauri::command]
-async fn test_remote_host(state: State<'_, App>, alias: String) -> Result<HostStatus, String> {
-    sandbox_core::host::validate_alias(&alias)?;
+async fn test_remote_host(
+    state: State<'_, App>,
+    alias: String,
+) -> Result<HostStatus, CommandError> {
+    sandbox_core::host::validate_alias(&alias).map_err(|reason| CommandError::InvalidAlias {
+        host: alias.clone(),
+        reason,
+    })?;
     let status = sandbox_core::live::test_remote_host(&alias).await;
     state.reset_backoff();
     Ok(status)
@@ -692,7 +704,7 @@ async fn test_remote_host(state: State<'_, App>, alias: String) -> Result<HostSt
 
 /// Probe every runtime candidate and every remote host now. On demand only.
 #[tauri::command]
-async fn run_diagnostics(state: State<'_, App>) -> Result<DiagnosticsReport, String> {
+async fn run_diagnostics(state: State<'_, App>) -> Result<DiagnosticsReport, CommandError> {
     let version = env!("CARGO_PKG_VERSION");
     if matches!(state.mode, Mode::Mock(_)) {
         return Ok(sandbox_core::mock::demo_diagnostics(version));
@@ -727,7 +739,7 @@ fn diagnostics_text(report: DiagnosticsReport) -> String {
 /// The `ssh://` Docker contexts that can be imported as remote hosts.
 /// Reads only; nothing is connected or saved.
 #[tauri::command]
-async fn list_docker_ssh_contexts(state: State<'_, App>) -> Result<Vec<SshContext>, String> {
+async fn list_docker_ssh_contexts(state: State<'_, App>) -> Result<Vec<SshContext>, CommandError> {
     if matches!(state.mode, Mode::Mock(_)) {
         return Ok(sandbox_core::mock::demo_ssh_contexts());
     }
@@ -869,7 +881,7 @@ mod tests {
         assert!(super::require_local("abc").is_ok());
         assert_eq!(
             super::require_local("devbox/abc").unwrap_err(),
-            "not available for remote hosts"
+            super::CommandError::LocalOnly
         );
     }
 }

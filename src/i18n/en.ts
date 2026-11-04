@@ -358,7 +358,7 @@ export const en = {
   "allow.restartHint":
     "Running containers keep their current policy. Stop the sandbox and start it again to apply.",
   "allow.done": "Done",
-  "allow.changedRetry": "{message}. The preview was refreshed; check the entries and try again.",
+  "allow.changedRetry": "{message} The preview was refreshed; check the entries and try again.",
   "allow.maybeWritten":
     "{message} If the write may have gone through, close and open the dialog again to see the current config.",
 
@@ -512,4 +512,37 @@ export const en = {
   "nav.history": "History",
   "settings.appearance": "Appearance",
   "settings.unsaved": "Unsaved changes",
+
+  // Command errors, one sentence per `CommandError` code (`src/errors.ts`).
+  // `{detail}` and `{reason}` are what Docker, ssh, the OS or a remote
+  // script said and stay as they are.
+  "error.localOnly": "Only available for containers on this machine.",
+  "error.overviewNotReady": "The overview is not available yet.",
+  "error.unknownContainer": "No runtime knows the container {container}.",
+  "error.containerNotFound": "Container {container} was not found; it may have been removed.",
+  "error.notAMount": "The path is not a mount of this container.",
+  "error.noProjectDirectory": "This container has no bind-mounted project directory.",
+  "error.pathOutsideProject": "The path lies outside this container's project.",
+  "error.noEditor": "No editor could be started: {detail}",
+  "error.noTerminal": "No terminal could be started: {detail}",
+  "error.openFailed": "Could not open the path: {detail}",
+  "error.noGlobalConfig": "No global sandbox config path exists on this machine.",
+  "error.noSandboxDirectory": "This project has no .sandbox directory.",
+  "error.previewRequired": "Run the preview before writing to a remote host.",
+  "error.configChanged": "The config on {host} changed since the preview.",
+  "error.configRefused": "Writing {path} was refused: {reason}",
+  "error.configWriteFailed": "Could not write {path}: {detail}",
+  "error.invalidAlias": "{host} is not a valid SSH alias: {reason}",
+  "error.hostNotConnected": "{host} is not connected.",
+  "error.noConfigDirectory": "No directory to store the settings in.",
+  "error.settingsWriteFailed": "Could not save the settings to {path}: {detail}",
+  "error.updateCheckFailed": "Could not check for updates: {detail}",
+  "error.noUpdatePending": "No update is pending; check again.",
+  "error.updateInstallFailed": "Could not install the update: {detail}",
+  "error.runtimeNotDetected": "No container runtime was detected.",
+  "error.runtimeUnavailable": "Cannot connect to {runtime}: {reason}",
+  "error.permissionDenied": "Permission denied accessing {path}.",
+  "error.unsupported": "{runtime} does not support {operation}.",
+  "error.runtimeResponse": "Unexpected runtime response: {detail}",
+  "error.other": "{detail}",
 };

@@ -6,6 +6,7 @@ import { t, tx } from "../i18n";
 import { disableConfirmStop } from "../settingsActions";
 import type { ContainerOverview } from "../types";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { describeError } from "../errors";
 
 interface Props {
   container: ContainerOverview;
@@ -33,7 +34,7 @@ export function ContainerActions({ container, onChanged }: Props) {
       if (okText) flash("ok", okText);
       onChanged();
     } catch (e) {
-      flash("err", e instanceof Error ? e.message : String(e));
+      flash("err", describeError(e));
     } finally {
       setBusy(null);
     }

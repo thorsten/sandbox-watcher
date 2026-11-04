@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { applyAllow, previewAllow } from "../api";
 import { t, tx } from "../i18n";
 import type { AllowPreview, AllowResult, ConfigTarget } from "../types";
+import { describeError, isCommandError } from "../errors";
 
 interface Props {
   containerKey: string;
@@ -56,7 +57,7 @@ export function AllowDialog({ containerKey, selections, onClose }: Props) {
         const projectUsable = p.project_path && !p.project_unavailable;
         if (!globalUsable && projectUsable) setTarget("project");
       },
-      (e) => !cancelled && setError(e instanceof Error ? e.message : String(e)),
+      (e) => !cancelled && setError(describeError(e)),
     );
     return () => {
       cancelled = true;
@@ -83,16 +84,15 @@ export function AllowDialog({ containerKey, selections, onClose }: Props) {
       const hash = target === "global" ? preview?.global_hash : preview?.project_hash;
       setResult(await applyAllow(containerKey, target, toAdd, hash ?? null));
     } catch (e) {
-      const message = e instanceof Error ? e.message : String(e);
-      if (message.startsWith("changed:")) {
-        setError(t("allow.changedRetry", { message: message.slice("changed:".length).trim() }));
+      if (isCommandError(e, "config-changed")) {
+        setError(t("allow.changedRetry", { message: describeError(e) }));
         try {
           setPreview(await previewAllow(containerKey, selections));
         } catch (e2) {
-          setError(e2 instanceof Error ? e2.message : String(e2));
+          setError(describeError(e2));
         }
       } else {
-        setError(t("allow.maybeWritten", { message }));
+        setError(t("allow.maybeWritten", { message: describeError(e) }));
       }
     } finally {
       setBusy(false);

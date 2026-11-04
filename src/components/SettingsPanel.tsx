@@ -4,6 +4,7 @@ import { t, tx, type PlainKey } from "../i18n";
 import { RUNTIME_LABELS, type HostStatus, type RuntimeKind, type Settings } from "../types";
 import { DiagnosticsSection } from "./DiagnosticsSection";
 import { RemoteHostsSection } from "./RemoteHostsSection";
+import { describeError } from "../errors";
 
 interface Props {
   settings: Settings;
@@ -65,9 +66,7 @@ export function SettingsPanel({
         found ? t("settings.updateAvailable", { version: found.version }) : t("settings.upToDate"),
       );
     } catch (e) {
-      setUpdateStatus(
-        t("settings.checkFailed", { error: e instanceof Error ? e.message : String(e) }),
-      );
+      setUpdateStatus(t("settings.checkFailed", { error: describeError(e) }));
     }
   };
 
@@ -83,7 +82,7 @@ export function SettingsPanel({
       setStatus("saved");
       window.setTimeout(() => setStatus("idle"), 1500);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
       setStatus("error");
     }
   };
@@ -386,7 +385,7 @@ export function SettingsPanel({
                 update({ prices: parsed });
                 setPricesError(null);
               } catch (err) {
-                setPricesError(err instanceof Error ? err.message : String(err));
+                setPricesError(describeError(err));
               }
             }}
             spellCheck={false}

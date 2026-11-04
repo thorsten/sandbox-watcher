@@ -40,9 +40,10 @@ language the user wants is either explicit or "whatever the system uses".
   statuses, mount roles, git change kinds) stay English; only their labels
   are translated.
 - Product names, commands, log lines, config lines and the diagnostics
-  plain text stay as they are. Errors from Tauri commands are still
-  English strings; translating them needs a typed error (see
-  `docs/I18N.md`, Step 6).
+  plain text stay as they are. Tauri commands fail with a typed
+  `CommandError` whose `code` the webview translates (`src/errors.ts`);
+  what Docker, ssh, the OS or a remote script said stays untranslated in
+  its `detail` or `reason` field (`docs/I18N.md`, Step 6).
 - Adding a language: a `Language` and a `LanguageChoice` variant, a
   dictionary typed as `Dictionary`, an entry in `DICTIONARIES` and
   `LOCALES`, an option in the Settings select, and the contract fixtures.

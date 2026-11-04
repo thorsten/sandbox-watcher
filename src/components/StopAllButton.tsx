@@ -5,6 +5,7 @@ import { t } from "../i18n";
 import { disableConfirmStop } from "../settingsActions";
 import type { HostStatus, ContainerOverview } from "../types";
 import { ConfirmDialog } from "./ConfirmDialog";
+import { describeError } from "../errors";
 
 export function StopAllButton({
   running,
@@ -28,7 +29,7 @@ export function StopAllButton({
       setResult(describeStopReport(report, hosts));
       onChanged();
     } catch (e) {
-      setResult(e instanceof Error ? e.message : String(e));
+      setResult(describeError(e));
     } finally {
       setBusy(false);
       setConfirming(false);

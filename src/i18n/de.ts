@@ -339,7 +339,7 @@ export const de: Dictionary = {
     "Laufende Container behalten ihre aktuelle Richtlinie. Stoppe die Sandbox und starte sie neu, damit es wirkt.",
   "allow.done": "Fertig",
   "allow.changedRetry":
-    "{message}. Die Vorschau wurde aktualisiert; prüfe die Einträge und versuche es erneut.",
+    "{message} Die Vorschau wurde aktualisiert; prüfe die Einträge und versuche es erneut.",
   "allow.maybeWritten":
     "{message} Falls der Schreibvorgang durchgegangen sein könnte, schließe den Dialog und öffne ihn erneut, um die aktuelle Konfiguration zu sehen.",
 
@@ -492,4 +492,38 @@ export const de: Dictionary = {
   "nav.history": "Verlauf",
   "settings.appearance": "Darstellung",
   "settings.unsaved": "Ungespeicherte Änderungen",
+
+  "error.localOnly": "Nur für Container auf diesem Rechner verfügbar.",
+  "error.overviewNotReady": "Die Übersicht ist noch nicht verfügbar.",
+  "error.unknownContainer": "Keine Runtime kennt den Container {container}.",
+  "error.containerNotFound":
+    "Container {container} wurde nicht gefunden; er wurde vielleicht entfernt.",
+  "error.notAMount": "Der Pfad ist kein Mount dieses Containers.",
+  "error.noProjectDirectory":
+    "Dieser Container hat kein per Bind-Mount eingebundenes Projektverzeichnis.",
+  "error.pathOutsideProject": "Der Pfad liegt außerhalb des Projekts dieses Containers.",
+  "error.noEditor": "Kein Editor konnte gestartet werden: {detail}",
+  "error.noTerminal": "Kein Terminal konnte gestartet werden: {detail}",
+  "error.openFailed": "Der Pfad konnte nicht geöffnet werden: {detail}",
+  "error.noGlobalConfig":
+    "Auf diesem Rechner gibt es keinen Pfad für die globale Sandbox-Konfiguration.",
+  "error.noSandboxDirectory": "Dieses Projekt hat kein .sandbox-Verzeichnis.",
+  "error.previewRequired": "Vor dem Schreiben auf einen Remote-Host ist die Vorschau nötig.",
+  "error.configChanged": "Die Konfiguration auf {host} hat sich seit der Vorschau geändert.",
+  "error.configRefused": "Schreiben nach {path} wurde abgelehnt: {reason}",
+  "error.configWriteFailed": "{path} konnte nicht geschrieben werden: {detail}",
+  "error.invalidAlias": "{host} ist kein gültiger SSH-Alias: {reason}",
+  "error.hostNotConnected": "{host} ist nicht verbunden.",
+  "error.noConfigDirectory": "Kein Verzeichnis zum Speichern der Einstellungen.",
+  "error.settingsWriteFailed":
+    "Die Einstellungen konnten nicht nach {path} gespeichert werden: {detail}",
+  "error.updateCheckFailed": "Die Update-Prüfung ist fehlgeschlagen: {detail}",
+  "error.noUpdatePending": "Kein Update steht an; bitte erneut prüfen.",
+  "error.updateInstallFailed": "Das Update konnte nicht installiert werden: {detail}",
+  "error.runtimeNotDetected": "Keine Container-Runtime gefunden.",
+  "error.runtimeUnavailable": "Keine Verbindung zu {runtime}: {reason}",
+  "error.permissionDenied": "Zugriff auf {path} verweigert.",
+  "error.unsupported": "{runtime} unterstützt {operation} nicht.",
+  "error.runtimeResponse": "Unerwartete Antwort der Runtime: {detail}",
+  "error.other": "{detail}",
 };

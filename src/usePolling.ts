@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { describeError } from "./errors";
 
 export interface Polled<T> {
   /** Last successful result for the current `load`, or null before the first one arrived. */
@@ -48,7 +49,7 @@ export function usePolling<T>(load: () => Promise<T>, intervalMs: number | null)
       try {
         next = { data: await load(), error: null };
       } catch (e) {
-        next = { error: e instanceof Error ? e.message : String(e) };
+        next = { error: describeError(e) };
       }
       if (!active) return;
       setSlot((prev) => {

@@ -5,6 +5,7 @@
 use std::sync::Mutex;
 use std::time::Duration;
 
+use sandbox_core::CommandError;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_notification::NotificationExt;
@@ -46,9 +47,12 @@ fn info(update: &Update) -> UpdateInfo {
 }
 
 /// Ask the release endpoint. `Ok(None)` when already up to date.
-pub async fn check(app: &AppHandle) -> Result<Option<UpdateInfo>, String> {
-    let updater = app.updater().map_err(|e| e.to_string())?;
-    let update = updater.check().await.map_err(|e| e.to_string())?;
+pub async fn check(app: &AppHandle) -> Result<Option<UpdateInfo>, CommandError> {
+    let failed = |e: tauri_plugin_updater::Error| CommandError::UpdateCheckFailed {
+        detail: e.to_string(),
+    };
+    let updater = app.updater().map_err(failed)?;
+    let update = updater.check().await.map_err(failed)?;
     let found = update.as_ref().map(info);
     *app.state::<PendingUpdate>()
         .0
@@ -58,14 +62,14 @@ pub async fn check(app: &AppHandle) -> Result<Option<UpdateInfo>, String> {
 }
 
 /// Download, verify, install, then restart into the new version.
-pub async fn install(app: &AppHandle) -> Result<(), String> {
+pub async fn install(app: &AppHandle) -> Result<(), CommandError> {
     let update = app
         .state::<PendingUpdate>()
         .0
         .lock()
         .expect("pending update poisoned")
         .take()
-        .ok_or("no update pending; check again")?;
+        .ok_or(CommandError::NoUpdatePending)?;
     let mut downloaded: u64 = 0;
     let handle = app.clone();
     update
@@ -77,7 +81,9 @@ pub async fn install(app: &AppHandle) -> Result<(), String> {
             || {},
         )
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| CommandError::UpdateInstallFailed {
+            detail: e.to_string(),
+        })?;
     app.restart();
 }
 

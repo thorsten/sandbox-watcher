@@ -27,6 +27,40 @@
       "agent"
     ]
   },
+  "CommandError": {
+    "tag": "code",
+    "values": [
+      "local-only",
+      "overview-not-ready",
+      "unknown-container",
+      "container-not-found",
+      "not-a-mount",
+      "no-project-directory",
+      "path-outside-project",
+      "no-editor",
+      "no-terminal",
+      "open-failed",
+      "no-global-config",
+      "no-sandbox-directory",
+      "preview-required",
+      "config-changed",
+      "config-refused",
+      "config-write-failed",
+      "invalid-alias",
+      "host-not-connected",
+      "no-config-directory",
+      "settings-write-failed",
+      "update-check-failed",
+      "no-update-pending",
+      "update-install-failed",
+      "runtime-not-detected",
+      "runtime-unavailable",
+      "permission-denied",
+      "unsupported",
+      "runtime-response",
+      "other"
+    ]
+  },
   "ConfigTarget": {
     "values": [
       "global",

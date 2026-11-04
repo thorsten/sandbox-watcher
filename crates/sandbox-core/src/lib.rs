@@ -11,6 +11,7 @@ pub mod adapter;
 pub mod allowlist;
 pub mod allowlist_remote;
 pub mod apple;
+pub mod command_error;
 pub mod config;
 pub mod detect;
 pub mod diagnostics;
@@ -45,4 +46,5 @@ pub mod turns;
 pub mod usage;
 
 pub use adapter::RuntimeAdapter;
+pub use command_error::CommandError;
 pub use error::{Error, Result};

@@ -3,6 +3,7 @@ import { listDockerSshContexts, testRemoteHost } from "../api";
 import { t, tx } from "../i18n";
 import type { HostStatus, RemoteHost, SshContext } from "../types";
 import { DockerContextsList } from "./DockerContextsList";
+import { describeError } from "../errors";
 
 interface Props {
   hosts: RemoteHost[];
@@ -45,7 +46,7 @@ export function RemoteHostsSection({ hosts, statuses, onChange }: Props) {
       setResult(await testRemoteHost(alias));
     } catch (e) {
       setResult(null);
-      setTestError(e instanceof Error ? e.message : String(e));
+      setTestError(describeError(e));
     } finally {
       setTesting(false);
     }

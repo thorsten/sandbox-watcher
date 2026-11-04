@@ -2,6 +2,7 @@
 
 use std::path::PathBuf;
 
+use sandbox_core::CommandError;
 use sandbox_core::settings::Settings;
 use tauri::{AppHandle, Manager};
 
@@ -24,12 +25,19 @@ pub fn load(app: &AppHandle) -> Settings {
     )
 }
 
-pub fn save(app: &AppHandle, settings: &Settings) -> Result<(), String> {
-    let path = path(app).ok_or("no config directory available")?;
+pub fn save(app: &AppHandle, settings: &Settings) -> Result<(), CommandError> {
+    let path = path(app).ok_or(CommandError::NoConfigDirectory)?;
+    let failed = |at: &std::path::Path| {
+        let at = at.display().to_string();
+        move |e: std::io::Error| CommandError::SettingsWriteFailed {
+            path: at,
+            detail: e.to_string(),
+        }
+    };
     if let Some(dir) = path.parent() {
-        std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+        std::fs::create_dir_all(dir).map_err(failed(dir))?;
     }
     let tmp = path.with_extension("json.tmp");
-    std::fs::write(&tmp, settings.to_json()).map_err(|e| format!("{}: {e}", tmp.display()))?;
-    std::fs::rename(&tmp, &path).map_err(|e| format!("{}: {e}", path.display()))
+    std::fs::write(&tmp, settings.to_json()).map_err(failed(&tmp))?;
+    std::fs::rename(&tmp, &path).map_err(failed(&path))
 }

@@ -8,7 +8,6 @@ use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
-use sandbox_core::RuntimeAdapter;
 use sandbox_core::activity::collect_insights;
 use sandbox_core::adapter::ContainerFilter;
 use sandbox_core::history::{History, HistoryQuery, HistoryView};
@@ -25,6 +24,7 @@ use sandbox_core::remote_hosts::RemoteSession;
 use sandbox_core::settings::Settings;
 use sandbox_core::stats_hub::{StatsHub, StatsSet};
 use sandbox_core::transcripts::TranscriptCache;
+use sandbox_core::{CommandError, RuntimeAdapter};
 use tauri::{AppHandle, Emitter};
 use tauri_plugin_notification::NotificationExt;
 use tokio::sync::{Notify, mpsc};
@@ -169,15 +169,21 @@ impl Watcher {
     }
 
     /// The SSH session of a connected remote host.
-    pub async fn session_for(&self, alias: &str) -> Result<Arc<dyn RemoteSession>, String> {
+    pub async fn session_for(&self, alias: &str) -> Result<Arc<dyn RemoteSession>, CommandError> {
         match &self.mode {
-            Mode::Mock(_) => Err("no remote shell in mock mode".into()),
-            Mode::Live(live) => live.session_for(alias).await,
+            Mode::Mock(_) => Err(CommandError::other("no remote shell in mock mode")),
+            Mode::Live(live) => live
+                .connected_session(alias)
+                .await
+                .ok_or_else(|| CommandError::HostNotConnected { host: alias.into() }),
         }
     }
 
     /// The adapter for a container key and the container's raw id.
-    pub fn adapter_for(&self, key: &str) -> Result<(Arc<dyn RuntimeAdapter>, String), String> {
+    pub fn adapter_for(
+        &self,
+        key: &str,
+    ) -> Result<(Arc<dyn RuntimeAdapter>, String), CommandError> {
         match &self.mode {
             Mode::Mock(adapters) => {
                 let (host, id) = parse_container_key(key);
@@ -188,7 +194,9 @@ impl Watcher {
             }
             Mode::Live(live) => live.adapter_for(key),
         }
-        .ok_or_else(|| format!("no runtime known for container {key}"))
+        .ok_or_else(|| CommandError::UnknownContainer {
+            container: key.into(),
+        })
     }
 
     pub fn history_view(&self, query: &HistoryQuery) -> HistoryView {

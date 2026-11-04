@@ -11,6 +11,7 @@ import {
 import { t } from "../i18n";
 import { formatRelative } from "../network";
 import type { FileTouch } from "../types";
+import { describeError } from "../errors";
 
 interface Props {
   files: FileTouch[];
@@ -36,9 +37,7 @@ export function FilesList({ files, containerKey, projectDir, now, collapseReads 
   const open = (path: string) => {
     if (!containerKey || !canOpen) return;
     setError(null);
-    openInEditor(containerKey, path).catch((e: unknown) =>
-      setError(e instanceof Error ? e.message : String(e)),
-    );
+    openInEditor(containerKey, path).catch((e: unknown) => setError(describeError(e)));
   };
 
   return (

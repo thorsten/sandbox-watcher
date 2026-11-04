@@ -1,0 +1,116 @@
+{
+  "samples": [
+    {
+      "code": "local-only"
+    },
+    {
+      "code": "overview-not-ready"
+    },
+    {
+      "code": "unknown-container",
+      "container": "devbox/9c1e"
+    },
+    {
+      "code": "container-not-found",
+      "container": "9c1e"
+    },
+    {
+      "code": "not-a-mount"
+    },
+    {
+      "code": "no-project-directory"
+    },
+    {
+      "code": "path-outside-project"
+    },
+    {
+      "code": "no-editor",
+      "detail": "code: No such file or directory (os error 2)"
+    },
+    {
+      "code": "no-terminal",
+      "detail": "osascript: timed out"
+    },
+    {
+      "code": "open-failed",
+      "detail": "No application knows how to open the path"
+    },
+    {
+      "code": "no-global-config"
+    },
+    {
+      "code": "no-sandbox-directory"
+    },
+    {
+      "code": "preview-required"
+    },
+    {
+      "code": "config-changed",
+      "host": "devbox"
+    },
+    {
+      "code": "config-refused",
+      "path": "/home/dev/.config/sandbox/config.toml",
+      "reason": "/home/dev/.config/sandbox/config.toml is a link"
+    },
+    {
+      "code": "config-write-failed",
+      "detail": "Permission denied (os error 13)",
+      "path": "/Users/dev/.config/sandbox/config.toml"
+    },
+    {
+      "code": "invalid-alias",
+      "host": "-x",
+      "reason": "host alias must not start with '-'"
+    },
+    {
+      "code": "host-not-connected",
+      "host": "devbox"
+    },
+    {
+      "code": "no-config-directory"
+    },
+    {
+      "code": "settings-write-failed",
+      "detail": "Read-only file system (os error 30)",
+      "path": "/Users/dev/Library/Application Support/sandbox-watcher/settings.json"
+    },
+    {
+      "code": "update-check-failed",
+      "detail": "error sending request"
+    },
+    {
+      "code": "no-update-pending"
+    },
+    {
+      "code": "update-install-failed",
+      "detail": "signature verification failed"
+    },
+    {
+      "code": "runtime-not-detected"
+    },
+    {
+      "code": "runtime-unavailable",
+      "reason": "connection refused",
+      "runtime": "docker"
+    },
+    {
+      "code": "permission-denied",
+      "path": "/var/run/docker.sock"
+    },
+    {
+      "code": "unsupported",
+      "operation": "stats",
+      "runtime": "apple-container"
+    },
+    {
+      "code": "runtime-response",
+      "detail": "unexpected runtime response: missing Id"
+    },
+    {
+      "code": "other",
+      "detail": "unexpected apply reply: hello"
+    }
+  ],
+  "type": "CommandError"
+}

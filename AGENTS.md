@@ -72,9 +72,15 @@ decisions are in `docs/adr/`. Read both before changing architecture.
   one function per text with an exhaustive `match`. Product names, commands,
   log lines and ids used as CSS classes stay literal. The language comes
   from the shell (`resolved_language`), never from `navigator.language`.
-  Adding a language: a variant in `Language` and `LanguageChoice`, a
-  dictionary typed as `Dictionary`, an option in the Settings select, and
-  regenerated contract fixtures. See `docs/adr/0003-localisation.md`.
+  Tauri commands fail with `CommandError` (`command_error.rs`), never with
+  a `String`: the webview shows every caught rejection through
+  `describeError` in `src/errors.ts`, which translates the `code`; what a
+  runtime, ssh or the OS said goes untranslated into `detail`/`reason`. A
+  new variant needs a contract sample, the `KEYS` entry and `error.<name>`
+  in both dictionaries. Adding a language: a variant in `Language` and
+  `LanguageChoice`, a dictionary typed as `Dictionary`, an option in the
+  Settings select, and regenerated contract fixtures. See
+  `docs/adr/0003-localisation.md`.
 - **Report partial failures, never swallow them.** `stop_all` returns a
   `StopReport` with one `StopFailure` per host and runtime whose containers
   could not be listed; activity and history carry `Coverage` and

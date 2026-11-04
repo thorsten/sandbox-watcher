@@ -25,6 +25,7 @@ use sandbox_core::activity::{
 };
 use sandbox_core::adapter::Capabilities;
 use sandbox_core::allowlist::{AllowResult, ConfigTarget};
+use sandbox_core::command_error::CommandError;
 use sandbox_core::detect::DetectedRuntime;
 use sandbox_core::diagnostics::{
     BinaryCheck, DiagnosticsReport, EnvironmentReport, HostReport, Probe, ProbeOutcome,
@@ -1202,6 +1203,84 @@ fn runtime_event() {
     contract("RuntimeEvent", runtime_events());
 }
 
+/// Every command error, one sample per variant: `code` is checked as an
+/// enum and the fields as parameters of the webview's sentences.
+fn command_errors() -> Vec<CommandError> {
+    vec![
+        CommandError::LocalOnly,
+        CommandError::OverviewNotReady,
+        CommandError::UnknownContainer {
+            container: "devbox/9c1e".into(),
+        },
+        CommandError::ContainerNotFound {
+            container: "9c1e".into(),
+        },
+        CommandError::NotAMount,
+        CommandError::NoProjectDirectory,
+        CommandError::PathOutsideProject,
+        CommandError::NoEditor {
+            detail: "code: No such file or directory (os error 2)".into(),
+        },
+        CommandError::NoTerminal {
+            detail: "osascript: timed out".into(),
+        },
+        CommandError::OpenFailed {
+            detail: "No application knows how to open the path".into(),
+        },
+        CommandError::NoGlobalConfig,
+        CommandError::NoSandboxDirectory,
+        CommandError::PreviewRequired,
+        CommandError::ConfigChanged {
+            host: "devbox".into(),
+        },
+        CommandError::ConfigRefused {
+            path: "/home/dev/.config/sandbox/config.toml".into(),
+            reason: "/home/dev/.config/sandbox/config.toml is a link".into(),
+        },
+        CommandError::ConfigWriteFailed {
+            path: "/Users/dev/.config/sandbox/config.toml".into(),
+            detail: "Permission denied (os error 13)".into(),
+        },
+        CommandError::InvalidAlias {
+            host: "-x".into(),
+            reason: "host alias must not start with '-'".into(),
+        },
+        CommandError::HostNotConnected {
+            host: "devbox".into(),
+        },
+        CommandError::NoConfigDirectory,
+        CommandError::SettingsWriteFailed {
+            path: "/Users/dev/Library/Application Support/sandbox-watcher/settings.json".into(),
+            detail: "Read-only file system (os error 30)".into(),
+        },
+        CommandError::UpdateCheckFailed {
+            detail: "error sending request".into(),
+        },
+        CommandError::NoUpdatePending,
+        CommandError::UpdateInstallFailed {
+            detail: "signature verification failed".into(),
+        },
+        CommandError::RuntimeNotDetected,
+        CommandError::RuntimeUnavailable {
+            runtime: "docker".into(),
+            reason: "connection refused".into(),
+        },
+        CommandError::PermissionDenied {
+            path: "/var/run/docker.sock".into(),
+        },
+        CommandError::Unsupported {
+            runtime: "apple-container".into(),
+            operation: "stats".into(),
+        },
+        CommandError::RuntimeResponse {
+            detail: "unexpected runtime response: missing Id".into(),
+        },
+        CommandError::Other {
+            detail: "unexpected apply reply: hello".into(),
+        },
+    ]
+}
+
 fn probe_outcomes() -> Vec<ProbeOutcome> {
     vec![
         ProbeOutcome::Found {
@@ -1215,6 +1294,11 @@ fn probe_outcomes() -> Vec<ProbeOutcome> {
             reason: "permission denied".into(),
         },
     ]
+}
+
+#[test]
+fn command_error() {
+    contract("CommandError", command_errors());
 }
 
 #[test]
@@ -1331,5 +1415,6 @@ fn enums() {
         enum_values(&terminal_choices(), Some("kind")),
     );
     enums.insert("EditorChoice", enum_values(&editor_choices(), Some("kind")));
+    enums.insert("CommandError", enum_values(&command_errors(), Some("code")));
     check_fixture("enums", &serde_json::to_value(enums).unwrap());
 }

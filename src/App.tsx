@@ -37,6 +37,7 @@ import type {
   Settings,
   UpdateInfo,
 } from "./types";
+import { describeError } from "./errors";
 
 const EMPTY: ContainerOverview[] = [];
 
@@ -85,8 +86,7 @@ export function App() {
   useEffect(() => {
     let cancelled = false;
     const fail = (e: unknown) => {
-      if (!cancelled)
-        setState({ phase: "error", message: e instanceof Error ? e.message : String(e) });
+      if (!cancelled) setState({ phase: "error", message: describeError(e) });
     };
     getSettings().then((s) => !cancelled && acceptSettings(s), fail);
     appVersion().then(
@@ -132,7 +132,7 @@ export function App() {
     try {
       acceptOverview(await refreshNow());
     } catch (e) {
-      setState({ phase: "error", message: e instanceof Error ? e.message : String(e) });
+      setState({ phase: "error", message: describeError(e) });
     } finally {
       setRefreshing(false);
     }

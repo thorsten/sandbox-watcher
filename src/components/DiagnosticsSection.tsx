@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { diagnosticsText, runDiagnostics } from "../api";
 import { formatDateTime, t } from "../i18n";
 import { RUNTIME_LABELS, type DiagnosticsReport, type Probe } from "../types";
+import { describeError } from "../errors";
 
 function outcomeText(p: Probe): { label: string; detail: string } {
   switch (p.outcome) {
@@ -131,7 +132,7 @@ export function DiagnosticsSection({
       setReport(await runDiagnostics());
       setCopied(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
     } finally {
       setRunning(false);
     }
@@ -147,7 +148,7 @@ export function DiagnosticsSection({
       copiedTimer.current = setTimeout(() => setCopied(false), 2000);
     } catch (e) {
       setCopied(false);
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
     }
   };
 

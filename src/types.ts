@@ -498,6 +498,43 @@ export interface AllowResult {
   already_present: string[];
 }
 
+/**
+ * What a Tauri command rejects with. `code` picks the sentence in the
+ * dictionaries (`src/errors.ts`), the other fields fill it in; `detail` and
+ * `reason` carry what Docker, ssh, the OS or a remote script said, shown as
+ * they are. Mirrors `sandbox_core::command_error::CommandError`.
+ */
+export type CommandError =
+  | { code: "local-only" }
+  | { code: "overview-not-ready" }
+  | { code: "unknown-container"; container: string }
+  | { code: "container-not-found"; container: string }
+  | { code: "not-a-mount" }
+  | { code: "no-project-directory" }
+  | { code: "path-outside-project" }
+  | { code: "no-editor"; detail: string }
+  | { code: "no-terminal"; detail: string }
+  | { code: "open-failed"; detail: string }
+  | { code: "no-global-config" }
+  | { code: "no-sandbox-directory" }
+  | { code: "preview-required" }
+  | { code: "config-changed"; host: string }
+  | { code: "config-refused"; path: string; reason: string }
+  | { code: "config-write-failed"; path: string; detail: string }
+  | { code: "invalid-alias"; host: string; reason: string }
+  | { code: "host-not-connected"; host: string }
+  | { code: "no-config-directory" }
+  | { code: "settings-write-failed"; path: string; detail: string }
+  | { code: "update-check-failed"; detail: string }
+  | { code: "no-update-pending" }
+  | { code: "update-install-failed"; detail: string }
+  | { code: "runtime-not-detected" }
+  | { code: "runtime-unavailable"; runtime: string; reason: string }
+  | { code: "permission-denied"; path: string }
+  | { code: "unsupported"; runtime: string; operation: string }
+  | { code: "runtime-response"; detail: string }
+  | { code: "other"; detail: string };
+
 export interface ModelPrice {
   input: number;
   output: number;

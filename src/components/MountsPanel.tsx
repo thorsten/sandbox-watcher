@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { getContainerDetails, revealMount } from "../api";
 import { t, tx } from "../i18n";
 import type { ContainerDetails, MountRole } from "../types";
+import { describeError } from "../errors";
 
 const ROLE_ORDER: MountRole[] = ["project", "persisted", "other", "runtime"];
 
@@ -17,7 +18,7 @@ export function MountsPanel({ containerKey }: { containerKey: string }) {
         if (!cancelled) setDetails(d);
       },
       (e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : String(e));
+        if (!cancelled) setError(describeError(e));
       },
     );
     return () => {

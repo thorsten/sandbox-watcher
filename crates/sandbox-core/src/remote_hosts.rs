@@ -301,19 +301,24 @@ impl RemoteHosts {
         }
     }
 
-    /// The session of a connected host. Takes the connections lock, so it
-    /// waits for a running refresh round; callers hold no other lock.
+    /// The session of a connected host, `None` while it is not connected.
+    /// Takes the connections lock, so it waits for a running refresh round;
+    /// callers hold no other lock.
+    pub async fn connected_session(&self, alias: &str) -> Option<Arc<dyn RemoteSession>> {
+        let list = self.connections.lock().await;
+        list.iter()
+            .find(|c| c.config.alias == alias && c.is_connected())
+            .and_then(|c| c.session.clone())
+    }
+
+    /// `connected_session` with the reason as text, for command runners.
     pub async fn session_for(
         &self,
         alias: &str,
     ) -> std::result::Result<Arc<dyn RemoteSession>, String> {
-        let session = {
-            let list = self.connections.lock().await;
-            list.iter()
-                .find(|c| c.config.alias == alias && c.is_connected())
-                .and_then(|c| c.session.clone())
-        };
-        session.ok_or_else(|| format!("{alias} is not connected"))
+        self.connected_session(alias)
+            .await
+            .ok_or_else(|| format!("{alias} is not connected"))
     }
 
     /// Run a command on a connected host. Same locking as `session_for`.

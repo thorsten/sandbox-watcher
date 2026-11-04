@@ -284,10 +284,12 @@ pub enum RemoteApplyError {
     /// The file changed since the preview; nothing was written.
     Changed(String),
     /// Path rules refused the write.
-    Refused {
-        path: String,
-        reason: String,
-    },
+    Refused { path: String, reason: String },
+    /// A project target without a project directory.
+    NoProjectDirectory,
+    /// The project has no `.sandbox` directory.
+    NoSandboxDirectory,
+    /// An entry, the connection, or the script's reply was not usable.
     Other(String),
 }
 
@@ -353,7 +355,7 @@ pub async fn apply_remote(
         validate_entry(e).map_err(Other)?;
     }
     if target == ConfigTarget::Project && project_root.is_none() {
-        return Err(Other("no project directory".into()));
+        return Err(RemoteApplyError::NoProjectDirectory);
     }
     let (path, hash, content) = match read_remote(session, target, project_root, timeout)
         .await
@@ -364,9 +366,7 @@ pub async fn apply_remote(
             hash,
             content,
         } => (path, hash, content),
-        PreviewReply::Absent => {
-            return Err(Other("this project has no .sandbox directory".into()));
-        }
+        PreviewReply::Absent => return Err(RemoteApplyError::NoSandboxDirectory),
         PreviewReply::Symlink { path, reason } => return Err(Refused { path, reason }),
     };
     let changed = || Changed(format!("{path} changed since the preview"));
@@ -609,10 +609,7 @@ mod tests {
         let e = apply_remote(&s, ConfigTarget::Project, Some("/p"), HASH_A, &entries, T)
             .await
             .unwrap_err();
-        assert_eq!(
-            e,
-            RemoteApplyError::Other("this project has no .sandbox directory".into())
-        );
+        assert_eq!(e, RemoteApplyError::NoSandboxDirectory);
     }
 
     #[tokio::test]

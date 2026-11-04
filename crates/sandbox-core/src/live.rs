@@ -176,11 +176,12 @@ impl LiveRuntime {
     }
 
     /// The SSH session of a connected remote host.
-    pub async fn session_for(
+    /// The session of a connected remote host, `None` while it is not connected.
+    pub async fn connected_session(
         &self,
         alias: &str,
-    ) -> std::result::Result<Arc<dyn crate::remote_hosts::RemoteSession>, String> {
-        self.remotes.session_for(alias).await
+    ) -> Option<Arc<dyn crate::remote_hosts::RemoteSession>> {
+        self.remotes.connected_session(alias).await
     }
 
     /// Run a shell command line on a connected remote host.

@@ -5,6 +5,7 @@ import { formatRelative } from "../network";
 import { turnFacts, turnLabel } from "../turns";
 import type { AgentKind, TurnReport } from "../types";
 import { FilesList } from "./FilesList";
+import { describeError } from "../errors";
 
 interface Props {
   containerKey: string;
@@ -26,7 +27,7 @@ export function TurnsSection({ containerKey, agent, pid = null, projectDir, now 
     setError(null);
     getTurns(containerKey, agent, pid)
       .then(setReport)
-      .catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)))
+      .catch((e: unknown) => setError(describeError(e)))
       .finally(() => setLoading(false));
   };
 

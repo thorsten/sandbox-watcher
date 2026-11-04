@@ -3,6 +3,7 @@ import { installUpdate } from "../api";
 import { t } from "../i18n";
 import type { UpdateInfo } from "../types";
 import { progressPercent, summarizeNotes } from "../updateFormat";
+import { describeError } from "../errors";
 
 interface Props {
   update: UpdateInfo;
@@ -22,7 +23,7 @@ export function UpdateBanner({ update, progress, onDismiss }: Props) {
     try {
       await installUpdate();
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(describeError(e));
       setInstalling(false);
     }
   };
