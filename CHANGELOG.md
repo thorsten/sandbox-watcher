@@ -3,6 +3,20 @@
 All notable changes to Sandbox Watcher. Generated from
 [Conventional Commits](https://www.conventionalcommits.org/) by `scripts/changelog.mjs`.
 
+## 0.9.1 (2026-11-04)
+
+### Features
+
+- **i18n:** typed command errors translated in the webview ([3a4864a](https://github.com/thorsten/sandbox-watcher/commit/3a4864a7741bae76bce883af7af01e0ff2aee774))
+
+### Fixes
+
+- **deps:** move async-executor to 1.14.1, 1.14.0 is yanked ([943ce19](https://github.com/thorsten/sandbox-watcher/commit/943ce1937705c9ce8bc34c67ce8837db01f517cb))
+
+### Chores
+
+- **core:** bump tested sandbox version to 0.73.2 ([47b402c](https://github.com/thorsten/sandbox-watcher/commit/47b402c1faba1b809df841dbe2c580b759811c78))
+
 ## 0.9.0 (2026-11-02)
 
 ### Features
@@ -25,6 +39,12 @@ All notable changes to Sandbox Watcher. Generated from
 ### Build
 
 - bump base64 from 0.22.1 to 0.23.1 ([66e3f65](https://github.com/thorsten/sandbox-watcher/commit/66e3f65d81737dd5ca63252df71a1c8600db3208))
+
+### Chores
+
+- **release:** v0.9.0 ([09b0cc4](https://github.com/thorsten/sandbox-watcher/commit/09b0cc4fd9b9c5f21a53c60cba2185616428540f))
+
+**Full changelog:** [v0.8.0...v0.9.0](https://github.com/thorsten/sandbox-watcher/compare/v0.8.0...v0.9.0)
 
 ## 0.8.0 (2026-11-01)
 
