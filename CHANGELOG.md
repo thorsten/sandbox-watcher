@@ -3,6 +3,16 @@
 All notable changes to Sandbox Watcher. Generated from
 [Conventional Commits](https://www.conventionalcommits.org/) by `scripts/changelog.mjs`.
 
+## 0.9.2 (2026-11-09)
+
+### Fixes
+
+- **core:** cut the exec rate per container from 18/s to one per refresh ([6911baf](https://github.com/thorsten/sandbox-watcher/commit/6911bafdd4216e9bbbc0950b60f02b06830857b8))
+
+### CI
+
+- bump pnpm/action-setup from 6.1.0 to 6.1.1 in the actions group ([1b0809c](https://github.com/thorsten/sandbox-watcher/commit/1b0809c6587438230258f7f14baca8d2bafbd85c))
+
 ## 0.9.1 (2026-11-04)
 
 ### Features
@@ -15,7 +25,10 @@ All notable changes to Sandbox Watcher. Generated from
 
 ### Chores
 
+- **release:** v0.9.1 ([5ce2374](https://github.com/thorsten/sandbox-watcher/commit/5ce2374f9a5f437642fd776d1baff4d51c7540a3))
 - **core:** bump tested sandbox version to 0.73.2 ([47b402c](https://github.com/thorsten/sandbox-watcher/commit/47b402c1faba1b809df841dbe2c580b759811c78))
+
+**Full changelog:** [v0.9.0...v0.9.1](https://github.com/thorsten/sandbox-watcher/compare/v0.9.0...v0.9.1)
 
 ## 0.9.0 (2026-11-02)
 
