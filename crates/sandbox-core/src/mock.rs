@@ -20,9 +20,9 @@ use crate::model::{
     ContainerDetails, ContainerState, Mount, Readiness, ResourceSample, RuntimeEvent,
     RuntimeEventKind, RuntimeInfo, RuntimeKind, SandboxContainer,
 };
-use crate::network::NetworkSource;
-use crate::sandbox::{CONTAINER_TOOLS_PATH, HASH_LABEL, PROJECT_LABEL};
-use crate::transcripts::{CHUNK_BYTES, CHUNK_SENTINEL, CLOCK_SENTINEL};
+use crate::network::{NETWORK_SENTINEL, NetworkSource};
+use crate::sandbox::{CONTAINER_TOOLS_PATH, HASH_LABEL, PROBE_SENTINEL, PROJECT_LABEL};
+use crate::transcripts::{CHUNK_BYTES, CHUNK_SENTINEL};
 use crate::turns::TURNS_SENTINEL;
 use crate::{Error, Result};
 
@@ -32,8 +32,10 @@ pub struct MockContainer {
     /// Output returned for any `exec` call.
     pub exec_output: ExecOutput,
     pub logs: String,
-    /// Raw log returned for `sandbox-container-tools network diagnostic <source>`.
+    /// Raw content of the network log files; a missing key is a missing file.
     pub network_logs: BTreeMap<NetworkSource, String>,
+    /// Log files that exist but cannot be read.
+    pub unreadable_network_logs: Vec<NetworkSource>,
 }
 
 struct State {
@@ -73,7 +75,13 @@ pub struct MockAdapter {
     fail_lists: bool,
     /// Chunk reads served, to check that transcripts are read incrementally.
     chunk_reads: Arc<AtomicUsize>,
+    /// Every exec served, as `(container id, command)`, so tests can count
+    /// what one refresh costs the container.
+    exec_log: Arc<Mutex<ExecLog>>,
 }
+
+/// `(container id, command)` per exec, oldest first.
+pub type ExecLog = Vec<(String, Vec<String>)>;
 
 impl MockAdapter {
     pub fn empty() -> Self {
@@ -86,6 +94,7 @@ impl MockAdapter {
             stall_stops: false,
             fail_lists: false,
             chunk_reads: Arc::default(),
+            exec_log: Arc::default(),
         }
     }
 
@@ -176,6 +185,16 @@ impl MockAdapter {
         self.chunk_reads.load(Ordering::SeqCst)
     }
 
+    /// Every exec served so far, oldest first, as `(container id, command)`.
+    pub fn exec_log(&self) -> ExecLog {
+        self.exec_log.lock().expect("exec log poisoned").clone()
+    }
+
+    /// Forget the recorded execs, e.g. between two refresh cycles.
+    pub fn clear_exec_log(&self) {
+        self.exec_log.lock().expect("exec log poisoned").clear();
+    }
+
     fn find(&self, id: &str) -> Option<MockContainer> {
         let state = self.state.lock().expect("mock state poisoned");
         state
@@ -246,6 +265,7 @@ pub fn mock_container(slug: &str, instance: u32, state: &str, hash: &str) -> Moc
         },
         logs: "sandbox: container ready\n".into(),
         network_logs: demo_network_logs(),
+        unreadable_network_logs: vec![],
     }
 }
 
@@ -326,11 +346,17 @@ impl RuntimeAdapter for MockAdapter {
     }
 
     async fn exec(&self, id: &str, request: ExecRequest) -> Result<ExecOutput> {
+        crate::metrics::record_exec();
         self.stall().await;
         let container = self
             .find(id)
             .ok_or_else(|| Error::ContainerNotFound(id.into()))?;
-        // `sandbox-container-tools network diagnostic <source>` serves the stored log.
+        self.exec_log.lock().expect("exec log poisoned").push((
+            container.details.container.id.clone(),
+            request.command.clone(),
+        ));
+        // `sandbox-container-tools network diagnostic <source>` serves the
+        // stored log the way sandbox's own tool would.
         if let [tools, network, diagnostic, source] = request.command.as_slice()
             && tools == CONTAINER_TOOLS_PATH
             && network == "network"
@@ -372,6 +398,46 @@ impl RuntimeAdapter for MockAdapter {
                 })
             };
             match sentinel.as_str() {
+                // The combined probe: the container's configured status
+                // output, then the clock of the demo pids and the listing.
+                PROBE_SENTINEL => {
+                    let mut output = container.exec_output.clone();
+                    if output.exit_code != 0 || output.stdout.trim().lines().count() < 2 {
+                        return Ok(output);
+                    }
+                    let state = self.state.lock().expect("mock state poisoned");
+                    if !output.stdout.ends_with('\n') {
+                        output.stdout.push('\n');
+                    }
+                    output.stdout.push_str(&format!(
+                        "#clock\nC|{DEMO_NOW}|100|5000\nS|4242|400000\nS|4300|420000\nS|4400|600000\n\
+                         #transcripts\nclaude|{DEMO_NOW}|{}|{}|{DEMO_TRANSCRIPT_PATH}\n",
+                        state.transcript.len(),
+                        state.transcript_inode
+                    ));
+                    return Ok(output);
+                }
+                // The network logs, as the one-exec script prints them.
+                NETWORK_SENTINEL => {
+                    let mut out = String::new();
+                    for source in [
+                        NetworkSource::Firewall,
+                        NetworkSource::Dns,
+                        NetworkSource::ProxyAccess,
+                    ] {
+                        let name = source.as_str();
+                        if container.unreadable_network_logs.contains(&source) {
+                            out.push_str(&format!("--- sandbox-watcher-network {name} denied\n"));
+                        } else if let Some(log) = container.network_logs.get(&source) {
+                            out.push_str(&format!("--- sandbox-watcher-network {name} ok\n"));
+                            out.push_str(log);
+                            out.push('\n');
+                        } else {
+                            out.push_str(&format!("--- sandbox-watcher-network {name} missing\n"));
+                        }
+                    }
+                    return ok(&out);
+                }
                 PS_SENTINEL => {
                     return ok("H|100|5000\n\
 P|1|0|100|300|/opt/sandbox-cli/entrypoint\n\
@@ -379,19 +445,6 @@ P|4242|1|400000|60000|claude --dangerously-skip-permissions\n\
 P|4250|4242|480000|2000|/bin/sh -c npm test\n\
 P|4251|4250|481000|40000|node node_modules/.bin/vitest run\n\
 P|4300|1|420000|1500|zsh -l\n");
-                }
-                CLOCK_SENTINEL => {
-                    let mut out = format!("C|{DEMO_NOW}|100|5000\n");
-                    for pid in args {
-                        match pid.as_str() {
-                            "4242" => out.push_str("S|4242|400000\n"),
-                            "4300" => out.push_str("S|4300|420000\n"),
-                            // Started at 10:16:40, after the demo transcript's last line.
-                            "4400" => out.push_str("S|4400|600000\n"),
-                            _ => {}
-                        }
-                    }
-                    return ok(&out);
                 }
                 CHUNK_SENTINEL => {
                     let [path, offset] = args else {
@@ -419,14 +472,6 @@ P|4300|1|420000|1500|zsh -l\n");
                 TRANSCRIPT_SENTINEL if script.starts_with("tail") => {
                     let state = self.state.lock().expect("mock state poisoned");
                     return ok(&state.transcript);
-                }
-                TRANSCRIPT_SENTINEL => {
-                    let state = self.state.lock().expect("mock state poisoned");
-                    return ok(&format!(
-                        "claude|{DEMO_NOW}|{}|{}|{DEMO_TRANSCRIPT_PATH}\n",
-                        state.transcript.len(),
-                        state.transcript_inode
-                    ));
                 }
                 FILES_SENTINEL => {
                     return ok("");

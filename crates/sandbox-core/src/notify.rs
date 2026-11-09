@@ -529,6 +529,7 @@ mod tests {
             readiness: crate::model::Readiness::Ready,
             sessions: vec![],
             last_seen_at: None,
+            discovery: Default::default(),
         }
     }
 

@@ -16,7 +16,8 @@ import { formatCost, formatTokens, totalTokens } from "../usageFormat";
 import { usePolling } from "../usePolling";
 import type { ActivityEvent, ProcessInfo, SessionProcesses, Usage } from "../types";
 
-export const POLL_MS = 3_000;
+/** Each poll costs the container three commands (processes, transcript tail, git status). */
+export const POLL_MS = 5_000;
 
 function formatElapsed(secs: number): string {
   if (secs < 60) return t("duration.seconds", { n: secs });

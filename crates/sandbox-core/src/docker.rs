@@ -26,7 +26,7 @@ use crate::model::{
     ContainerDetails, ContainerState, Readiness, ResourceSample, RuntimeEvent, RuntimeEventKind,
     RuntimeInfo, RuntimeKind, SandboxContainer,
 };
-use crate::sandbox::{PROJECT_LABEL, READY_FILE};
+use crate::sandbox::{PROJECT_LABEL, readiness_command};
 use crate::{Error, Result};
 
 /// Per-request timeout bollard applies to non-streaming calls.
@@ -91,7 +91,7 @@ impl DockerAdapter {
     }
 
     async fn readiness(&self, id: &str) -> Readiness {
-        let request = ExecRequest::new(vec!["test".into(), "-f".into(), READY_FILE.into()]);
+        let request = ExecRequest::new(readiness_command());
         match self.exec(id, request).await {
             Ok(output) if output.exit_code == 0 => Readiness::Ready,
             Ok(_) => Readiness::Starting,
@@ -350,6 +350,7 @@ impl RuntimeAdapter for DockerAdapter {
     }
 
     async fn exec(&self, id: &str, request: ExecRequest) -> Result<ExecOutput> {
+        crate::metrics::record_exec();
         let timeout = request.timeout.unwrap_or(DEFAULT_EXEC_TIMEOUT);
         let env: Vec<String> = request
             .env

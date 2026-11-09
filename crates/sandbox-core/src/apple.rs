@@ -19,7 +19,7 @@ use crate::model::{
     RuntimeInfo, RuntimeKind, SandboxContainer,
 };
 use crate::runner::{CommandOutput, CommandRunner};
-use crate::sandbox::{HASH_LABEL, PROJECT_LABEL, READY_FILE};
+use crate::sandbox::{HASH_LABEL, PROJECT_LABEL, readiness_command};
 use crate::{Error, Result};
 
 const DEFAULT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -77,7 +77,7 @@ impl AppleContainerAdapter {
     }
 
     async fn readiness(&self, id: &str) -> Readiness {
-        let request = ExecRequest::new(vec!["test".into(), "-f".into(), READY_FILE.into()]);
+        let request = ExecRequest::new(readiness_command());
         match self.exec(id, request).await {
             Ok(o) if o.exit_code == 0 => Readiness::Ready,
             Ok(_) => Readiness::Starting,
@@ -253,6 +253,7 @@ impl RuntimeAdapter for AppleContainerAdapter {
     }
 
     async fn exec(&self, id: &str, request: ExecRequest) -> Result<ExecOutput> {
+        crate::metrics::record_exec();
         let mut args = vec!["exec".to_string()];
         if let Some(user) = &request.user {
             args.push("-u".into());

@@ -13,6 +13,7 @@
       "history_retention_days": 30,
       "language": "system",
       "launch_at_login": false,
+      "network_poll_interval_secs": 10,
       "notifications": {
         "blocked_burst": true,
         "container_died": true,
@@ -174,6 +175,7 @@
       "history_retention_days": 30,
       "language": "de",
       "launch_at_login": true,
+      "network_poll_interval_secs": 30,
       "notifications": {
         "blocked_burst": false,
         "container_died": true,

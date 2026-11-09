@@ -181,6 +181,17 @@ export function SettingsPanel({
             <span className="muted">{t("settings.pollHint")}</span>
           </label>
           <label>
+            {t("settings.networkInterval")}
+            <input
+              type="number"
+              min={2}
+              max={600}
+              value={draft.network_poll_interval_secs}
+              onChange={(e) => update({ network_poll_interval_secs: Number(e.target.value) })}
+            />
+            <span className="muted">{t("settings.networkHint")}</span>
+          </label>
+          <label>
             {t("settings.runtime")}
             <select
               value={draft.runtime_override ?? ""}

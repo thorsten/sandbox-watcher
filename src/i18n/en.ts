@@ -367,6 +367,8 @@ export const en = {
   "settings.refresh": "Refresh",
   "settings.pollInterval": "Fallback poll interval",
   "settings.pollHint": "seconds. Runtime events refresh sooner.",
+  "settings.networkInterval": "Network log interval",
+  "settings.networkHint": "seconds. Each read costs one command per running container.",
   "settings.runtime": "Runtime",
   "settings.runtimeFollow": "Follow sandbox config, else all detected",
   "settings.runtimeOnly": "Only {runtime}",

@@ -1,24 +1,32 @@
 //! Background refresh loop. Owns the latest overview and network reports,
 //! feeds the tray and notifications, and tells the webview when to re-render.
 //! Runs regardless of whether the window is visible.
+//!
+//! One cycle costs each running container one exec (the status probe) plus
+//! one chunk read per transcript that grew; every `network_poll_interval_secs`
+//! it also reads the network logs, one exec per container. Cycles never
+//! overlap and start at least `MIN_CYCLE_GAP` apart, whatever the runtime
+//! events do. Set `SANDBOX_WATCHER_DEBUG_EXECS=1` to see the exec rate per
+//! cycle on stderr.
 
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
-use sandbox_core::activity::collect_insights;
-use sandbox_core::adapter::ContainerFilter;
 use sandbox_core::history::{History, HistoryQuery, HistoryView};
-use sandbox_core::host::{Host, container_key, parse_container_key};
+use sandbox_core::host::{Host, parse_container_key};
 use sandbox_core::i18n::Language;
 use sandbox_core::live::LiveRuntime;
+use sandbox_core::metrics::{self, ExecRate};
 use sandbox_core::mock::MockAdapter;
 use sandbox_core::model::RuntimeKind;
-use sandbox_core::network::{NetworkReport, collect_all};
+use sandbox_core::network::NetworkReport;
 use sandbox_core::notify::{Notification, blocked_bursts, diff, recent_blocked};
-use sandbox_core::overview::{DataSource, HostedAdapter, Overview, load_many, within_budget};
+use sandbox_core::overview::{DataSource, HostedAdapter, Overview, load_many};
+use sandbox_core::refresh::{Cadence, MIN_CYCLE_GAP, collect_all_insights, collect_all_network};
 use sandbox_core::remote::{HostState, HostStatus};
 use sandbox_core::remote_hosts::RemoteSession;
 use sandbox_core::settings::Settings;
@@ -57,6 +65,9 @@ pub struct Watcher {
     trigger_rx: Mutex<Option<mpsc::Receiver<()>>>,
     /// Signalled after every completed refresh.
     refreshed: Notify,
+    /// The next cycle reads the network logs whatever the cadence says: set
+    /// by user-initiated refreshes.
+    force_network: AtomicBool,
     history: Mutex<History>,
     history_path: Option<PathBuf>,
     history_saved_at: Mutex<Option<Instant>>,
@@ -101,6 +112,7 @@ impl Watcher {
             trigger,
             trigger_rx: Mutex::new(Some(rx)),
             refreshed: Notify::new(),
+            force_network: AtomicBool::new(false),
             history: Mutex::new(history),
             history_path,
             history_saved_at: Mutex::new(None),
@@ -238,14 +250,18 @@ impl Watcher {
         let _ = self.trigger.try_send(());
     }
 
-    /// Refresh now and wait for it.
+    /// Refresh now, including the network logs, and wait for it. For the
+    /// user's Refresh button and after actions.
     pub async fn refresh_and_wait(&self) {
         let notified = self.refreshed.notified();
+        self.force_network.store(true, Ordering::SeqCst);
         self.poke();
         notified.await;
     }
 
-    /// Start the loop. Call once from setup.
+    /// Start the loop. Call once from setup. One cycle at a time: the next
+    /// one starts after the previous finished, at least [`MIN_CYCLE_GAP`]
+    /// after it began, and in any case after `poll_interval_secs`.
     pub fn start(self: &Arc<Self>) {
         let watcher = self.clone();
         let mut rx = self
@@ -255,15 +271,38 @@ impl Watcher {
             .take()
             .expect("start called twice");
         tauri::async_runtime::spawn(async move {
+            let settings = watcher.settings();
+            let mut cadence = Cadence::new(
+                MIN_CYCLE_GAP,
+                Duration::from_secs(settings.network_poll_interval_secs),
+            );
+            let mut exec_rate = ExecRate::new();
+            let debug_execs = metrics::debug_execs();
+            let mut cycle: u64 = 0;
             loop {
-                watcher.refresh().await;
+                cycle += 1;
+                let started = Instant::now();
+                let settings = watcher.settings();
+                cadence
+                    .set_network_interval(Duration::from_secs(settings.network_poll_interval_secs));
+                let force = watcher.force_network.swap(false, Ordering::SeqCst);
+                let network = cadence.network_due(started, force);
+                let running = watcher.refresh(network).await;
+                if debug_execs {
+                    eprintln!(
+                        "{}",
+                        metrics::describe(cycle, exec_rate.sample(), started.elapsed(), running)
+                    );
+                }
                 watcher.refreshed.notify_waiters();
-                let poll = Duration::from_secs(watcher.settings().poll_interval_secs);
+                let poll = Duration::from_secs(settings.poll_interval_secs);
                 tokio::select! {
                     _ = rx.recv() => {
-                        // Collapse bursts of triggers (events arrive in groups).
+                        // Collapse bursts of triggers (events arrive in groups),
+                        // then keep the minimum gap between cycle starts.
                         tokio::time::sleep(TRIGGER_DEBOUNCE).await;
                         while rx.try_recv().is_ok() {}
+                        tokio::time::sleep(cadence.delay_for_trigger(started, Instant::now())).await;
                     }
                     () = tokio::time::sleep(poll) => {}
                 }
@@ -271,7 +310,9 @@ impl Watcher {
         });
     }
 
-    async fn refresh(&self) {
+    /// One cycle. `network` says whether the network logs are read this
+    /// time. Returns the number of running, reachable containers.
+    async fn refresh(&self, network: bool) -> usize {
         let overview = match &self.mode {
             Mode::Mock(adapters) => {
                 let mut overview = load_many(adapters, DataSource::Mock, vec![]).await;
@@ -337,78 +378,44 @@ impl Watcher {
             };
             // Containers run at the same time; on a remote host each gets
             // REMOTE_TIMEOUT, so a host that stalls after its overview loaded
-            // cannot delay notifications or the next round. Transcripts are
-            // read from where the last refresh stopped, so a long one is
-            // caught up over a few rounds rather than re-read.
-            let insights = overview
-                .containers
-                .iter()
-                .filter(|c| {
-                    c.container.state.is_running()
-                        && c.last_seen_at.is_none()
-                        && !c.sessions.is_empty()
-                })
-                .filter_map(|c| {
-                    let (adapter, id) = self.adapter_for(&c.key).ok()?;
-                    let prices = &settings.prices;
-                    let cache = &self.transcripts;
-                    Some(async move {
-                        let insights = within_budget(
-                            &c.host,
-                            collect_insights(&adapter, &id, &c.key, &c.sessions, cache, prices),
-                        )
-                        .await
-                        .unwrap_or_default();
-                        (c, insights)
-                    })
-                });
-            for (c, insights) in futures::future::join_all(insights).await {
+            // cannot delay notifications or the next round. Transcripts were
+            // discovered by the probe and are read from where the last
+            // refresh stopped, so a long one is caught up over a few rounds
+            // rather than re-read.
+            let resolve = |key: &str| self.adapter_for(key).ok();
+            let insights =
+                collect_all_insights(&overview, &resolve, &self.transcripts, &settings.prices)
+                    .await;
+            for (key, insights) in insights {
                 let mut history = self.history.lock().expect("history poisoned");
-                changed = history.record_insights(&c.key, &insights) || changed;
+                changed = history.record_insights(&key, &insights) || changed;
             }
             self.save_history(changed);
         }
 
-        // Network logs: one more round trip, published separately.
-        // Adapters run at the same time, remote ones within REMOTE_TIMEOUT.
-        let collections = self.adapters().into_iter().map(|hosted| async move {
-            let collect = async {
-                let adapter = &hosted.adapter;
-                match adapter.list_containers(&ContainerFilter::running()).await {
-                    Ok(containers) => collect_all(adapter, &containers, Utc::now()).await,
-                    Err(_) => Vec::new(),
+        // Network logs: one exec per container, on their own interval,
+        // published separately. In between the last report stays.
+        if network {
+            let reports = collect_all_network(&self.adapters(), &overview, Utc::now()).await;
+            let counts = recent_blocked(&reports, Utc::now(), settings.blocked_burst_window_secs);
+            {
+                let mut previous_counts =
+                    self.blocked_counts.lock().expect("blocked counts poisoned");
+                if previous.is_some() {
+                    notifications.extend(blocked_bursts(
+                        &previous_counts,
+                        &counts,
+                        &overview,
+                        settings.blocked_burst_threshold,
+                        &settings.notifications,
+                        lang,
+                    ));
                 }
-            };
-            let mut reports = within_budget(&hosted.host, collect)
-                .await
-                .unwrap_or_default();
-            for report in &mut reports {
-                report.container_id = container_key(&hosted.host, &report.container_id);
+                *previous_counts = counts;
             }
-            reports
-        });
-        let reports: Vec<NetworkReport> = futures::future::join_all(collections)
-            .await
-            .into_iter()
-            .flatten()
-            .collect();
-        let counts = recent_blocked(&reports, Utc::now(), settings.blocked_burst_window_secs);
-        {
-            let mut previous_counts = self.blocked_counts.lock().expect("blocked counts poisoned");
-            if previous.is_some() {
-                notifications.extend(blocked_bursts(
-                    &previous_counts,
-                    &counts,
-                    &overview,
-                    settings.blocked_burst_threshold,
-                    &settings.notifications,
-                    lang,
-                ));
-            }
-            *previous_counts = counts;
+            *self.network.write().expect("network poisoned") = reports.clone();
+            let _ = self.app.emit(NETWORK_UPDATED, &reports);
         }
-        *self.network.write().expect("network poisoned") = reports.clone();
-        let _ = self.app.emit(NETWORK_UPDATED, &reports);
 
         for n in notifications {
             let _ = self
@@ -419,5 +426,6 @@ impl Watcher {
                 .body(&n.body)
                 .show();
         }
+        live_keys.len()
     }
 }

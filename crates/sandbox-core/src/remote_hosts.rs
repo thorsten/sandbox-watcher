@@ -104,6 +104,7 @@ pub fn stale_snapshot(
         .map(|mut c| {
             c.last_seen_at = Some(c.last_seen_at.unwrap_or(since));
             c.sessions.clear();
+            c.discovery = Default::default();
             c
         })
         .collect()

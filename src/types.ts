@@ -292,6 +292,8 @@ export interface NotificationSettings {
 
 export interface Settings {
   poll_interval_secs: number;
+  /** How often the network logs are read from each running container. */
+  network_poll_interval_secs: number;
   runtime_override: RuntimeKind | null;
   terminal: TerminalChoice;
   confirm_stop: boolean;

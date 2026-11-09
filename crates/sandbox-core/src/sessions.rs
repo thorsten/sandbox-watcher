@@ -6,6 +6,7 @@ use crate::Result;
 use crate::adapter::{ExecRequest, RuntimeAdapter};
 use crate::model::{AgentKind, Readiness, Session};
 use crate::sandbox::{parse_probe, status_probe_command};
+use crate::transcripts::SessionDiscovery;
 
 const SHELLS: &[&str] = &["sh", "bash", "zsh", "fish", "dash", "ash"];
 const WRAPPERS: &[&str] = &[
@@ -73,11 +74,13 @@ impl AgentKind {
     }
 }
 
-/// Readiness plus classified sessions of one container.
+/// Readiness plus classified sessions of one container, with what the
+/// probe learned about their transcripts.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct ContainerProbe {
     pub readiness: Readiness,
     pub sessions: Vec<Session>,
+    pub discovery: SessionDiscovery,
 }
 
 /// Run the status probe inside a running container.
@@ -92,17 +95,25 @@ pub async fn probe_container(
         return Ok(ContainerProbe::default());
     }
     let report = parse_probe(&output.stdout);
+    let sessions: Vec<Session> = report
+        .sessions
+        .into_iter()
+        .map(|(pid, command)| Session {
+            pid,
+            agent: AgentKind::classify(&command),
+            command,
+        })
+        .collect();
+    let discovery = SessionDiscovery::from_probe(
+        &sessions,
+        &report.clock,
+        report.transcripts,
+        report.has_discovery,
+    );
     Ok(ContainerProbe {
         readiness: report.readiness,
-        sessions: report
-            .sessions
-            .into_iter()
-            .map(|(pid, command)| Session {
-                pid,
-                agent: AgentKind::classify(&command),
-                command,
-            })
-            .collect(),
+        sessions,
+        discovery,
     })
 }
 
@@ -157,5 +168,9 @@ mod tests {
         assert_eq!(probe.sessions.len(), 2);
         assert_eq!(probe.sessions[0].agent, AgentKind::ClaudeCode);
         assert_eq!(probe.sessions[1].agent, AgentKind::Shell);
+        assert!(probe.discovery.errors.is_empty());
+        assert_eq!(probe.discovery.starts.len(), 2);
+        assert!(probe.discovery.starts[0].started_at.is_some());
+        assert_eq!(probe.discovery.listing.len(), 1, "one exec told it all");
     }
 }

@@ -1,5 +1,6 @@
 //! Network activity of a sandbox container, read from the logs sandbox keeps
-//! inside it and reported through `sandbox-container-tools network diagnostic`.
+//! inside it: the same files `sandbox-container-tools network diagnostic`
+//! prints, read with one `cat` script instead of three Node processes.
 //!
 //! Parsers are ports of sandbox 0.73.2's `network-diagnostics` module and
 //! stay line-compatible with it. See `fixtures/sandbox-logs/README.md`.
@@ -10,10 +11,11 @@ use std::sync::Arc;
 use chrono::{DateTime, Datelike, Duration, NaiveDateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 
-use crate::Result;
 use crate::adapter::{ExecRequest, RuntimeAdapter};
 use crate::model::{NetworkEntry, NetworkStatus, SandboxContainer};
-use crate::sandbox::CONTAINER_TOOLS_PATH;
+use crate::sandbox::{
+    CONTAINER_TOOLS_PATH, DNS_LOG_PATH, FIREWALL_LOG_PATH, PROXY_ACCESS_LOG_PATH,
+};
 
 /// Log files sandbox exposes via `network diagnostic <source>`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
@@ -33,7 +35,28 @@ impl NetworkSource {
         }
     }
 
-    /// Command that prints the log. Must run as root inside the container.
+    /// The file inside the container, root-owned
+    /// (`src/platform/container-system/diagnostics.ts`).
+    pub fn log_path(self) -> &'static str {
+        match self {
+            NetworkSource::Firewall => FIREWALL_LOG_PATH,
+            NetworkSource::Dns => DNS_LOG_PATH,
+            NetworkSource::ProxyAccess => PROXY_ACCESS_LOG_PATH,
+        }
+    }
+
+    fn from_key(key: &str) -> Option<Self> {
+        match key {
+            "firewall" => Some(NetworkSource::Firewall),
+            "dns" => Some(NetworkSource::Dns),
+            "proxy-access" => Some(NetworkSource::ProxyAccess),
+            _ => None,
+        }
+    }
+
+    /// Sandbox's own way to print the log: one Node process per source.
+    /// Kept for the event filter and the fixtures README; the watcher reads
+    /// the files with [`logs_command`].
     pub fn command(self) -> Vec<String> {
         vec![
             CONTAINER_TOOLS_PATH.into(),
@@ -42,10 +65,76 @@ impl NetworkSource {
             self.as_str().into(),
         ]
     }
+
+    const ALL: [NetworkSource; 3] = [
+        NetworkSource::Firewall,
+        NetworkSource::Dns,
+        NetworkSource::ProxyAccess,
+    ];
 }
 
-/// Prefix shared by every diagnostic exec, used to filter our own events.
+/// Prefix of sandbox's diagnostic execs (`sandbox network logs`), filtered
+/// from the event stream so a user running it does not trigger refreshes.
 pub const DIAGNOSTIC_COMMAND_PREFIX: &str = "sandbox-container-tools network diagnostic";
+
+/// `$0` of the log reading script, filtered from the event stream by the
+/// `sandbox-watcher-` prefix.
+pub const NETWORK_SENTINEL: &str = "sandbox-watcher-network";
+
+/// Marker line between the three logs in the script output.
+const SECTION_MARKER: &str = "--- sandbox-watcher-network ";
+
+/// One exec that prints all three logs, each after a marker line
+/// `--- sandbox-watcher-network <source> <state>` where state is `ok`,
+/// `missing` (sandbox has not written the file, nothing recorded) or
+/// `denied` (exists but unreadable, counted as failed). Runs as root like
+/// sandbox's own diagnostic.
+pub fn logs_command() -> Vec<String> {
+    let mut script = String::new();
+    for source in NetworkSource::ALL {
+        let name = source.as_str();
+        let path = source.log_path();
+        script.push_str(&format!(
+            "f='{path}'; if [ ! -e \"$f\" ]; then echo '{SECTION_MARKER}{name} missing'; \
+             elif [ -r \"$f\" ]; then echo '{SECTION_MARKER}{name} ok'; cat \"$f\"; echo; \
+             else echo '{SECTION_MARKER}{name} denied'; fi; "
+        ));
+    }
+    script.push_str("exit 0");
+    vec!["sh".into(), "-c".into(), script, NETWORK_SENTINEL.into()]
+}
+
+/// Parse [`logs_command`] output into the raw log per source. `Err` means
+/// the file exists but could not be read.
+pub fn parse_logs(output: &str) -> BTreeMap<NetworkSource, std::result::Result<String, String>> {
+    let mut logs = BTreeMap::new();
+    let mut current: Option<NetworkSource> = None;
+    for line in output.lines() {
+        if let Some(rest) = line.strip_prefix(SECTION_MARKER) {
+            let mut words = rest.split_whitespace();
+            let (Some(key), Some(state)) = (words.next(), words.next()) else {
+                continue;
+            };
+            let Some(source) = NetworkSource::from_key(key) else {
+                continue;
+            };
+            let value = match state {
+                "ok" | "missing" => Ok(String::new()),
+                other => Err(format!("{} is {other}", source.log_path())),
+            };
+            current = value.is_ok().then_some(source);
+            logs.insert(source, value);
+            continue;
+        }
+        if let Some(source) = current
+            && let Some(Ok(text)) = logs.get_mut(&source)
+        {
+            text.push_str(line);
+            text.push('\n');
+        }
+    }
+    logs
+}
 
 /// Network entries of one container plus notes about collection quality.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -392,50 +481,33 @@ fn has_content(raw: &str) -> bool {
 // Collection
 // ---------------------------------------------------------------------------
 
-async fn read_source(
-    adapter: &Arc<dyn RuntimeAdapter>,
-    container_id: &str,
-    source: NetworkSource,
-) -> Result<String> {
-    let output = adapter
-        .exec(container_id, ExecRequest::new(source.command()).as_root())
-        .await?;
-    if output.exit_code != 0 {
-        return Err(crate::Error::Protocol(format!(
-            "network diagnostic {} exited with {}: {}",
-            source.as_str(),
-            output.exit_code,
-            output.stderr.trim()
-        )));
-    }
-    Ok(output.stdout)
-}
-
-/// Read and combine the network logs of one running container.
+/// Read and combine the network logs of one running container: one exec.
 pub async fn collect(
     adapter: &Arc<dyn RuntimeAdapter>,
     container: &SandboxContainer,
     now: DateTime<Utc>,
 ) -> NetworkReport {
     let id = container.id.as_str();
-    let (firewall_raw, dns_raw, proxy_raw) = futures::join!(
-        read_source(adapter, id, NetworkSource::Firewall),
-        read_source(adapter, id, NetworkSource::Dns),
-        read_source(adapter, id, NetworkSource::ProxyAccess),
-    );
+    let logs = match adapter
+        .exec(id, ExecRequest::new(logs_command()).as_root())
+        .await
+    {
+        Ok(output) if output.exit_code == 0 => parse_logs(&output.stdout),
+        _ => BTreeMap::new(),
+    };
 
     let mut failed = Vec::new();
     let mut unparsed = Vec::new();
-    let mut take = |source: NetworkSource, raw: Result<String>| match raw {
-        Ok(raw) => raw,
-        Err(_) => {
+    let mut take = |source: NetworkSource| match logs.get(&source) {
+        Some(Ok(raw)) => raw.clone(),
+        _ => {
             failed.push(source);
             String::new()
         }
     };
-    let firewall_raw = take(NetworkSource::Firewall, firewall_raw);
-    let dns_raw = take(NetworkSource::Dns, dns_raw);
-    let proxy_raw = take(NetworkSource::ProxyAccess, proxy_raw);
+    let firewall_raw = take(NetworkSource::Firewall);
+    let dns_raw = take(NetworkSource::Dns);
+    let proxy_raw = take(NetworkSource::ProxyAccess);
 
     let firewall = parse_firewall_log(&firewall_raw);
     let proxy = parse_proxy_log(&proxy_raw);
@@ -520,6 +592,35 @@ mod tests {
     }
 
     #[test]
+    fn logs_command_reads_all_three_files_in_one_exec() {
+        let cmd = logs_command();
+        assert_eq!(cmd[0], "sh");
+        assert_eq!(cmd.last().unwrap(), NETWORK_SENTINEL);
+        assert!(NETWORK_SENTINEL.starts_with("sandbox-watcher-"));
+        for source in NetworkSource::ALL {
+            assert!(cmd[2].contains(source.log_path()), "{source:?}");
+        }
+        assert!(!cmd[2].contains(CONTAINER_TOOLS_PATH), "no Node process");
+    }
+
+    #[test]
+    fn parses_log_sections_and_states() {
+        let out = "--- sandbox-watcher-network firewall missing\n\
+--- sandbox-watcher-network dns ok\n\
+Oct 30 08:00:05 dnsmasq[12]: reply example.com is 93.184.216.34\n\
+\n\
+--- sandbox-watcher-network proxy-access denied\n";
+        let logs = parse_logs(out);
+        assert_eq!(logs[&NetworkSource::Firewall], Ok(String::new()));
+        assert_eq!(
+            logs[&NetworkSource::Dns].as_deref().unwrap(),
+            "Oct 30 08:00:05 dnsmasq[12]: reply example.com is 93.184.216.34\n\n"
+        );
+        assert!(logs[&NetworkSource::ProxyAccess].is_err());
+        assert!(parse_logs("garbage\n").is_empty());
+    }
+
+    #[test]
     fn has_content_ignores_placeholders() {
         assert!(!has_content("No blocked requests recorded.\n"));
         assert!(!has_content("\n\n"));
@@ -555,6 +656,33 @@ mod collect_tests {
         assert_eq!(
             blocked,
             vec!["example.com", "evil.example", "telemetry.example"]
+        );
+    }
+
+    #[tokio::test]
+    async fn one_exec_per_container_and_denied_files_count_as_failed() {
+        let mock = MockAdapter::empty();
+        let mut c = mock_container("odd", 1, "running", "abc");
+        c.network_logs.remove(&NetworkSource::Firewall);
+        c.unreadable_network_logs.push(NetworkSource::Dns);
+        mock.add(c);
+        let adapter: Arc<dyn RuntimeAdapter> = Arc::new(mock.clone());
+        let containers = adapter
+            .list_containers(&ContainerFilter::all())
+            .await
+            .unwrap();
+        let report = collect(&adapter, &containers[0], Utc::now()).await;
+        assert_eq!(mock.exec_log().len(), 1, "one exec for all three logs");
+        assert_eq!(report.failed_sources, vec![NetworkSource::Dns]);
+        assert!(
+            report.unparsed_sources.is_empty(),
+            "a missing file is not a failure"
+        );
+        assert!(
+            report
+                .entries
+                .iter()
+                .any(|e| e.destination == "evil.example")
         );
     }
 

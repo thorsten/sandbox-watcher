@@ -347,6 +347,8 @@ export const de: Dictionary = {
   "settings.refresh": "Aktualisierung",
   "settings.pollInterval": "Abfrageintervall als Rückfall",
   "settings.pollHint": "Sekunden. Runtime-Ereignisse aktualisieren früher.",
+  "settings.networkInterval": "Intervall für Netzwerk-Logs",
+  "settings.networkHint": "Sekunden. Jedes Lesen kostet einen Befehl pro laufendem Container.",
   "settings.runtime": "Runtime",
   "settings.runtimeFollow": "Sandbox-Konfiguration folgen, sonst alle erkannten",
   "settings.runtimeOnly": "Nur {runtime}",

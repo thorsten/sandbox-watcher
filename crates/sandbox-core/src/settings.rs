@@ -87,8 +87,13 @@ impl Default for NotificationSettings {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default, rename_all = "snake_case")]
 pub struct Settings {
-    /// Fallback refresh when no runtime events arrive, in seconds.
+    /// Fallback refresh when no runtime events arrive, in seconds. Event
+    /// triggered refreshes keep at least `refresh::MIN_CYCLE_GAP` apart.
     pub poll_interval_secs: u64,
+    /// How often the network logs are read from each running container, in
+    /// seconds. Every read is one exec per container; the overview refresh
+    /// runs more often than this and keeps the last report in between.
+    pub network_poll_interval_secs: u64,
     /// Use only this runtime. `None` follows sandbox's config, then detection.
     pub runtime_override: Option<RuntimeKind>,
     pub terminal: TerminalChoice,
@@ -121,6 +126,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             poll_interval_secs: 10,
+            network_poll_interval_secs: 10,
             runtime_override: None,
             terminal: TerminalChoice::Auto,
             confirm_stop: true,
@@ -146,6 +152,7 @@ impl Settings {
     /// Clamp values into sane ranges. Applied after loading and before saving.
     pub fn normalised(mut self) -> Self {
         self.poll_interval_secs = self.poll_interval_secs.clamp(2, 300);
+        self.network_poll_interval_secs = self.network_poll_interval_secs.clamp(2, 600);
         self.blocked_burst_threshold = self.blocked_burst_threshold.clamp(1, 10_000);
         self.blocked_burst_window_secs = self.blocked_burst_window_secs.clamp(10, 3_600);
         self.history_retention_days = self.history_retention_days.clamp(1, 3_650);
@@ -224,8 +231,11 @@ mod tests {
         assert_eq!(Settings::from_json("not json"), s);
         assert_eq!(Settings::from_json("{}"), s);
         // Partial files keep defaults for missing keys.
-        let partial = Settings::from_json(r#"{"poll_interval_secs": 1, "theme": "dark"}"#);
+        let partial = Settings::from_json(
+            r#"{"poll_interval_secs": 1, "network_poll_interval_secs": 1, "theme": "dark"}"#,
+        );
         assert_eq!(partial.poll_interval_secs, 2, "clamped");
+        assert_eq!(partial.network_poll_interval_secs, 2, "clamped");
         assert_eq!(partial.theme, Theme::Dark);
         assert!(partial.confirm_stop);
         assert_eq!(partial.language, LanguageChoice::System);

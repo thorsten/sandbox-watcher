@@ -29,7 +29,7 @@ use crate::overview::{
 };
 use crate::remote_hosts::{RemoteHosts, Wake};
 use crate::runner::CommandOutput;
-use crate::sandbox::PROBE_SENTINEL;
+use crate::sandbox::{PROBE_SENTINEL, READY_FILE};
 use crate::settings::RemoteHost;
 
 pub use crate::remote_hosts::{REMOTE_TIMEOUT, stale_snapshot, test_remote_host};
@@ -56,9 +56,10 @@ pub struct LiveRuntime {
     start_times: StartTimeCache,
 }
 
-/// Events worth a UI refresh. Our own probe and diagnostic execs and the
-/// noise around them (`exec_start`, `exec_die`, `resize`, ...) are dropped so
-/// a refresh never triggers another refresh.
+/// Events worth a UI refresh. Our own execs (every script passes a
+/// `sandbox-watcher-*` sentinel as `$0`), sandbox's diagnostic and readiness
+/// execs, and the noise around them (`exec_start`, `exec_die`, `resize`, ...)
+/// are dropped so a refresh never triggers another refresh.
 pub fn is_relevant(event: &RuntimeEvent) -> bool {
     match &event.kind {
         RuntimeEventKind::Created
@@ -70,6 +71,7 @@ pub fn is_relevant(event: &RuntimeEvent) -> bool {
             !command.contains(PROBE_SENTINEL)
                 && !command.contains(DIAGNOSTIC_COMMAND_PREFIX)
                 && !command.contains("sandbox-watcher-")
+                && !command.contains(READY_FILE)
         }
         RuntimeEventKind::Other(_) => false,
     }
@@ -529,6 +531,19 @@ mod tests {
         ))));
     }
 
+    /// The readiness check inside `inspect` is our own exec too. Taken as
+    /// relevant, every refresh would trigger the next one.
+    #[test]
+    fn readiness_check_does_not_trigger_a_refresh() {
+        let readiness = crate::sandbox::readiness_command().join(" ");
+        assert!(!is_relevant(&event(RuntimeEventKind::ExecCreated(
+            readiness
+        ))));
+        assert!(!is_relevant(&event(RuntimeEventKind::ExecCreated(
+            "test -f /tmp/.sandbox-ready".into()
+        ))));
+    }
+
     #[test]
     fn preferred_runtime_narrows_candidates_only_when_present() {
         let all = vec![
@@ -627,6 +642,7 @@ mod tests {
                 agent: crate::model::AgentKind::ClaudeCode,
             }],
             last_seen_at: None,
+            discovery: Default::default(),
         }
     }
 

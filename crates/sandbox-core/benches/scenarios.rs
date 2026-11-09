@@ -13,6 +13,7 @@ use std::sync::Arc;
 use chrono::{DateTime, Duration, TimeZone, Utc};
 use sandbox_core::RuntimeAdapter;
 use sandbox_core::activity::{self, AgentInsight, ContainerActivity};
+use sandbox_core::adapter::ExecRequest;
 use sandbox_core::files::FileTouch;
 use sandbox_core::history::{ContainerRecord, History, HistoryQuery, SessionRecord, UsageScope};
 use sandbox_core::host::Host;
@@ -21,7 +22,8 @@ use sandbox_core::model::{AgentKind, Readiness, RuntimeKind, Session};
 use sandbox_core::overview::{
     ContainerOverview, DataSource, HostedAdapter, Overview, RuntimeStatus, load_many,
 };
-use sandbox_core::transcripts::TranscriptCache;
+use sandbox_core::sandbox::{parse_probe, status_probe_command};
+use sandbox_core::transcripts::{SessionDiscovery, TranscriptCache};
 use sandbox_core::usage::{CostSource, PriceTable, Usage, default_prices};
 
 /// Name of the mock container whose transcript grows.
@@ -34,6 +36,26 @@ pub fn claude_session() -> Vec<Session> {
         command: "claude".into(),
         agent: AgentKind::ClaudeCode,
     }]
+}
+
+/// What the status probe found about that session: its start time and the
+/// demo transcript. Comes with every overview in the app; here it is read
+/// once so the workloads measure the transcript work alone.
+pub async fn claude_discovery(adapter: &Arc<dyn RuntimeAdapter>) -> SessionDiscovery {
+    let out = adapter
+        .exec(
+            TRANSCRIPT_CONTAINER,
+            ExecRequest::new(status_probe_command()),
+        )
+        .await
+        .expect("probe");
+    let report = parse_probe(&out.stdout);
+    SessionDiscovery::from_probe(
+        &claude_session(),
+        &report.clock,
+        report.transcripts,
+        report.has_discovery,
+    )
 }
 
 pub fn prices() -> PriceTable {
@@ -104,11 +126,12 @@ pub async fn refresh_insights(
     cache: &TranscriptCache,
     prices: &PriceTable,
 ) -> Vec<AgentInsight> {
+    let discovery = claude_discovery(adapter).await;
     activity::collect_insights(
         adapter,
         TRANSCRIPT_CONTAINER,
         TRANSCRIPT_CONTAINER,
-        &claude_session(),
+        &discovery,
         cache,
         prices,
     )
@@ -121,11 +144,13 @@ pub async fn activity_panel(
     cache: &TranscriptCache,
     prices: &PriceTable,
 ) -> ContainerActivity {
+    let discovery = claude_discovery(adapter).await;
     activity::collect(
         adapter,
         TRANSCRIPT_CONTAINER,
         TRANSCRIPT_CONTAINER,
         &claude_session(),
+        &discovery,
         Utc::now(),
         prices,
         cache,
@@ -180,6 +205,7 @@ pub fn synthetic_overview(count: usize, now: DateTime<Utc>) -> Overview {
                     },
                 ],
                 last_seen_at: None,
+                discovery: Default::default(),
             }
         })
         .collect();

@@ -546,6 +546,7 @@ fn container_overviews() -> Vec<ContainerOverview> {
                     vec![]
                 },
                 last_seen_at: remote.then(|| at(2)),
+                discovery: Default::default(),
             }
         })
         .collect()
@@ -1016,6 +1017,7 @@ fn settings_samples() -> Vec<Settings> {
     );
     let full = Settings {
         poll_interval_secs: 5,
+        network_poll_interval_secs: 30,
         runtime_override: Some(RuntimeKind::Podman),
         terminal: TerminalChoice::Custom("wezterm start --cwd {dir}".into()),
         confirm_stop: false,

@@ -19,6 +19,10 @@ interface Slot<T> {
   error: string | null;
 }
 
+function documentHidden(): boolean {
+  return typeof document !== "undefined" && document.visibilityState === "hidden";
+}
+
 /**
  * Poll `load` with at most one request in flight.
  *
@@ -26,6 +30,9 @@ interface Slot<T> {
  *   previous one settled (success or failure), so slow requests never overlap and a failing
  *   backend is retried at the same fixed rate instead of piling up requests.
  * - `intervalMs === null` loads once and does not repeat.
+ * - While the document is hidden (window closed to the tray, minimised) nothing is scheduled;
+ *   every poll is a command inside a container. The first request after it becomes visible
+ *   again runs at once.
  * - A response that arrives after `load` or `intervalMs` changed, or after unmount, is dropped.
  * - When `load` changes, `data` and `error` start from null again; while `load` is stable
  *   (for example only `intervalMs` changed) the last result stays visible.
@@ -43,26 +50,54 @@ export function usePolling<T>(load: () => Promise<T>, intervalMs: number | null)
   useEffect(() => {
     let active = true;
     let timer: number | undefined;
+    let inFlight = false;
+    // A poll was due while the document was hidden; run it when it becomes visible.
+    let paused = false;
+
+    const schedule = () => {
+      if (intervalMs === null) return;
+      if (documentHidden()) {
+        paused = true;
+        return;
+      }
+      timer = window.setTimeout(() => void run(), intervalMs);
+    };
 
     const run = async () => {
+      inFlight = true;
       let next: Partial<Slot<T>>;
       try {
         next = { data: await load(), error: null };
       } catch (e) {
         next = { error: describeError(e) };
       }
+      inFlight = false;
       if (!active) return;
       setSlot((prev) => {
         const base = prev.load === load ? prev : { load, data: null, error: null };
         return { ...base, ...next };
       });
-      if (intervalMs !== null) timer = window.setTimeout(() => void run(), intervalMs);
+      schedule();
     };
 
+    const onVisibility = () => {
+      if (intervalMs === null) return;
+      if (documentHidden()) {
+        window.clearTimeout(timer);
+        paused = true;
+      } else if (paused) {
+        paused = false;
+        // A request still running schedules the next one itself when it settles.
+        if (!inFlight) void run();
+      }
+    };
+
+    document.addEventListener("visibilitychange", onVisibility);
     void run();
     return () => {
       active = false;
       window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
     // `generation` is not read inside: bumping it on refresh() restarts the cycle.
     // oxlint-disable-next-line react/exhaustive-effect-dependencies

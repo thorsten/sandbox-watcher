@@ -75,7 +75,7 @@ export function deferred<T>(): Deferred<T> {
 }
 
 /** Fire a DOM event on `el` inside act(). */
-export function fire(el: Element, type: string, init: EventInit = {}): Promise<void> {
+export function fire(el: EventTarget, type: string, init: EventInit = {}): Promise<void> {
   return act(async () => {
     el.dispatchEvent(new Event(type, { bubbles: true, ...init }));
   });

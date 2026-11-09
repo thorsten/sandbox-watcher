@@ -135,10 +135,10 @@ async fn get_activity(
     container_key: String,
 ) -> Result<ContainerActivity, CommandError> {
     let (adapter, container_id) = state.adapter_for(&container_key)?;
-    let sessions = state
+    let (sessions, discovery) = state
         .overview()
         .and_then(|o| o.containers.into_iter().find(|c| c.key == container_key))
-        .map(|c| c.sessions)
+        .map(|c| (c.sessions, c.discovery))
         .unwrap_or_default();
     let prices = state.settings().prices;
     Ok(sandbox_core::activity::collect(
@@ -146,6 +146,7 @@ async fn get_activity(
         &container_id,
         &container_key,
         &sessions,
+        &discovery,
         Utc::now(),
         &prices,
         state.transcripts(),
@@ -165,10 +166,10 @@ async fn get_turns(
     pid: Option<u32>,
 ) -> Result<Option<TurnReport>, CommandError> {
     let (adapter, container_id) = state.adapter_for(&container_key)?;
-    let sessions = state
+    let discovery = state
         .overview()
         .and_then(|o| o.containers.into_iter().find(|c| c.key == container_key))
-        .map(|c| c.sessions)
+        .map(|c| c.discovery)
         .unwrap_or_default();
     let prices = state.settings().prices;
     sandbox_core::activity::read_turns(
@@ -177,7 +178,7 @@ async fn get_turns(
         &container_key,
         agent,
         pid,
-        &sessions,
+        &discovery,
         state.transcripts(),
         &prices,
     )

@@ -111,6 +111,7 @@ export function usage(partial: Partial<Usage> = {}): Usage {
 export function settings(partial: Partial<Settings> = {}): Settings {
   return {
     poll_interval_secs: 10,
+    network_poll_interval_secs: 10,
     runtime_override: null,
     terminal: { kind: "auto" },
     confirm_stop: true,

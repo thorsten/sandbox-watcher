@@ -26,7 +26,7 @@ use crate::files::{
     FileEvent, FileTouch, OPENCODE_DUMP_CAP, aggregate, opencode_files_command, parse_claude,
     parse_codex, parse_opencode, parse_pi,
 };
-use crate::model::AgentKind;
+use crate::model::{AgentKind, Session};
 use crate::sandbox::CONTAINER_HOME;
 use crate::usage::{
     ClaudeCall, PriceTable, Sample, Usage, claude_call, claude_usage_from_calls, codex_totals,
@@ -34,11 +34,10 @@ use crate::usage::{
 };
 use crate::{Error, Result};
 
-/// `$0` of the listing and tail scripts, filtered from the event stream by
-/// the shared `sandbox-watcher-` prefix.
+/// `$0` of the transcript tail scripts, filtered from the event stream by
+/// the shared `sandbox-watcher-` prefix. Listing and session clock are part
+/// of the status probe (`sandbox::status_probe_command`).
 pub const TRANSCRIPT_SENTINEL: &str = "sandbox-watcher-transcript";
-/// `$0` of the session clock script.
-pub const CLOCK_SENTINEL: &str = "sandbox-watcher-clock";
 /// `$0` of the chunk reader.
 pub const CHUNK_SENTINEL: &str = "sandbox-watcher-chunk";
 
@@ -80,24 +79,25 @@ pub(crate) fn agent_from_key(key: &str) -> Option<AgentKind> {
     }
 }
 
-/// Lists the newest transcripts per agent as `agent|mtime|size|inode|path`.
+/// Shell fragment listing the newest transcripts per agent as
+/// `agent|mtime|size|inode|path`, one per line. Part of the status probe
+/// (`sandbox::status_probe_command`), so a refresh learns about transcripts
+/// without an exec of its own.
 /// Locations: Claude Code `~/.claude/projects/<cwd>/<session>.jsonl`,
 /// Codex `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`,
 /// Pi `~/.pi/agent/sessions/<cwd>/<session>.jsonl`,
 /// OpenCode `~/.local/share/opencode/storage/message/<session>/` (a directory,
 /// size and inode 0).
-pub fn list_command() -> Vec<String> {
+pub fn listing_script() -> String {
     let home = CONTAINER_HOME;
-    let script = format!(
+    format!(
         r#"list() {{ a=$1; shift; ls -t "$@" 2>/dev/null | head -n {n} | while IFS= read -r f; do [ -n "$f" ] && printf '%s|%s|%s\n' "$a" "$(stat -c '%Y|%s|%i' "$f" 2>/dev/null || echo '0|0|0')" "$f"; done; }}
 list claude {home}/.claude/projects/*/*.jsonl
 list codex {home}/.codex/sessions/*/*/*/*.jsonl {home}/.codex/sessions/*.jsonl
 list pi {home}/.pi/agent/sessions/*/*.jsonl
-ls -td {home}/.local/share/opencode/storage/message/*/ 2>/dev/null | head -n {n} | while IFS= read -r d; do d=${{d%/}}; printf 'opencode|%s|0|0|%s\n' "$(stat -c %Y "$d" 2>/dev/null || echo 0)" "$d"; done
-exit 0"#,
+ls -td {home}/.local/share/opencode/storage/message/*/ 2>/dev/null | head -n {n} | while IFS= read -r d; do d=${{d%/}}; printf 'opencode|%s|0|0|%s\n' "$(stat -c %Y "$d" 2>/dev/null || echo 0)" "$d"; done"#,
         n = LISTED_PER_AGENT
-    );
-    vec!["sh".into(), "-c".into(), script, TRANSCRIPT_SENTINEL.into()]
+    )
 }
 
 fn epoch(value: &str) -> Option<DateTime<Utc>> {
@@ -105,7 +105,7 @@ fn epoch(value: &str) -> Option<DateTime<Utc>> {
     (t > 0).then(|| Utc.timestamp_opt(t, 0).single()).flatten()
 }
 
-/// Parse [`list_command`] output. Newest first within an agent.
+/// Parse [`listing_script`] output. Newest first within an agent.
 pub fn parse_listing(output: &str) -> Vec<ListedTranscript> {
     output
         .lines()
@@ -139,22 +139,17 @@ pub struct SessionClock {
     pub open_files: Vec<String>,
 }
 
-/// Script printing `C|now|hz|uptime`, then `S|pid|starttime` per session pid
-/// and `F|pid|path` for every transcript the process holds open. Pids are
-/// passed as arguments, never spliced into the script.
-pub fn clock_command(pids: &[u32]) -> Vec<String> {
-    let script = r#"hz=$(getconf CLK_TCK 2>/dev/null || echo 100); up=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo 0); now=$(date +%s); echo "C|$now|$hz|$up"; pids=$*; for p in $pids; do st=$(cat "/proc/$p/stat" 2>/dev/null) || continue; rest=${st##*)}; set -- $rest; echo "S|$p|${20}"; for fd in /proc/$p/fd/*; do l=$(readlink "$fd" 2>/dev/null) || continue; case "$l" in *.jsonl) echo "F|$p|$l";; esac; done; done; exit 0"#;
-    let mut command = vec![
-        "sh".to_string(),
-        "-c".to_string(),
-        script.to_string(),
-        CLOCK_SENTINEL.to_string(),
-    ];
-    command.extend(pids.iter().map(u32::to_string));
-    command
+/// Shell fragment printing `C|now|hz|uptime`, then `S|pid|starttime` per
+/// pid in the shell word list `pids` and `F|pid|path` for every transcript
+/// the process holds open. `pids` is a shell expression (such as `$pids`)
+/// expanded inside the container, never data spliced from outside.
+pub fn clock_script(pids: &str) -> String {
+    format!(
+        r#"hz=$(getconf CLK_TCK 2>/dev/null || echo 100); up=$(cut -d' ' -f1 /proc/uptime 2>/dev/null || echo 0); now=$(date +%s); echo "C|$now|$hz|$up"; for p in {pids}; do st=$(cat "/proc/$p/stat" 2>/dev/null) || continue; rest=${{st##*)}}; set -- $rest; echo "S|$p|${{20}}"; for fd in /proc/$p/fd/*; do l=$(readlink "$fd" 2>/dev/null) || continue; case "$l" in *.jsonl) echo "F|$p|$l";; esac; done; done"#
+    )
 }
 
-/// Parse [`clock_command`] output. Start times are on the container's clock,
+/// Parse [`clock_script`] output. Start times are on the container's clock,
 /// like the transcript timestamps they are compared with.
 pub fn parse_clock(output: &str) -> HashMap<u32, SessionClock> {
     let mut hz = 100f64;
@@ -254,6 +249,61 @@ pub struct SessionStart {
     pub agent: AgentKind,
     pub started_at: Option<DateTime<Utc>>,
     pub open_files: Vec<String>,
+}
+
+/// Everything the status probe tells about who is running: the sessions
+/// with their start times and open transcripts, plus the transcript
+/// listing. Comes with the overview, so the history refresh and the
+/// Activity panel read transcripts without discovering them again.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct SessionDiscovery {
+    pub starts: Vec<SessionStart>,
+    pub listing: Vec<ListedTranscript>,
+    /// Why the listing may be incomplete, e.g. the probe carried no
+    /// discovery sections.
+    pub errors: Vec<String>,
+}
+
+impl SessionDiscovery {
+    /// Combine the classified sessions with the probe's clock and listing.
+    /// `known` is false when the probe reported no discovery sections.
+    pub fn from_probe(
+        sessions: &[Session],
+        clock: &HashMap<u32, SessionClock>,
+        listing: Vec<ListedTranscript>,
+        known: bool,
+    ) -> Self {
+        let starts = sessions
+            .iter()
+            .map(|s| {
+                let c = clock.get(&s.pid).cloned().unwrap_or_default();
+                SessionStart {
+                    pid: s.pid,
+                    agent: s.agent,
+                    started_at: c.started_at,
+                    open_files: c.open_files,
+                }
+            })
+            .collect();
+        let errors = if known || sessions.is_empty() {
+            vec![]
+        } else {
+            vec!["probe reported no transcript listing".to_string()]
+        };
+        Self {
+            starts,
+            listing,
+            errors,
+        }
+    }
+
+    /// Agents with at least one running session.
+    pub fn agents(&self) -> Vec<AgentKind> {
+        let mut agents: Vec<AgentKind> = self.starts.iter().map(|s| s.agent).collect();
+        agents.sort_by_key(|a| a.label());
+        agents.dedup();
+        agents
+    }
 }
 
 /// Decide who wrote a transcript. `last_written` is the newest line time when
@@ -601,6 +651,11 @@ pub fn parse_chunk(output: &str) -> Option<(u64, u64, &str)> {
 #[derive(Default)]
 pub struct TranscriptCache {
     states: Mutex<HashMap<(String, String), TranscriptState>>,
+    /// Project directory inside the container per scope. Mounts do not
+    /// change while a container exists, so one `inspect` per container is
+    /// enough; before, every refresh inspected again and the readiness exec
+    /// inside `inspect` loaded the container.
+    project_dirs: Mutex<HashMap<String, Option<String>>>,
 }
 
 async fn run(
@@ -778,6 +833,36 @@ impl TranscriptCache {
     /// Forget every scope not in `scopes` (containers that went away).
     pub fn retain_scopes(&self, scopes: &[&str]) {
         self.lock().retain(|(s, _), _| scopes.contains(&s.as_str()));
+        self.project_dirs
+            .lock()
+            .expect("project dirs poisoned")
+            .retain(|s, _| scopes.contains(&s.as_str()));
+    }
+
+    /// Project directory as seen inside the container (identity mount),
+    /// from one `inspect` per scope; a failed inspect is retried next time.
+    pub async fn project_dir(
+        &self,
+        adapter: &Arc<dyn RuntimeAdapter>,
+        container_id: &str,
+        scope: &str,
+    ) -> Option<String> {
+        if let Some(known) = self
+            .project_dirs
+            .lock()
+            .expect("project dirs poisoned")
+            .get(scope)
+        {
+            return known.clone();
+        }
+        let Ok(dir) = crate::activity::project_container_dir(adapter, container_id).await else {
+            return None;
+        };
+        self.project_dirs
+            .lock()
+            .expect("project dirs poisoned")
+            .insert(scope.to_string(), dir.clone());
+        dir
     }
 
     pub fn len(&self) -> usize {
@@ -821,15 +906,15 @@ junk\n";
         assert_eq!(list[0].mtime.unwrap().timestamp(), 1_761_818_400);
         assert!(list[1].mtime.is_none(), "0 means unknown");
         assert_eq!(list[2].agent, AgentKind::OpenCode);
-        assert!(list_command().last().unwrap() == TRANSCRIPT_SENTINEL);
-        assert!(list_command()[2].contains("stat -c '%Y|%s|%i'"));
+        assert!(listing_script().contains(".claude/projects"));
+        assert!(listing_script().contains("stat -c '%Y|%s|%i'"));
     }
 
     #[test]
     fn clock_gives_start_times_and_open_files() {
-        let cmd = clock_command(&[4242, 4300]);
-        assert_eq!(cmd[3], CLOCK_SENTINEL);
-        assert_eq!(&cmd[4..], &["4242", "4300"]);
+        let script = clock_script("$pids");
+        assert!(script.contains("for p in $pids; do"));
+        assert!(script.contains("/proc/$p/stat") && script.contains("/proc/$p/fd/*"));
         // now = 10:00:00Z, uptime 5000 s, 100 Hz: 4242 started at tick 400000 = 4000 s after boot.
         let out = "C|1761818400|100|5000.25\nS|4242|400000\nF|4242|/home/sandbox/.codex/sessions/2026/10/30/rollout-a.jsonl\nS|4300|420000\nS|bad|1\n";
         let clock = parse_clock(out);
@@ -1059,17 +1144,25 @@ junk\n";
         assert!(parse_chunk("nope").is_none());
     }
 
+    /// The transcript listing as the status probe reports it.
+    async fn listing(adapter: &Arc<dyn RuntimeAdapter>) -> Vec<ListedTranscript> {
+        let (_, out) = run(
+            adapter,
+            "sandbox-web-shop",
+            crate::sandbox::status_probe_command(),
+        )
+        .await
+        .unwrap();
+        crate::sandbox::parse_probe(&out).transcripts
+    }
+
     #[tokio::test]
     async fn cache_reads_incrementally_from_the_mock() {
         use crate::mock::MockAdapter;
         let mock = MockAdapter::demo();
         let adapter: Arc<dyn RuntimeAdapter> = Arc::new(mock.clone());
         let cache = TranscriptCache::default();
-        let listing = run(&adapter, "sandbox-web-shop", list_command())
-            .await
-            .unwrap()
-            .1;
-        let listed = parse_listing(&listing).remove(0);
+        let listed = listing(&adapter).await.remove(0);
         let facts = cache
             .sync(&adapter, "sandbox-web-shop", "k", &listed)
             .await
@@ -1085,11 +1178,7 @@ junk\n";
 
         // The agent appends a line: only the new bytes are read and summed.
         mock.append_transcript(LINE_B);
-        let listing = run(&adapter, "sandbox-web-shop", list_command())
-            .await
-            .unwrap()
-            .1;
-        let grown = parse_listing(&listing).remove(0);
+        let grown = listing(&adapter).await.remove(0);
         assert!(grown.size > listed.size);
         cache
             .sync(&adapter, "sandbox-web-shop", "k", &grown)
@@ -1111,11 +1200,7 @@ junk\n";
 
         // The file is replaced by a shorter one: read again, earlier totals kept.
         mock.replace_transcript(LINE_A);
-        let listing = run(&adapter, "sandbox-web-shop", list_command())
-            .await
-            .unwrap()
-            .1;
-        let replaced = parse_listing(&listing).remove(0);
+        let replaced = listing(&adapter).await.remove(0);
         let facts = cache
             .sync(&adapter, "sandbox-web-shop", "k", &replaced)
             .await

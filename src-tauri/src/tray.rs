@@ -242,6 +242,7 @@ mod tests {
                 })
                 .collect(),
             last_seen_at: None,
+            discovery: Default::default(),
         }
     }
 

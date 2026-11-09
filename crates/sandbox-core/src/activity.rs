@@ -19,8 +19,8 @@ use crate::model::{AgentKind, MountRole, Session};
 use crate::mounts::classify;
 pub use crate::transcripts::TRANSCRIPT_SENTINEL;
 use crate::transcripts::{
-    Attribution, Coverage, ListedTranscript, SLACK, SessionStart, TranscriptCache, TranscriptFacts,
-    attribute, clock_command, list_command, parse_clock, parse_listing,
+    Attribution, Coverage, ListedTranscript, SLACK, SessionDiscovery, SessionStart,
+    TranscriptCache, TranscriptFacts, attribute,
 };
 use crate::turns::{TurnReport, parse_turns, turns_command};
 use crate::usage::{PriceTable, Usage};
@@ -1045,66 +1045,6 @@ async fn run(
     Ok((out.exit_code, out.stdout))
 }
 
-/// Everything the container can tell about who is running: the sessions with
-/// their start times and open transcripts, plus the transcript listing.
-struct Discovery {
-    starts: Vec<SessionStart>,
-    listing: Vec<ListedTranscript>,
-    errors: Vec<String>,
-}
-
-async fn discover(
-    adapter: &Arc<dyn RuntimeAdapter>,
-    container_id: &str,
-    sessions: &[Session],
-) -> Discovery {
-    let mut errors = Vec::new();
-    let pids: Vec<u32> = sessions.iter().map(|s| s.pid).collect();
-    let (list_result, clock_result) = futures::join!(
-        run(adapter, container_id, list_command()),
-        run(adapter, container_id, clock_command(&pids)),
-    );
-    let clock = match clock_result {
-        Ok((0, out)) => parse_clock(&out),
-        Ok((code, _)) => {
-            errors.push(format!("session clock exited with {code}"));
-            HashMap::new()
-        }
-        Err(e) => {
-            errors.push(format!("session clock failed: {e}"));
-            HashMap::new()
-        }
-    };
-    let starts = sessions
-        .iter()
-        .map(|s| {
-            let c = clock.get(&s.pid).cloned().unwrap_or_default();
-            SessionStart {
-                pid: s.pid,
-                agent: s.agent,
-                started_at: c.started_at,
-                open_files: c.open_files,
-            }
-        })
-        .collect();
-    let listing = match list_result {
-        Ok((0, out)) => parse_listing(&out),
-        Ok((code, _)) => {
-            errors.push(format!("transcript listing exited with {code}"));
-            vec![]
-        }
-        Err(e) => {
-            errors.push(format!("transcript listing failed: {e}"));
-            vec![]
-        }
-    };
-    Discovery {
-        starts,
-        listing,
-        errors,
-    }
-}
-
 /// A transcript that a running session wrote, after reading it.
 struct TranscriptView {
     listed: ListedTranscript,
@@ -1134,7 +1074,7 @@ async fn read_transcripts(
     adapter: &Arc<dyn RuntimeAdapter>,
     container_id: &str,
     scope: &str,
-    discovery: &Discovery,
+    discovery: &SessionDiscovery,
     cache: &TranscriptCache,
     errors: &mut Vec<String>,
 ) -> Vec<TranscriptView> {
@@ -1198,7 +1138,7 @@ async fn read_transcripts(
 /// Turn-by-turn detail of one transcript. `pid` picks the transcript of that
 /// session; without it, or when none is attributed to it, the agent's newest
 /// transcript is read. Reads the whole file, so it runs when the user asks
-/// for it, not on each refresh.
+/// for it, not on each refresh. `discovery` is what the last probe found.
 #[allow(clippy::too_many_arguments)]
 pub async fn read_turns(
     adapter: &Arc<dyn RuntimeAdapter>,
@@ -1206,14 +1146,12 @@ pub async fn read_turns(
     scope: &str,
     agent: AgentKind,
     pid: Option<u32>,
-    sessions: &[Session],
+    discovery: &SessionDiscovery,
     cache: &TranscriptCache,
     prices: &PriceTable,
 ) -> Result<Option<TurnReport>> {
-    let discovery = discover(adapter, container_id, sessions).await;
     let mut errors = Vec::new();
-    let views =
-        read_transcripts(adapter, container_id, scope, &discovery, cache, &mut errors).await;
+    let views = read_transcripts(adapter, container_id, scope, discovery, cache, &mut errors).await;
     let of_agent = views.iter().filter(|v| v.listed.agent == agent);
     let chosen = pid
         .and_then(|pid| {
@@ -1230,10 +1168,7 @@ pub async fn read_turns(
     let Some(command) = turns_command(agent, &source) else {
         return Ok(None);
     };
-    let project_dir = project_container_dir(adapter, container_id)
-        .await
-        .ok()
-        .flatten();
+    let project_dir = cache.project_dir(adapter, container_id, scope).await;
     let (code, out) = run(adapter, container_id, command).await?;
     if code != 0 {
         return Err(Error::Protocol(format!(
@@ -1264,28 +1199,24 @@ pub struct AgentInsight {
 }
 
 /// Usage and touched files for every transcript of a running session. Used
-/// by the watcher on every refresh to keep the history current. Reads only
-/// what was appended since the last refresh.
+/// by the watcher on every refresh to keep the history current. Works from
+/// the probe's `discovery`, so it costs no exec unless a transcript grew
+/// (then one chunk read per grown transcript).
 pub async fn collect_insights(
     adapter: &Arc<dyn RuntimeAdapter>,
     container_id: &str,
     scope: &str,
-    sessions: &[Session],
+    discovery: &SessionDiscovery,
     cache: &TranscriptCache,
     prices: &PriceTable,
 ) -> Vec<AgentInsight> {
-    if !sessions.iter().any(|s| s.agent.has_transcripts()) {
+    if !discovery.starts.iter().any(|s| s.agent.has_transcripts()) {
         cache.retain(scope, &[]);
         return vec![];
     }
-    let (discovery, project_dir) = futures::join!(
-        discover(adapter, container_id, sessions),
-        project_container_dir(adapter, container_id),
-    );
-    let project_dir = project_dir.ok().flatten();
+    let project_dir = cache.project_dir(adapter, container_id, scope).await;
     let mut errors = Vec::new();
-    let views =
-        read_transcripts(adapter, container_id, scope, &discovery, cache, &mut errors).await;
+    let views = read_transcripts(adapter, container_id, scope, discovery, cache, &mut errors).await;
     views
         .into_iter()
         .map(|v| AgentInsight {
@@ -1326,23 +1257,25 @@ pub async fn project_container_dir(
 }
 
 /// Gather everything for one running container. `scope` keys the transcript
-/// cache (the container key).
+/// cache (the container key); `discovery` is what the last probe found, so
+/// the panel costs the process listing, one tail per transcript and the git
+/// status.
 #[allow(clippy::too_many_arguments)]
 pub async fn collect(
     adapter: &Arc<dyn RuntimeAdapter>,
     container_id: &str,
     scope: &str,
     sessions: &[Session],
+    discovery: &SessionDiscovery,
     now: DateTime<Utc>,
     prices: &PriceTable,
     cache: &TranscriptCache,
 ) -> ContainerActivity {
     let mut errors = Vec::new();
 
-    let (ps_result, discovery, project_dir) = futures::join!(
+    let (ps_result, project_dir) = futures::join!(
         run(adapter, container_id, ps_command()),
-        discover(adapter, container_id, sessions),
-        project_container_dir(adapter, container_id),
+        cache.project_dir(adapter, container_id, scope),
     );
     errors.extend(discovery.errors.iter().cloned());
 
@@ -1379,9 +1312,8 @@ pub async fn collect(
     // Transcripts only for agents that actually have a session here, and only
     // those written since a session started, so a stale file from last week
     // never looks like current activity.
-    let project_dir_ref: Option<&str> = project_dir.as_ref().ok().and_then(|d| d.as_deref());
-    let views =
-        read_transcripts(adapter, container_id, scope, &discovery, cache, &mut errors).await;
+    let project_dir_ref: Option<&str> = project_dir.as_deref();
+    let views = read_transcripts(adapter, container_id, scope, discovery, cache, &mut errors).await;
     let mut agents = Vec::new();
     for view in views {
         let agent = view.listed.agent;
@@ -1417,13 +1349,6 @@ pub async fn collect(
         }
     }
 
-    let project_dir = match project_dir {
-        Ok(dir) => dir,
-        Err(e) => {
-            errors.push(format!("inspect failed: {e}"));
-            None
-        }
-    };
     let working_tree = match &project_dir {
         Some(dir) => match run(adapter, container_id, git_status_command(dir)).await {
             Ok((code, out)) => Some(parse_git_status(code, &out)),
@@ -1649,6 +1574,25 @@ P:{"id":"prt_5","messageID":"msg_2","type":"tool","callID":"call_b","tool":"edit
         assert!(dump[2].contains("part/"));
     }
 
+    /// What the probe found, combined with the sessions a test pretends are
+    /// running (the mock's clock knows pids 4242, 4300 and 4400).
+    async fn discovery_for(
+        adapter: &Arc<dyn RuntimeAdapter>,
+        container: &str,
+        sessions: &[Session],
+    ) -> SessionDiscovery {
+        let (_, out) = run(adapter, container, crate::sandbox::status_probe_command())
+            .await
+            .unwrap();
+        let report = crate::sandbox::parse_probe(&out);
+        SessionDiscovery::from_probe(
+            sessions,
+            &report.clock,
+            report.transcripts,
+            report.has_discovery,
+        )
+    }
+
     #[tokio::test]
     async fn collects_from_mock() {
         use crate::mock::MockAdapter;
@@ -1661,6 +1605,7 @@ P:{"id":"prt_5","messageID":"msg_2","type":"tool","callID":"call_b","tool":"edit
             "sandbox-web-shop",
             "sandbox-web-shop",
             &probe.sessions,
+            &probe.discovery,
             Utc::now(),
             &crate::usage::default_prices(),
             &cache,
@@ -1714,10 +1659,10 @@ P:{"id":"prt_5","messageID":"msg_2","type":"tool","callID":"call_b","tool":"edit
         use crate::sessions::probe_container;
         let prices = crate::usage::default_prices();
         let cache = TranscriptCache::default();
-        let sessions = probe_container(&adapter, "sandbox-web-shop")
+        let discovery = probe_container(&adapter, "sandbox-web-shop")
             .await
             .unwrap()
-            .sessions;
+            .discovery;
         let turns = |agent, pid| {
             read_turns(
                 &adapter,
@@ -1725,7 +1670,7 @@ P:{"id":"prt_5","messageID":"msg_2","type":"tool","callID":"call_b","tool":"edit
                 "sandbox-web-shop",
                 agent,
                 pid,
-                &sessions,
+                &discovery,
                 &cache,
                 &prices,
             )
@@ -1775,6 +1720,7 @@ P:{"id":"prt_5","messageID":"msg_2","type":"tool","callID":"call_b","tool":"edit
             "sandbox-web-shop",
             "k",
             &sessions,
+            &discovery_for(&adapter, "sandbox-web-shop", &sessions).await,
             Utc::now(),
             &prices,
             &cache,
@@ -1791,7 +1737,7 @@ P:{"id":"prt_5","messageID":"msg_2","type":"tool","callID":"call_b","tool":"edit
             &adapter,
             "sandbox-web-shop",
             "k",
-            &sessions,
+            &discovery_for(&adapter, "sandbox-web-shop", &sessions).await,
             &cache,
             &prices,
         )
@@ -1819,6 +1765,7 @@ P:{"id":"prt_5","messageID":"msg_2","type":"tool","callID":"call_b","tool":"edit
             "sandbox-web-shop",
             "k",
             &sessions,
+            &discovery_for(&adapter, "sandbox-web-shop", &sessions).await,
             Utc::now(),
             &prices,
             &cache,
@@ -1834,7 +1781,7 @@ P:{"id":"prt_5","messageID":"msg_2","type":"tool","callID":"call_b","tool":"edit
             &adapter,
             "sandbox-web-shop",
             "k",
-            &sessions,
+            &discovery_for(&adapter, "sandbox-web-shop", &sessions).await,
             &cache,
             &prices,
         )
@@ -1876,6 +1823,7 @@ P:{"id":"prt_5","messageID":"msg_2","type":"tool","callID":"call_b","tool":"edit
             "sandbox-web-shop",
             "k",
             &sessions,
+            &discovery_for(&adapter, "sandbox-web-shop", &sessions).await,
             Utc::now(),
             &prices,
             &cache,
@@ -1893,7 +1841,7 @@ P:{"id":"prt_5","messageID":"msg_2","type":"tool","callID":"call_b","tool":"edit
             &adapter,
             "sandbox-web-shop",
             "k",
-            &sessions,
+            &discovery_for(&adapter, "sandbox-web-shop", &sessions).await,
             &cache,
             &prices,
         )
@@ -1920,7 +1868,7 @@ P:{"id":"prt_5","messageID":"msg_2","type":"tool","callID":"call_b","tool":"edit
             &adapter,
             "sandbox-web-shop",
             "sandbox-web-shop",
-            &sessions,
+            &discovery_for(&adapter, "sandbox-web-shop", &sessions).await,
             &cache,
             &prices,
         )
@@ -1939,7 +1887,7 @@ P:{"id":"prt_5","messageID":"msg_2","type":"tool","callID":"call_b","tool":"edit
             &adapter,
             "sandbox-web-shop",
             "sandbox-web-shop",
-            &shell_only,
+            &discovery_for(&adapter, "sandbox-web-shop", &shell_only).await,
             &cache,
             &prices,
         )

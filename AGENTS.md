@@ -54,9 +54,19 @@ decisions are in `docs/adr/`. Read both before changing architecture.
   `inject_allowed_domains`, and the script only reads the remote file and
   replaces it as a SHA-256 compare-and-swap under `flock`. Keep both paths in
   step.
-- **Our own execs must not trigger refreshes.** The session probe carries
-  `PROBE_SENTINEL`, diagnostics carry `DIAGNOSTIC_COMMAND_PREFIX`; see
-  `is_relevant` in `live.rs` before adding another exec.
+- **Our own execs must not trigger refreshes, and every exec costs the
+  container a process.** Every script passes a `sandbox-watcher-*` sentinel
+  as `$0` (`PROBE_SENTINEL`, `NETWORK_SENTINEL`, `READY_SENTINEL`, ...) and
+  `is_relevant` in `live.rs` drops those events, plus sandbox's own
+  `network diagnostic` and `/tmp/.sandbox-ready` execs. Without that filter
+  one refresh triggers the next; that is what loaded idle sandboxes at 60 %
+  CPU before 0.9.2. The budget is in `tests/exec_budget.rs`: one exec per
+  running container per cycle (the status probe, which also carries the
+  session clock and the transcript listing), one more every
+  `network_poll_interval_secs` for the network logs, one chunk read per
+  transcript that grew. The Activity panel adds three per poll for the
+  selected container only. Before adding an exec, fold it into an existing
+  script; `SANDBOX_WATCHER_DEBUG_EXECS=1` prints the rate per refresh.
 - **Keep `src/types.ts` in sync** when a serialised Rust type changes.
   Serialisation is kebab-case for enums, flat for `ContainerOverview`.
   `crates/sandbox-core/tests/contracts.rs` writes `fixtures/contracts/`
@@ -124,9 +134,10 @@ of the file, mount with `src/test/dom.tsx` (`mount`, `rerender`, `unmount`,
 `advance`, `deferred`), fake timers with `vi.useFakeTimers` and answer each
 backend call with a `deferred` promise so slow, late and failing responses
 can be scripted. Polling panels go through `src/usePolling.ts`: one request
-in flight, the next one `intervalMs` after the previous settled, late
-answers dropped after key change, mode change or unmount, last data kept on
-error, `refresh()` for an immediate re-read after an action. Use it instead of
+in flight, the next one `intervalMs` after the previous settled, paused while
+the document is hidden (window closed to the tray), late answers dropped
+after key change, mode change or unmount, last data kept on error,
+`refresh()` for an immediate re-read after an action. Use it instead of
 `setInterval` for new polling.
 
 ## Verification expectations
@@ -176,7 +187,10 @@ fix the parser:
 `transcripts.rs` decides which running session wrote a transcript, from facts
 the container gives: an open file descriptor in `/proc/<pid>/fd` (Codex holds
 its rollout open), the process start time from `/proc/<pid>/stat`, and the
-first and last line times of the file. One candidate session is a
+first and last line times of the file. The first two and the transcript
+listing come with the status probe (`ContainerOverview.discovery`, not
+serialised), so neither the history refresh nor the Activity panel runs a
+discovery exec of its own. One candidate session is a
 `session` attribution; several are an `agent` attribution, which the UI and
 the history show as shared rather than guessing. A file last written before
 every session of its agent started is stale and never read or shown.

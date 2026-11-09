@@ -23,6 +23,29 @@ The `perf` job in `.github/workflows/ci.yml` runs the budgets in release
 mode on `ubuntu-latest` and uploads `perf.json` (90 days) for every commit,
 so a trend can be read from the artifacts without a dashboard.
 
+## Exec budget
+
+Wall-clock numbers describe the watcher's own work. What a container
+notices is the number of `exec` calls: each one starts a process inside it
+plus `runc init` and Docker's bookkeeping on the host, and three
+`sandbox-container-tools network diagnostic` calls per cycle were a Node
+process each. `tests/exec_budget.rs` runs one refresh cycle against the mock
+and counts, per running container:
+
+| Cycle                                   | Execs | What                                                       |
+| --------------------------------------- | ----- | ---------------------------------------------------------- |
+| steady                                  | 1     | status probe: readiness, sessions, clocks, transcript list |
+| every `network_poll_interval_secs` (10) | 2     | plus one `cat` of the three network logs                   |
+| a transcript grew                       | +1    | one chunk read per grown transcript                        |
+| Activity panel open (selected only)     | +3    | processes, transcript tail, git status, every 5 s          |
+
+Cycles start at least `MIN_CYCLE_GAP` (2 s) apart, however many runtime
+events arrive, and never overlap. Stopped containers and containers of
+unreachable hosts are not touched. `SANDBOX_WATCHER_DEBUG_EXECS=1` prints
+`execs`, `exec/s` and `exec/s per running container` after every refresh on
+stderr; measure on the host with
+`docker events --filter event=exec_create --since 10s --until 1s | wc -l`.
+
 ## Workloads
 
 | Case                        | What it does                                                                                       |

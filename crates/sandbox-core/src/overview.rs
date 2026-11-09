@@ -15,6 +15,7 @@ use crate::model::{Readiness, RuntimeInfo, RuntimeKind, SandboxContainer, Sessio
 use crate::remote::HostStatus;
 use crate::sandbox::TESTED_SANDBOX_VERSION;
 use crate::sessions::probe_container;
+use crate::transcripts::SessionDiscovery;
 
 /// How long one remote host may take to connect or to answer a refresh.
 pub const REMOTE_TIMEOUT: Duration = Duration::from_secs(10);
@@ -83,6 +84,11 @@ pub struct ContainerOverview {
     /// Set only for containers of an unreachable host, shown from cache.
     #[serde(default)]
     pub last_seen_at: Option<DateTime<Utc>>,
+    /// Session start times and the transcript listing from the same probe.
+    /// Internal: the history refresh and the Activity panel read from it,
+    /// the webview never sees it.
+    #[serde(skip)]
+    pub discovery: SessionDiscovery,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -320,6 +326,7 @@ async fn load_runtime(
                 readiness: probe.readiness,
                 sessions: probe.sessions,
                 last_seen_at: None,
+                discovery: probe.discovery,
             }
         })
         .collect();

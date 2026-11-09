@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { useCallback } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { advance, click, deferred, flush, mount, type Deferred } from "./test/dom";
+import { advance, click, deferred, fire, flush, mount, type Deferred } from "./test/dom";
 import { usePolling } from "./usePolling";
 
 /** Renders the hook state; `fetch` is called with the current key for every request. */
@@ -24,6 +24,12 @@ function Probe({
       </button>
     </output>
   );
+}
+
+/** Pretend the window was hidden (closed to the tray) or shown again. */
+async function setVisibility(state: "hidden" | "visible") {
+  Object.defineProperty(document, "visibilityState", { value: state, configurable: true });
+  await fire(document, "visibilitychange");
 }
 
 /** A fetch whose every call is settled by the test, in order. */
@@ -150,6 +156,50 @@ describe("usePolling", () => {
     await flush();
     await m.rerender(<Probe fetch={fetch} id="a" interval={null} />);
     expect(m.text()).toContain("data=kept");
+    await m.unmount();
+  });
+
+  it("stops polling while the document is hidden and resumes at once when it is shown", async () => {
+    const { fetch, calls } = controlled();
+    const m = await mount(<Probe fetch={fetch} id="a" interval={100} />);
+    calls[0]!.d.resolve("first");
+    await flush();
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    // Hidden with a poll scheduled: the timer is dropped and nothing runs.
+    await setVisibility("hidden");
+    await advance(1000);
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    // Shown again: one request at once, then the usual rhythm.
+    await setVisibility("visible");
+    expect(fetch).toHaveBeenCalledTimes(2);
+    calls[1]!.d.resolve("second");
+    await flush();
+    await advance(100);
+    expect(fetch).toHaveBeenCalledTimes(3);
+
+    // Hidden while a request is in flight: its answer lands, no poll follows,
+    // and showing the document again does not start a second request.
+    await setVisibility("hidden");
+    await setVisibility("visible");
+    expect(fetch).toHaveBeenCalledTimes(3);
+    calls[2]!.d.resolve("third");
+    await flush();
+    expect(m.text()).toContain("data=third");
+    await advance(100);
+    expect(fetch).toHaveBeenCalledTimes(4);
+
+    // Hidden while in flight, settled while still hidden: paused until shown.
+    await setVisibility("hidden");
+    calls[3]!.d.resolve("fourth");
+    await flush();
+    await advance(1000);
+    expect(fetch).toHaveBeenCalledTimes(4);
+    await setVisibility("visible");
+    expect(fetch).toHaveBeenCalledTimes(5);
+
+    await setVisibility("visible");
     await m.unmount();
   });
 
