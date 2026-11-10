@@ -3,6 +3,12 @@
 All notable changes to Sandbox Watcher. Generated from
 [Conventional Commits](https://www.conventionalcommits.org/) by `scripts/changelog.mjs`.
 
+## 0.10.0 (2026-11-10)
+
+### Features
+
+- **app:** "Check for Updates…" entry in the application menu ([770d2c0](https://github.com/thorsten/sandbox-watcher/commit/770d2c0bf3facada8d69b57bd66587e87fb3f50f))
+
 ## 0.9.2 (2026-11-09)
 
 ### Fixes
@@ -12,6 +18,12 @@ All notable changes to Sandbox Watcher. Generated from
 ### CI
 
 - bump pnpm/action-setup from 6.1.0 to 6.1.1 in the actions group ([1b0809c](https://github.com/thorsten/sandbox-watcher/commit/1b0809c6587438230258f7f14baca8d2bafbd85c))
+
+### Chores
+
+- **release:** v0.9.2 ([b2ecbc8](https://github.com/thorsten/sandbox-watcher/commit/b2ecbc89833bc433dcb13d157fa38f136f0f6c00))
+
+**Full changelog:** [v0.9.1...v0.9.2](https://github.com/thorsten/sandbox-watcher/compare/v0.9.1...v0.9.2)
 
 ## 0.9.1 (2026-11-04)
 
