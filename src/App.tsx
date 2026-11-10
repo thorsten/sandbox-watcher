@@ -11,6 +11,7 @@ import {
   onSelectContainer,
   onSettingsUpdated,
   onUpdateAvailable,
+  onUpdateCheck,
   onUpdateProgress,
   refreshNow,
   resolvedLanguage,
@@ -23,6 +24,7 @@ import { SettingsPanel } from "./components/SettingsPanel";
 import { Sidebar } from "./components/Sidebar";
 import { StopAllButton } from "./components/StopAllButton";
 import { UpdateBanner } from "./components/UpdateBanner";
+import { UpdateCheckNotice } from "./components/UpdateCheckNotice";
 import { AGENT_LABELS, summarize } from "./format";
 import { filterByHost, hostsInUse, pickSelected } from "./hosts";
 import { LanguageProvider, formatTime, setLanguage as applyToHelpers, t, tx } from "./i18n";
@@ -35,6 +37,7 @@ import type {
   Overview,
   ContainerOverview,
   Settings,
+  UpdateCheck,
   UpdateInfo,
 } from "./types";
 import { describeError } from "./errors";
@@ -55,6 +58,7 @@ export function App() {
   const [showHistory, setShowHistory] = useState(false);
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [dismissedVersion, setDismissedVersion] = useState<string | null>(null);
+  const [updateCheck, setUpdateCheck] = useState<UpdateCheck | null>(null);
   const [updateProgress, setUpdateProgress] = useState<{
     downloaded: number;
     total: number | null;
@@ -105,6 +109,17 @@ export function App() {
       onOpenSettings(() => !cancelled && setShowSettings(true)),
       onUpdateAvailable((u) => !cancelled && setUpdate(u)),
       onUpdateProgress((p) => !cancelled && setUpdateProgress(p)),
+      onUpdateCheck((c) => {
+        if (cancelled) return;
+        if (c.outcome === "available") {
+          // The user asked, so an earlier "Later" no longer hides the banner.
+          setUpdate(c.update);
+          setDismissedVersion(null);
+          setUpdateCheck(null);
+        } else {
+          setUpdateCheck(c);
+        }
+      }),
       onSelectContainer((id) => {
         if (cancelled) return;
         setSelectedId(id);
@@ -209,6 +224,9 @@ export function App() {
           </div>
         </header>
 
+        {updateCheck && (
+          <UpdateCheckNotice check={updateCheck} onDismiss={() => setUpdateCheck(null)} />
+        )}
         {update && update.version !== dismissedVersion && (
           <UpdateBanner
             update={update}

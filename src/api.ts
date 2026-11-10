@@ -10,6 +10,7 @@ import type {
   ContainerDetails,
   Settings,
   StopReport,
+  UpdateCheck,
   UpdateInfo,
   DetectedRuntime,
   DiagnosticsReport,
@@ -174,6 +175,11 @@ export function onUpdateAvailable(handler: (info: UpdateInfo) => void): Promise<
 
 export function onUpdateProgress(handler: (p: UpdateProgress) => void): Promise<UnlistenFn> {
   return listen<UpdateProgress>("update-progress", (e) => handler(e.payload));
+}
+
+/** The user picked "Check for Updates…" in the menu; every step of that check. */
+export function onUpdateCheck(handler: (check: UpdateCheck) => void): Promise<UnlistenFn> {
+  return listen<UpdateCheck>("update-check", (e) => handler(e.payload));
 }
 
 /** Open the project (no path) or a file inside it in the configured editor. */

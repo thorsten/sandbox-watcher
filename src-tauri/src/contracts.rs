@@ -5,11 +5,12 @@
 
 use std::path::PathBuf;
 
+use sandbox_core::CommandError;
 use serde::Serialize;
 use serde_json::{Value, json};
 
 use crate::AllowPreview;
-use crate::updates::{Progress, UpdateInfo};
+use crate::updates::{Progress, UpdateCheck, UpdateInfo};
 
 const UPDATE_ENV: &str = "SANDBOX_WATCHER_UPDATE_CONTRACTS";
 
@@ -57,6 +58,32 @@ fn update_info() {
                 current_version: "0.6.0".into(),
                 notes: None,
                 date: None,
+            },
+        ],
+    );
+}
+
+#[test]
+fn update_check() {
+    contract(
+        "UpdateCheck",
+        vec![
+            UpdateCheck::Checking,
+            UpdateCheck::Available {
+                update: UpdateInfo {
+                    version: "0.7.0".into(),
+                    current_version: "0.6.0".into(),
+                    notes: None,
+                    date: None,
+                },
+            },
+            UpdateCheck::UpToDate {
+                current_version: "0.7.0".into(),
+            },
+            UpdateCheck::Failed {
+                error: CommandError::UpdateCheckFailed {
+                    detail: "Could not fetch a valid release JSON from the remote".into(),
+                },
             },
         ],
     );

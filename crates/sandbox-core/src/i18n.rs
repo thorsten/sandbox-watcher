@@ -194,6 +194,13 @@ pub mod text {
         }
     }
 
+    pub fn menu_check_updates(l: Language) -> &'static str {
+        match l {
+            En => "Check for Updates…",
+            De => "Nach Updates suchen…",
+        }
+    }
+
     /// Labels of Tauri's predefined items, keyed by their builder name.
     pub fn menu_predefined(l: Language, item: &str) -> Option<&'static str> {
         match l {
@@ -399,6 +406,10 @@ mod tests {
             Some("Kopieren")
         );
         assert_eq!(text::menu_predefined(Language::De, "unknown"), None);
+        assert_eq!(
+            text::menu_check_updates(Language::De),
+            "Nach Updates suchen…"
+        );
     }
 
     #[test]

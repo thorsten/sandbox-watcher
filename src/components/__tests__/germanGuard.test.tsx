@@ -38,13 +38,14 @@ import { Sparkline } from "../Sparkline";
 import { StopAllButton } from "../StopAllButton";
 import { TurnsList, TurnsSection } from "../TurnsSection";
 import { UpdateBanner } from "../UpdateBanner";
+import { UpdateCheckNotice } from "../UpdateCheckNotice";
 
 const noop = vi.fn<() => void>();
 const de = { language: "de" as const };
 
 /** Words that only appear in the English dictionary. Product names and commands are not listed. */
 const ENGLISH =
-  /\b(Stop|Settings|Refresh|Close|Cancel|Show|Hide|Nothing|Running|Stopped|Install|Later|Follow|Remove|Save|Clear|History|Looking|Reading|Checking|unknown|last seen|not set|No active|No sandbox|will be interrupted|is available|you have|Select|Destination|Count|Window|Role|Access|Ports|Write to|Entries|Done|Environment|Outcome|Candidate|Started|Duration|Agent time|By agent|By project|Today|days|Allow blocked|minutes|hours|seconds|ago|turns?|files? changed|tool calls?|session|sessions)\b/;
+  /\b(Stop|Settings|Refresh|Close|Cancel|Show|Hide|Nothing|Running|Stopped|Install|Later|Dismiss|latest version|Follow|Remove|Save|Clear|History|Looking|Reading|Checking|unknown|last seen|not set|No active|No sandbox|will be interrupted|is available|you have|Select|Destination|Count|Window|Role|Access|Ports|Write to|Entries|Done|Environment|Outcome|Candidate|Started|Duration|Agent time|By agent|By project|Today|days|Allow blocked|minutes|hours|seconds|ago|turns?|files? changed|tool calls?|session|sessions)\b/;
 
 const unreachable: HostStatus = {
   state: "unreachable",
@@ -161,6 +162,28 @@ const trees: [string, () => ReactElement][] = [
         onDismiss={noop}
       />
     ),
+  ],
+  [
+    "UpdateCheckNotice up to date",
+    () => (
+      <UpdateCheckNotice
+        check={{ outcome: "up-to-date", current_version: "0.9.0" }}
+        onDismiss={noop}
+      />
+    ),
+  ],
+  [
+    "UpdateCheckNotice failed",
+    () => (
+      <UpdateCheckNotice
+        check={{ outcome: "failed", error: { code: "update-check-failed", detail: "x" } }}
+        onDismiss={noop}
+      />
+    ),
+  ],
+  [
+    "UpdateCheckNotice checking",
+    () => <UpdateCheckNotice check={{ outcome: "checking" }} onDismiss={noop} />,
   ],
   ["StopAllButton", () => <StopAllButton running={[running]} onChanged={noop} />],
   [

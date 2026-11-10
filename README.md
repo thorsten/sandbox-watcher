@@ -167,7 +167,9 @@ repeat it: not yet verified.
 ## Updates
 
 The app checks GitHub Releases on start and every six hours, shows the new
-version's notes in a banner, and installs on click. Downloads are verified
+version's notes in a banner, and installs on click. "Check for Updates…" in
+the application menu (Help menu on Windows and Linux) runs the check right
+away and also says when you are up to date. Downloads are verified
 against the public key in `src-tauri/tauri.conf.json` before installing.
 Supported for the macOS `.app`, the Windows installers and all three Linux
 formats; `.deb` and `.rpm` installs ask for administrator rights through

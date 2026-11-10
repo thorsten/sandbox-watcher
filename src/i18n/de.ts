@@ -94,6 +94,9 @@ export const de: Dictionary = {
   "update.later": "Später",
   "update.installing": "Installiere…",
   "update.install": "Installieren und neu starten",
+  "update.checking": "Suche nach Updates…",
+  "update.upToDate": "Sandbox Watcher {version} ist die neueste Version.",
+  "update.dismiss": "Schließen",
 
   "stop.stopping": "Stoppe…",
   "stop.all": "Alle stoppen",

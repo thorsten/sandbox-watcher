@@ -1,12 +1,15 @@
 //! Application menu: Tauri's default layout, with an About entry that shows
-//! our icon, version, license and website even in unbundled dev builds.
+//! our icon, version, license and website even in unbundled dev builds, and
+//! a "Check for Updates…" item next to it.
 
 use sandbox_core::i18n::{Language, text};
 use tauri::image::Image;
-use tauri::menu::{AboutMetadataBuilder, Menu, PredefinedMenuItem, Submenu};
+use tauri::menu::{AboutMetadataBuilder, Menu, MenuItemBuilder, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Runtime};
 
 const WEBSITE: &str = "https://thorsten.github.io/sandbox-watcher/";
+/// Id of the "Check for Updates…" item; `lib.rs` handles the click.
+pub const MENU_CHECK_UPDATES: &str = "menu-check-updates";
 
 pub fn build<R: Runtime>(app: &AppHandle<R>, lang: Language) -> tauri::Result<Menu<R>> {
     let item = |name: &str| text::menu_predefined(lang, name);
@@ -35,6 +38,8 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, lang: Language) -> tauri::Result<Me
         .comments(config.bundle.short_description.clone())
         .icon(icon)
         .build();
+    let check_updates =
+        MenuItemBuilder::with_id(MENU_CHECK_UPDATES, text::menu_check_updates(lang)).build(app)?;
 
     let window_menu = Submenu::with_items(
         app,
@@ -54,11 +59,15 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, lang: Language) -> tauri::Result<Me
         app,
         text::menu_help(lang),
         true,
-        &[&PredefinedMenuItem::about(
-            app,
-            Some(&text::menu_about(lang, &product_name)),
-            Some(about.clone()),
-        )?],
+        &[
+            &check_updates,
+            &PredefinedMenuItem::separator(app)?,
+            &PredefinedMenuItem::about(
+                app,
+                Some(&text::menu_about(lang, &product_name)),
+                Some(about.clone()),
+            )?,
+        ],
     )?;
 
     #[cfg(target_os = "macos")]
@@ -72,6 +81,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>, lang: Language) -> tauri::Result<Me
                 Some(&text::menu_about(lang, &product_name)),
                 Some(about),
             )?,
+            &check_updates,
             &PredefinedMenuItem::separator(app)?,
             &PredefinedMenuItem::services(app, item("services"))?,
             &PredefinedMenuItem::separator(app)?,

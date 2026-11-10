@@ -557,6 +557,16 @@ export interface UpdateInfo {
   date: string | null;
 }
 
+/**
+ * Payload of the `update-check` event: the steps of a check the user started
+ * from the native menu. Mirrors `updates::UpdateCheck` in the shell.
+ */
+export type UpdateCheck =
+  | { outcome: "checking" }
+  | { outcome: "available"; update: UpdateInfo }
+  | { outcome: "up-to-date"; current_version: string }
+  | { outcome: "failed"; error: CommandError };
+
 export interface FileTouch {
   path: string;
   reads: number;

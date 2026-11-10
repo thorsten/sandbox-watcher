@@ -12,6 +12,7 @@ import { ResourcesPanel } from "../ResourcesPanel";
 import { Sparkline } from "../Sparkline";
 import { StopAllButton } from "../StopAllButton";
 import { UpdateBanner } from "../UpdateBanner";
+import { UpdateCheckNotice } from "../UpdateCheckNotice";
 
 const noop = vi.fn<() => void>();
 const now = new Date("2026-10-30T12:00:00Z");
@@ -117,6 +118,46 @@ describe("UpdateBanner", () => {
       <UpdateBanner update={{ ...update, notes: null }} progress={null} onDismiss={noop} />,
     );
     expect(html).not.toContain("update-notes");
+  });
+});
+
+describe("UpdateCheckNotice", () => {
+  it("says that a check is running, without a dismiss button", () => {
+    const { text, html } = render(
+      <UpdateCheckNotice check={{ outcome: "checking" }} onDismiss={noop} />,
+    );
+    expect(text).toBe("Checking for updates…");
+    expect(html).not.toContain("<button");
+  });
+  it("names the current version when nothing is newer", () => {
+    const { text, html } = render(
+      <UpdateCheckNotice
+        check={{ outcome: "up-to-date", current_version: "0.9.2" }}
+        onDismiss={noop}
+      />,
+    );
+    expect(text).toBe("Sandbox Watcher 0.9.2 is the latest version. Dismiss");
+    expect(html).toContain("is-ok");
+  });
+  it("translates the error of a failed check", () => {
+    const { text, html } = render(
+      <UpdateCheckNotice
+        check={{
+          outcome: "failed",
+          error: { code: "update-check-failed", detail: "release JSON missing" },
+        }}
+        onDismiss={noop}
+      />,
+    );
+    expect(text).toBe("Could not check for updates: release JSON missing Dismiss");
+    expect(html).toContain("is-error");
+  });
+  it("leaves a found update to the banner", () => {
+    const update = { version: "1.0.0", current_version: "0.9.0", notes: null, date: null };
+    const { html } = render(
+      <UpdateCheckNotice check={{ outcome: "available", update }} onDismiss={noop} />,
+    );
+    expect(html).toBe("");
   });
 });
 

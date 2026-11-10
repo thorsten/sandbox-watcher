@@ -26,6 +26,7 @@ import { Sidebar } from "../Sidebar";
 import { StopAllButton } from "../StopAllButton";
 import { TurnsList } from "../TurnsSection";
 import { UpdateBanner } from "../UpdateBanner";
+import { UpdateCheckNotice } from "../UpdateCheckNotice";
 
 const noop = vi.fn<() => void>();
 const now = new Date("2026-10-30T12:00:00Z");
@@ -108,6 +109,22 @@ describe("German rendering", () => {
     expect(text).toContain("Sandbox Watcher 0.9.0 ist verfügbar");
     expect(text).toContain("du hast 0.8.0");
     expect(text).toContain("Installieren und neu starten");
+  });
+
+  it("update check notice", () => {
+    const upToDate = render(
+      <UpdateCheckNotice
+        check={{ outcome: "up-to-date", current_version: "0.9.2" }}
+        onDismiss={noop}
+      />,
+      de,
+    );
+    expect(upToDate.text).toBe("Sandbox Watcher 0.9.2 ist die neueste Version. Schließen");
+    const checking = render(
+      <UpdateCheckNotice check={{ outcome: "checking" }} onDismiss={noop} />,
+      de,
+    );
+    expect(checking.text).toBe("Suche nach Updates…");
   });
 
   it("detail pane", () => {

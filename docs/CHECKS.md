@@ -26,8 +26,9 @@ Two tests keep them honest without generating code:
    enum's wire values. Each enum list is guarded by an exhaustive `match`,
    so a new variant fails to compile until it has a sample. The test fails
    when a fixture differs from the current serialisation.
-   `src-tauri/src/contracts.rs` does the same for the three types that live
-   in the shell (`UpdateInfo`, `UpdateProgress`, `AllowPreview`); it runs in
+   `src-tauri/src/contracts.rs` does the same for the four types that live
+   in the shell (`UpdateInfo`, `UpdateProgress`, `UpdateCheck`,
+   `AllowPreview`); it runs in
    CI's app job, because the shell needs the system web view to compile.
 2. `scripts/check-contracts.mjs` (`pnpm check:contracts`) turns each sample
    into `const x: T.<Type> = <json>` in a temporary TypeScript project and
@@ -46,7 +47,7 @@ When you change a serialised Rust type:
 
 ```sh
 SANDBOX_WATCHER_UPDATE_CONTRACTS=1 cargo test -p sandbox-core --test contracts
-# for UpdateInfo, UpdateProgress or AllowPreview, on a machine that builds the shell:
+# for UpdateInfo, UpdateProgress, UpdateCheck or AllowPreview, on a machine that builds the shell:
 SANDBOX_WATCHER_UPDATE_CONTRACTS=1 cargo test -p sandbox-watcher contracts
 pnpm check:contracts        # now fails until src/types.ts matches
 ```

@@ -107,6 +107,9 @@ export const en = {
   "update.later": "Later",
   "update.installing": "Installing…",
   "update.install": "Install and restart",
+  "update.checking": "Checking for updates…",
+  "update.upToDate": "Sandbox Watcher {version} is the latest version.",
+  "update.dismiss": "Dismiss",
 
   // Stop buttons and the confirmation dialog.
   "stop.stopping": "Stopping…",

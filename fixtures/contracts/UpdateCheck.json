@@ -1,0 +1,28 @@
+{
+  "samples": [
+    {
+      "outcome": "checking"
+    },
+    {
+      "outcome": "available",
+      "update": {
+        "current_version": "0.6.0",
+        "date": null,
+        "notes": null,
+        "version": "0.7.0"
+      }
+    },
+    {
+      "current_version": "0.7.0",
+      "outcome": "up-to-date"
+    },
+    {
+      "error": {
+        "code": "update-check-failed",
+        "detail": "Could not fetch a valid release JSON from the remote"
+      },
+      "outcome": "failed"
+    }
+  ],
+  "type": "UpdateCheck"
+}

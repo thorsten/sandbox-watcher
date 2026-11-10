@@ -15,6 +15,10 @@ use tauri_plugin_updater::{Update, UpdaterExt};
 pub const UPDATE_AVAILABLE: &str = "update-available";
 /// Emitted with `{ downloaded, total }` while downloading.
 pub const UPDATE_PROGRESS: &str = "update-progress";
+/// Emitted with `UpdateCheck` for every step of a check the user started
+/// from the menu: the periodic check stays quiet when nothing is new, a
+/// requested one has to say so.
+pub const UPDATE_CHECK: &str = "update-check";
 
 const CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);
 const FIRST_CHECK_DELAY: Duration = Duration::from_secs(20);
@@ -31,6 +35,16 @@ pub struct UpdateInfo {
 pub struct Progress {
     pub downloaded: u64,
     pub total: Option<u64>,
+}
+
+/// Outcome of a check the user asked for, as the webview sees it.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "outcome", rename_all = "kebab-case")]
+pub enum UpdateCheck {
+    Checking,
+    Available { update: UpdateInfo },
+    UpToDate { current_version: String },
+    Failed { error: CommandError },
 }
 
 /// The update found by the last check, kept so "install" needs no second request.
@@ -85,6 +99,23 @@ pub async fn install(app: &AppHandle) -> Result<(), CommandError> {
             detail: e.to_string(),
         })?;
     app.restart();
+}
+
+/// A check started from the native menu. Reports every outcome through
+/// `UPDATE_CHECK`, including "up to date" and failures, so the user who
+/// asked gets an answer; a found update also goes through the usual banner.
+pub fn check_requested(app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let _ = app.emit(UPDATE_CHECK, UpdateCheck::Checking);
+        let outcome = match check(&app).await {
+            Ok(Some(update)) => UpdateCheck::Available { update },
+            Ok(None) => UpdateCheck::UpToDate {
+                current_version: app.package_info().version.to_string(),
+            },
+            Err(error) => UpdateCheck::Failed { error },
+        };
+        let _ = app.emit(UPDATE_CHECK, outcome);
+    });
 }
 
 /// Background loop: first check shortly after start, then every few hours.

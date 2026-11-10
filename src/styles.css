@@ -1245,6 +1245,19 @@ body,
   border-radius: 8px;
   background: var(--card);
 }
+.update-check {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+}
+.update-check.is-ok {
+  border-color: var(--ok);
+}
+.update-check.is-error {
+  border-color: var(--err);
+}
 .update-notes {
   margin: 0.4rem 0 0;
   padding-left: 1.2rem;

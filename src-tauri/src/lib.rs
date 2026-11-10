@@ -765,6 +765,12 @@ fn on_menu_event(app: &AppHandle, event: MenuEvent) {
     if tray::handle_menu_event(app, id) {
         return;
     }
+    if id == app_menu::MENU_CHECK_UPDATES {
+        // The answer appears in the window, so it has to be visible.
+        tray::show_main_window(app);
+        updates::check_requested(app.clone());
+        return;
+    }
     if id == tray::MENU_STOP_ALL {
         let watcher = app.state::<App>().inner().clone();
         tauri::async_runtime::spawn(async move {
