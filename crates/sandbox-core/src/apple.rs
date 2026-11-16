@@ -1,7 +1,8 @@
 //! `RuntimeAdapter` for Apple `container` (macOS 26+, Apple silicon), driven
 //! through its CLI. Commands and JSON shape follow sandbox 0.73.2's own
 //! adapter (`src/platform/container-runtime/apple/`). The runtime has no
-//! event stream and no stats API, which `capabilities()` reports.
+//! event stream, which `capabilities()` reports. Resource usage comes from
+//! `container stats`, which sandbox itself does not use.
 
 use std::collections::BTreeMap;
 use std::time::Duration;
@@ -164,6 +165,25 @@ pub fn parse_container(value: &Value) -> Option<(SandboxContainer, Vec<Mount>)> 
     Some((container, mounts))
 }
 
+/// Map one element of `container stats --format json --no-stream`.
+/// `None` when it has no id. The CLI omits fields it could not read; those
+/// count as zero. `cpuUtilization` is a fraction of one core, so 1.0 becomes
+/// 100 %, the same scale Docker uses.
+pub fn parse_stats(value: &Value, at: DateTime<Utc>) -> Option<ResourceSample> {
+    let bytes = |key: &str| value[key].as_u64().unwrap_or(0);
+    Some(ResourceSample {
+        container_id: value["id"].as_str()?.to_string(),
+        at,
+        cpu_percent: value["cpuUtilization"].as_f64().unwrap_or(0.0) * 100.0,
+        memory_used_bytes: bytes("memoryUsageBytes"),
+        memory_limit_bytes: value["memoryLimitBytes"].as_u64().filter(|l| *l > 0),
+        net_rx_bytes: bytes("networkRxBytes"),
+        net_tx_bytes: bytes("networkTxBytes"),
+        block_read_bytes: bytes("blockReadBytes"),
+        block_write_bytes: bytes("blockWriteBytes"),
+    })
+}
+
 fn parse_array(output: &str) -> Result<Vec<Value>> {
     let value: Value = serde_json::from_str(output.trim())
         .map_err(|e| Error::Protocol(format!("Apple container returned invalid JSON: {e}")))?;
@@ -185,7 +205,7 @@ impl RuntimeAdapter for AppleContainerAdapter {
     fn capabilities(&self) -> Capabilities {
         Capabilities {
             exec: true,
-            stats: false,
+            stats: true,
             logs: true,
             events: false,
             stop: true,
@@ -278,11 +298,15 @@ impl RuntimeAdapter for AppleContainerAdapter {
         })
     }
 
-    async fn stats(&self, _id: &str) -> Result<ResourceSample> {
-        Err(Error::Unsupported {
-            runtime: RuntimeKind::AppleContainer.to_string(),
-            operation: "stats".into(),
-        })
+    /// Takes about two seconds: the CLI samples twice to get the CPU rate.
+    async fn stats(&self, id: &str) -> Result<ResourceSample> {
+        let out = self
+            .run_ok(&["stats", "--format", "json", "--no-stream", id])
+            .await?;
+        parse_array(&out)?
+            .iter()
+            .find_map(|v| parse_stats(v, Utc::now()))
+            .ok_or_else(|| Error::Protocol(format!("no stats returned for {id}")))
     }
 
     async fn logs(&self, id: &str, options: LogOptions) -> Result<String> {

@@ -26,7 +26,7 @@ conventions.
 | Active sessions          | Marker files in `/tmp/sandbox-sessions/<pid>` inside the container, plus `/proc/<pid>/cmdline`          | Requires `exec` into the container. Stale markers are cleaned by sandbox. Command tells us the agent (claude, codex, opencode, pi, shell, …). |
 | Readiness                | `/tmp/.sandbox-ready` inside the container                                                              | Distinguishes "starting" from "ready".                                                                                                        |
 | Network traffic          | `exec` `/usr/local/bin/sandbox-container-tools network diagnostic <source>` and `network state` as root | Sources are squid proxy log, dnsmasq log, firewall (iptables) log. Sandbox aggregates blocked/allowed destinations with counts and last-seen. |
-| Resource usage           | Runtime stats API (CPU, memory, net I/O, block I/O)                                                     | Docker and Podman expose this. Apple `container` needs a fallback.                                                                            |
+| Resource usage           | Runtime stats API (CPU, memory, net I/O, block I/O)                                                     | Docker and Podman expose this. Apple `container` through `container stats`.                                                                   |
 | Container logs           | Runtime logs API                                                                                        | Startup diagnostics, proxy and firewall bootstrap.                                                                                            |
 | Mounts, ports, env names | `inspect`                                                                                               | Shows project path, extra host mounts, read-only flags. Env values are secrets, show names only.                                              |
 | User config              | `~/.config/sandbox/config.toml` or `%APPDATA%/sandbox/config.toml`                                      | Runtime choice, `allow_network`, persist paths. Read-only for us.                                                                             |
@@ -268,7 +268,7 @@ with no configuration.
 - `exec` requires root in the container for network diagnostics. Mitigation:
   make the network tab opt-in per runtime and degrade gracefully when exec
   is denied.
-- Apple `container` has no stats API and a different CLI surface. Mitigation:
+- Apple `container` has no event stream and a different CLI surface. Mitigation:
   feature-flag per adapter, hide what is not available.
 - Rootless Podman and Windows socket paths vary a lot. Mitigation: the
   Diagnostics section in Settings (0.8.0) shows what was probed and why it

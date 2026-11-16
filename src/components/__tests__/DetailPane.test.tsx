@@ -43,10 +43,13 @@ describe("DetailPane", () => {
   });
 
   it("hides Resources for runtimes without stats", () => {
+    const runtime = connected();
+    if (runtime.status !== "connected") throw new Error("fixture");
+    for (const r of runtime.runtimes) r.capabilities.stats = false;
     const { html } = render(
       <DetailPane
-        container={container({ runtime: "apple-container" })}
-        runtime={connected(["apple-container"])}
+        container={container()}
+        runtime={runtime}
         report={undefined}
         now={NOW}
         onChanged={noop}

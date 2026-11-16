@@ -103,8 +103,12 @@ $env:CONTAINER_HOST = "npipe:////./pipe/podman-mymachine"
 
 - Needs an Apple silicon Mac with macOS 26 or later, and the service must run:
   `container system start`.
-- The `container` CLI has no event stream and no stats API. The list refreshes
-  by polling at the interval set in Settings, and the Resources tab is hidden.
+- The `container` CLI has no event stream. The list refreshes by polling at
+  the interval set in Settings.
+- The Resources tab reads `container stats --format json --no-stream`. If it
+  stays empty, run that command in a terminal: older releases of `container`
+  do not have it, and releases without `cpuUtilization` in the output show
+  0 % CPU.
 - The `container` binary must be on the app's `PATH`; see
   [Environment variables are ignored](#environment-variables-are-ignored).
 

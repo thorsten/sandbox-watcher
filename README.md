@@ -121,11 +121,11 @@ When sandbox's user config sets `runtime`, only that runtime is used; set
 `SANDBOX_WATCHER_RUNTIME` to override. Otherwise every runtime that answers
 is shown, with a runtime chip on each container when there is more than one.
 
-| Runtime           | How it is reached                                                                                                               | Notes                                                                                       |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
-| Docker            | Engine API over the socket, named pipe or `DOCKER_HOST`; the active `docker context` when only the binary is found              | Full support: events, stats, logs                                                           |
-| Podman            | Docker-compatible API over the rootless or system socket, `CONTAINER_HOST`, or the machine socket from `podman machine inspect` | Full support                                                                                |
-| Apple `container` | The `container` CLI (`list`, `inspect`, `exec`, `logs`, `stop`)                                                                 | No event stream and no stats; the Resources tab is hidden and the list refreshes by polling |
+| Runtime           | How it is reached                                                                                                               | Notes                                          |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| Docker            | Engine API over the socket, named pipe or `DOCKER_HOST`; the active `docker context` when only the binary is found              | Full support: events, stats, logs              |
+| Podman            | Docker-compatible API over the rootless or system socket, `CONTAINER_HOST`, or the machine socket from `podman machine inspect` | Full support                                   |
+| Apple `container` | The `container` CLI (`list`, `inspect`, `exec`, `logs`, `stats`, `stop`)                                                        | No event stream; the list refreshes by polling |
 
 Conformance against real Docker and Podman runs in CI on Linux. Apple
 `container` can only be verified on an Apple silicon Mac running macOS 26:

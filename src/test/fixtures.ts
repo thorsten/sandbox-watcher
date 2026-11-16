@@ -82,7 +82,7 @@ export function connected(
       endpoint: `/var/run/${kind}.sock`,
       capabilities: {
         exec: true,
-        stats: kind !== "apple-container",
+        stats: true,
         logs: true,
         events: kind !== "apple-container",
         stop: true,

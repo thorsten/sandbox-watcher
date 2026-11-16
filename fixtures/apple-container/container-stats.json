@@ -1,0 +1,26 @@
+[
+  {
+    "blockReadBytes": 822624256,
+    "blockWriteBytes": 975872000,
+    "cpuUsageUsec": 1967200899,
+    "cpuUtilization": 3.7982550804815847,
+    "id": "sandbox-alpha",
+    "memoryLimitBytes": 8589934592,
+    "memoryUsageBytes": 4992421888,
+    "networkRxBytes": 411033034,
+    "networkTxBytes": 19308651,
+    "numProcesses": 122
+  },
+  {
+    "blockReadBytes": 594284544,
+    "blockWriteBytes": 458752,
+    "cpuUsageUsec": 4869580,
+    "cpuUtilization": 0.0056329717817696435,
+    "id": "sandbox-beta",
+    "memoryLimitBytes": 8589934592,
+    "memoryUsageBytes": 862425088,
+    "networkRxBytes": 127357,
+    "networkTxBytes": 382594,
+    "numProcesses": 29
+  }
+]
