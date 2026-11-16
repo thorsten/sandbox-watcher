@@ -3,11 +3,27 @@
 All notable changes to Sandbox Watcher. Generated from
 [Conventional Commits](https://www.conventionalcommits.org/) by `scripts/changelog.mjs`.
 
+## 0.11.0 (2026-11-16)
+
+### Features
+
+- **core:** resource usage for Apple container ([54ee411](https://github.com/thorsten/sandbox-watcher/commit/54ee4112dc5e487036884b5cb6e24b22139960b3))
+
+### CI
+
+- re-pin dtolnay/rust-toolchain to the current stable tip ([20b8b73](https://github.com/thorsten/sandbox-watcher/commit/20b8b73de97268ee99b70b179c7cdf485b0422f6))
+
 ## 0.10.0 (2026-11-10)
 
 ### Features
 
 - **app:** "Check for Updates…" entry in the application menu ([770d2c0](https://github.com/thorsten/sandbox-watcher/commit/770d2c0bf3facada8d69b57bd66587e87fb3f50f))
+
+### Chores
+
+- **release:** v0.10.0 ([c72ec04](https://github.com/thorsten/sandbox-watcher/commit/c72ec04ef7e61cd683a9246fcca2fa13c4ff4a0f))
+
+**Full changelog:** [v0.9.2...v0.10.0](https://github.com/thorsten/sandbox-watcher/compare/v0.9.2...v0.10.0)
 
 ## 0.9.2 (2026-11-09)
 
