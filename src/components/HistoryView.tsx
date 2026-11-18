@@ -39,171 +39,182 @@ export function HistoryView({ onClose }: { onClose: () => void }) {
     <section className="history" aria-labelledby="history-title">
       <header className="settings-header">
         <h2 id="history-title">{t("app.history")}</h2>
-        <div className="header-meta">
-          <button type="button" className="danger" onClick={() => setConfirmClear(true)}>
-            {t("history.clear")}
-          </button>
-          <button type="button" onClick={onClose}>
-            {t("settings.close")}
-          </button>
-        </div>
+        <button
+          type="button"
+          className="close"
+          onClick={onClose}
+          title={t("settings.close")}
+          aria-label={t("settings.close")}
+        >
+          ×
+        </button>
       </header>
 
-      <div className="network-toolbar">
-        <div className="segmented" aria-label={t("history.timeRange")}>
-          {RANGES.map((r) => (
-            <button
-              key={r.label}
-              type="button"
-              className={range === r.hours ? "active" : ""}
-              onClick={() => setRange(r.hours)}
-            >
-              {t(r.label)}
-            </button>
-          ))}
+      <div className="history-content">
+        <div className="network-toolbar">
+          <div className="segmented" aria-label={t("history.timeRange")}>
+            {RANGES.map((r) => (
+              <button
+                key={r.label}
+                type="button"
+                className={range === r.hours ? "active" : ""}
+                onClick={() => setRange(r.hours)}
+              >
+                {t(r.label)}
+              </button>
+            ))}
+          </div>
+          <select
+            value={project}
+            onChange={(e) => setProject(e.target.value)}
+            aria-label={t("history.project")}
+          >
+            <option value="">{t("history.allProjects")}</option>
+            {(data?.projects ?? []).map((p) => (
+              <option key={p} value={p}>
+                {p}
+              </option>
+            ))}
+          </select>
+          <select
+            value={agent}
+            onChange={(e) => setAgent(e.target.value as AgentKind | "")}
+            aria-label={t("history.agent")}
+          >
+            <option value="">{t("history.allAgents")}</option>
+            {AGENTS.map((a) => (
+              <option key={a} value={a}>
+                {AGENT_LABELS[a]}
+              </option>
+            ))}
+          </select>
         </div>
-        <select
-          value={project}
-          onChange={(e) => setProject(e.target.value)}
-          aria-label={t("history.project")}
-        >
-          <option value="">{t("history.allProjects")}</option>
-          {(data?.projects ?? []).map((p) => (
-            <option key={p} value={p}>
-              {p}
-            </option>
-          ))}
-        </select>
-        <select
-          value={agent}
-          onChange={(e) => setAgent(e.target.value as AgentKind | "")}
-          aria-label={t("history.agent")}
-        >
-          <option value="">{t("history.allAgents")}</option>
-          {AGENTS.map((a) => (
-            <option key={a} value={a}>
-              {AGENT_LABELS[a]}
-            </option>
-          ))}
-        </select>
+
+        {error && <p className="network-note warn">{error}</p>}
+        {data && (
+          <>
+            <div className="summary">
+              <Tile label={t("history.sessions")} value={String(data.total.sessions)} />
+              <Tile label={t("history.agentTime")} value={formatDuration(data.total.seconds)} />
+              <Tile label={t("history.tokens")} value={formatTokens(data.total.tokens)} />
+              <Tile
+                label={data.total.cost_incomplete ? t("history.costPartial") : t("history.cost")}
+                value={
+                  data.total.cost_usd === null ? "–" : formatCost(data.total.cost_usd, "mixed")
+                }
+              />
+            </div>
+
+            <div className="history-grid">
+              <AggregateTable
+                title={t("history.byAgent")}
+                column={t("history.agent")}
+                rows={data.by_agent}
+              />
+              <AggregateTable
+                title={t("history.byProject")}
+                column={t("history.project")}
+                rows={data.by_project}
+              />
+            </div>
+
+            <h3>{t("history.sessions")}</h3>
+            {data.sessions.length === 0 ? (
+              <p className="muted">{t("history.nothing")}</p>
+            ) : (
+              <table className="network-table">
+                <thead>
+                  <tr>
+                    <th>{t("history.started")}</th>
+                    <th>{t("history.duration")}</th>
+                    <th>{t("history.project")}</th>
+                    <th>{t("history.agent")}</th>
+                    <th>{t("history.command")}</th>
+                    <th>{t("history.files")}</th>
+                    <th className="num">{t("history.tokens")}</th>
+                    <th className="num">{t("history.cost")}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.sessions.map((s) => (
+                    <tr key={s.id} className={s.ended_at ? "" : "row-live"}>
+                      <td>{formatDateTime(s.started_at)}</td>
+                      <td>
+                        {formatDuration(
+                          Math.max(
+                            0,
+                            Math.floor(
+                              ((s.ended_at ? Date.parse(s.ended_at) : now) -
+                                Date.parse(s.started_at)) /
+                                1000,
+                            ),
+                          ),
+                        )}
+                        {!s.ended_at && (
+                          <span className="badge badge-ok badge-inline">{t("history.live")}</span>
+                        )}
+                      </td>
+                      <td>{s.project_slug}</td>
+                      <td>
+                        <span className={`chip agent-${s.agent}`}>{AGENT_LABELS[s.agent]}</span>
+                      </td>
+                      <td className="path">
+                        <code title={s.command}>{s.command}</code>
+                      </td>
+                      <td>
+                        {s.files.length === 0 ? (
+                          <span className="muted">–</span>
+                        ) : (
+                          <details>
+                            <summary>{describeFiles(s.files)}</summary>
+                            <FilesList
+                              files={s.files}
+                              projectDir={null}
+                              now={new Date(now)}
+                              collapseReads={false}
+                            />
+                          </details>
+                        )}
+                      </td>
+                      <td className="num">
+                        {s.usage
+                          ? formatTokens(
+                              s.usage.input_tokens +
+                                s.usage.output_tokens +
+                                s.usage.cache_read_tokens +
+                                s.usage.cache_write_tokens,
+                            )
+                          : "–"}
+                        {s.usage_scope === "agent" && (
+                          <span className="muted" title={t("history.sharedTitle")}>
+                            {" "}
+                            {t("history.shared")}
+                          </span>
+                        )}
+                        {s.usage_scope === "pooled" && (
+                          <span className="muted" title={t("history.pooledTitle")}>
+                            {" "}
+                            {t("history.pooled")}
+                          </span>
+                        )}
+                      </td>
+                      <td className="num">
+                        {s.usage ? formatCost(s.usage.cost_usd, s.usage.cost_source) : "–"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </>
+        )}
       </div>
 
-      {error && <p className="network-note warn">{error}</p>}
-      {data && (
-        <>
-          <div className="summary">
-            <Tile label={t("history.sessions")} value={String(data.total.sessions)} />
-            <Tile label={t("history.agentTime")} value={formatDuration(data.total.seconds)} />
-            <Tile label={t("history.tokens")} value={formatTokens(data.total.tokens)} />
-            <Tile
-              label={data.total.cost_incomplete ? t("history.costPartial") : t("history.cost")}
-              value={data.total.cost_usd === null ? "–" : formatCost(data.total.cost_usd, "mixed")}
-            />
-          </div>
-
-          <div className="history-grid">
-            <AggregateTable
-              title={t("history.byAgent")}
-              column={t("history.agent")}
-              rows={data.by_agent}
-            />
-            <AggregateTable
-              title={t("history.byProject")}
-              column={t("history.project")}
-              rows={data.by_project}
-            />
-          </div>
-
-          <h3>{t("history.sessions")}</h3>
-          {data.sessions.length === 0 ? (
-            <p className="muted">{t("history.nothing")}</p>
-          ) : (
-            <table className="network-table">
-              <thead>
-                <tr>
-                  <th>{t("history.started")}</th>
-                  <th>{t("history.duration")}</th>
-                  <th>{t("history.project")}</th>
-                  <th>{t("history.agent")}</th>
-                  <th>{t("history.command")}</th>
-                  <th>{t("history.files")}</th>
-                  <th className="num">{t("history.tokens")}</th>
-                  <th className="num">{t("history.cost")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.sessions.map((s) => (
-                  <tr key={s.id} className={s.ended_at ? "" : "row-live"}>
-                    <td>{formatDateTime(s.started_at)}</td>
-                    <td>
-                      {formatDuration(
-                        Math.max(
-                          0,
-                          Math.floor(
-                            ((s.ended_at ? Date.parse(s.ended_at) : now) -
-                              Date.parse(s.started_at)) /
-                              1000,
-                          ),
-                        ),
-                      )}
-                      {!s.ended_at && (
-                        <span className="badge badge-ok badge-inline">{t("history.live")}</span>
-                      )}
-                    </td>
-                    <td>{s.project_slug}</td>
-                    <td>
-                      <span className={`chip agent-${s.agent}`}>{AGENT_LABELS[s.agent]}</span>
-                    </td>
-                    <td className="path">
-                      <code title={s.command}>{s.command}</code>
-                    </td>
-                    <td>
-                      {s.files.length === 0 ? (
-                        <span className="muted">–</span>
-                      ) : (
-                        <details>
-                          <summary>{describeFiles(s.files)}</summary>
-                          <FilesList
-                            files={s.files}
-                            projectDir={null}
-                            now={new Date(now)}
-                            collapseReads={false}
-                          />
-                        </details>
-                      )}
-                    </td>
-                    <td className="num">
-                      {s.usage
-                        ? formatTokens(
-                            s.usage.input_tokens +
-                              s.usage.output_tokens +
-                              s.usage.cache_read_tokens +
-                              s.usage.cache_write_tokens,
-                          )
-                        : "–"}
-                      {s.usage_scope === "agent" && (
-                        <span className="muted" title={t("history.sharedTitle")}>
-                          {" "}
-                          {t("history.shared")}
-                        </span>
-                      )}
-                      {s.usage_scope === "pooled" && (
-                        <span className="muted" title={t("history.pooledTitle")}>
-                          {" "}
-                          {t("history.pooled")}
-                        </span>
-                      )}
-                    </td>
-                    <td className="num">
-                      {s.usage ? formatCost(s.usage.cost_usd, s.usage.cost_source) : "–"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </>
-      )}
+      <footer className="settings-footer">
+        <button type="button" className="danger" onClick={() => setConfirmClear(true)}>
+          {t("history.clear")}
+        </button>
+      </footer>
 
       {confirmClear && (
         <ConfirmDialog

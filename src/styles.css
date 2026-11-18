@@ -666,7 +666,8 @@ dialog.confirm ul {
   --accent: #7dd3fc;
 }
 
-.settings {
+.settings,
+.history {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -1163,6 +1164,14 @@ body,
 }
 
 /* ---------- History ---------- */
+/* Same card as the settings: header with the close button stays, the content scrolls. */
+.history-content {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-top: 0.75rem;
+  padding-right: 0.25rem;
+}
 .history h3 {
   font-size: 1rem;
   margin: 1rem 0 0.4rem;

@@ -265,7 +265,9 @@ describe("German rendering", () => {
 
   it("history view", () => {
     const { text, html } = render(<HistoryView onClose={noop} />, de);
-    expect(text).toContain("Verlauf Leeren Schließen Heute 7 Tage 30 Tage Alle");
+    expect(text).toContain("Verlauf × Heute 7 Tage 30 Tage Alle");
+    expect(text).toContain("Leeren");
+    expect(html).toContain('aria-label="Schließen"');
     expect(text).toContain("Alle Projekte");
     expect(text).toContain("Alle Agenten");
     expect(html).toContain('aria-label="Zeitraum"');
