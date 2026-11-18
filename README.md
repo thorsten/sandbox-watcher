@@ -248,6 +248,12 @@ See [`CONTRIBUTING.md`](CONTRIBUTING.md) and the
 [code of conduct](CODE_OF_CONDUCT.md). Report security problems privately as
 described in [`SECURITY.md`](SECURITY.md).
 
+## Built with Claude Code
+
+This project is built with [Claude Code](https://claude.com/claude-code).
+[`AGENTS.md`](AGENTS.md) holds the guidance that agents and contributors work
+from.
+
 ## License
 
 MIT, see [`LICENSE`](LICENSE).
